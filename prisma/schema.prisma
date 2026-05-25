@@ -1,0 +1,460 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ROOMS
+// ─────────────────────────────────────────────
+
+model Room {
+  id            String   @id @default(cuid())
+  // Website display fields
+  name          String
+  slug          String   @unique
+  descriptionEn String   @db.Text @map("description_en")
+  descriptionHi String   @db.Text @map("description_hi")
+  descriptionMr String   @db.Text @map("description_mr")
+  maxGuests     Int      @map("max_guests")
+  pricePerNight Float    @map("price_per_night")
+  images        String[]
+  amenities     String[]
+  // PMS fields
+  roomNumber    String?  @map("room_number")
+  roomType      String   @default("standard") @map("room_type")
+  floor         Int?
+  extraBed      Boolean  @default(false) @map("extra_bed")
+  baseRate      Decimal  @default(0) @map("base_rate") @db.Decimal(10, 2)
+  photos        Json     @default("[]")
+  status        String   @default("available")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  bookings         Booking[]
+  roomStatus       RoomStatus?
+  housekeepingLogs HousekeepingLog[]
+  blockedDates     BlockedDate[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("rooms")
+}
+
+// ─────────────────────────────────────────────
+// GUESTS (PMS guest directory)
+// ─────────────────────────────────────────────
+
+model Guest {
+  id            String   @id @default(cuid())
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  email         String?
+  phone         String
+  altPhone      String?  @map("alt_phone")
+  address       String?  @db.Text
+  city          String?
+  state         String?
+  country       String   @default("India")
+  pincode       String?
+  idProofType   String?  @map("id_proof_type")
+  idProofNumber String?  @map("id_proof_number")
+  nationality   String   @default("Indian")
+  gstin         String?
+  companyName   String?  @map("company_name")
+  notes         String?  @db.Text
+  totalStays    Int      @default(0) @map("total_stays")
+  totalRevenue  Decimal  @default(0) @map("total_revenue") @db.Decimal(12, 2)
+
+  bookings     Booking[]
+  invoices     Invoice[]
+  currentRooms RoomStatus[] @relation("CurrentGuest")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("guests")
+}
+
+// ─────────────────────────────────────────────
+// BOOKINGS
+// NOTE: After `prisma migrate dev --name init`, also run:
+//   psql $DATABASE_URL -f prisma/add_exclusion_constraint.sql
+// This adds a PostgreSQL exclusion constraint that makes double
+// booking physically impossible at the DB level.
+// ─────────────────────────────────────────────
+
+model Booking {
+  id            String @id @default(cuid())
+  bookingNumber String @unique @map("booking_number")
+
+  // Guest — inline for website compat + optional FK for PMS
+  guestId    String? @map("guest_id")
+  guestName  String  @map("guest_name")
+  guestEmail String  @map("guest_email")
+  guestPhone String  @map("guest_phone")
+
+  roomId String @map("room_id")
+
+  // Dates
+  checkIn        DateTime  @map("check_in") @db.Date
+  checkOut       DateTime  @map("check_out") @db.Date
+  actualCheckin  DateTime? @map("actual_checkin")
+  actualCheckout DateTime? @map("actual_checkout")
+  nights         Int
+
+  // Guests count
+  adults   Int     @default(1)
+  children Int     @default(0)
+  extraBed Boolean @default(false) @map("extra_bed")
+
+  // Pricing
+  totalAmount    Float  @map("total_amount")
+  discountAmount Float  @default(0) @map("discount_amount")
+  cgstAmount     Float? @map("cgst_amount")
+  sgstAmount     Float? @map("sgst_amount")
+
+  // Booking lifecycle — confirmed → checked_in → checked_out → cancelled/no_show
+  status String @default("confirmed")
+
+  // Payment state — pending → paid → failed/refunded/cash/complimentary
+  paymentStatus String @default("pending") @map("payment_status")
+
+  // Razorpay
+  razorpayOrderId   String? @map("razorpay_order_id")
+  razorpayPaymentId String? @map("razorpay_payment_id")
+
+  // Source
+  source          String  @default("website")
+  sourceBookingId String? @map("source_booking_id")
+
+  promoCode       String?  @map("promo_code")
+  specialRequests String?  @map("special_requests") @db.Text
+
+  // Cancellation
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancellationReason String?   @map("cancellation_reason") @db.Text
+  refundAmount       Float?    @map("refund_amount")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  room            Room             @relation(fields: [roomId], references: [id])
+  guest           Guest?           @relation(fields: [guestId], references: [id])
+  payments        Payment[]
+  invoices        Invoice[]
+  channelSyncLogs ChannelSyncLog[]
+  currentRooms    RoomStatus[]     @relation("CurrentBooking")
+
+  @@index([checkIn, checkOut])
+  @@index([guestEmail])
+  @@map("bookings")
+}
+
+// ─────────────────────────────────────────────
+// PAYMENTS
+// ─────────────────────────────────────────────
+
+model Payment {
+  id            String  @id @default(cuid())
+  bookingId     String  @map("booking_id")
+  amount        Decimal @db.Decimal(12, 2)
+  paymentMethod String  @map("payment_method")
+  paymentType   String  @map("payment_type")
+
+  razorpayPaymentId String? @map("razorpay_payment_id")
+  razorpayOrderId   String? @map("razorpay_order_id")
+  razorpaySignature String? @map("razorpay_signature")
+
+  status     String  @default("pending")
+  notes      String? @db.Text
+  receivedBy String? @map("received_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────
+// INVOICES (GST-compliant)
+// ─────────────────────────────────────────────
+
+model Invoice {
+  id            String @id @default(cuid())
+  invoiceNumber String @unique @map("invoice_number")
+  bookingId     String @map("booking_id")
+  guestId       String @map("guest_id")
+
+  hotelGstin   String @map("hotel_gstin")
+  hotelName    String @map("hotel_name")
+  hotelAddress String @map("hotel_address") @db.Text
+
+  guestName    String  @map("guest_name")
+  guestGstin   String? @map("guest_gstin")
+  guestAddress String? @map("guest_address") @db.Text
+
+  subtotal      Decimal  @db.Decimal(12, 2)
+  discount      Decimal  @default(0) @db.Decimal(10, 2)
+  taxableAmount Decimal  @map("taxable_amount") @db.Decimal(12, 2)
+  cgstRate      Decimal? @map("cgst_rate") @db.Decimal(4, 2)
+  sgstRate      Decimal? @map("sgst_rate") @db.Decimal(4, 2)
+  cgstAmount    Decimal? @map("cgst_amount") @db.Decimal(10, 2)
+  sgstAmount    Decimal? @map("sgst_amount") @db.Decimal(10, 2)
+  totalAmount   Decimal  @map("total_amount") @db.Decimal(12, 2)
+
+  lineItems   Json     @map("line_items")
+  invoiceDate DateTime @map("invoice_date") @db.Date
+  dueDate     DateTime? @map("due_date") @db.Date
+  status      String   @default("generated")
+  pdfUrl      String?  @map("pdf_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  guest   Guest   @relation(fields: [guestId], references: [id])
+
+  @@map("invoices")
+}
+
+// ─────────────────────────────────────────────
+// ROOM STATUS (real-time front-desk board)
+// ─────────────────────────────────────────────
+
+model RoomStatus {
+  id               String @id @default(cuid())
+  roomId           String @unique @map("room_id")
+  occupancy        String @default("vacant")
+  housekeeping     String @default("clean")
+  currentGuestId   String? @map("current_guest_id")
+  currentBookingId String? @map("current_booking_id")
+
+  notes         String?   @db.Text
+  lastCleanedAt DateTime? @map("last_cleaned_at")
+  cleanedBy     String?   @map("cleaned_by")
+  inspectedBy   String?   @map("inspected_by")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  room           Room     @relation(fields: [roomId], references: [id])
+  currentGuest   Guest?   @relation("CurrentGuest", fields: [currentGuestId], references: [id])
+  currentBooking Booking? @relation("CurrentBooking", fields: [currentBookingId], references: [id])
+
+  @@map("room_status")
+}
+
+// ─────────────────────────────────────────────
+// HOUSEKEEPING
+// ─────────────────────────────────────────────
+
+model HousekeepingLog {
+  id         String @id @default(cuid())
+  roomId     String @map("room_id")
+  taskType   String @map("task_type")
+  status     String @default("pending")
+  assignedTo String? @map("assigned_to")
+
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  inspectedBy     String?   @map("inspected_by")
+  notes           String?   @db.Text
+  maintenanceFlag Boolean   @default(false) @map("maintenance_flag")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@map("housekeeping_log")
+}
+
+// ─────────────────────────────────────────────
+// PRICING
+// ─────────────────────────────────────────────
+
+model RatePlan {
+  id       String @id @default(cuid())
+  name     String
+  roomType String @map("room_type")
+
+  baseRate      Decimal @map("base_rate") @db.Decimal(10, 2)
+  extraBedRate  Decimal @default(0) @map("extra_bed_rate") @db.Decimal(10, 2)
+  validFrom     DateTime @map("valid_from") @db.Date
+  validTo       DateTime @map("valid_to") @db.Date
+  weekendMarkup Decimal  @default(0) @map("weekend_markup") @db.Decimal(5, 2)
+  minNights     Int      @default(1) @map("min_nights")
+  isActive      Boolean  @default(true) @map("is_active")
+  priority      Int      @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("rate_plans")
+}
+
+model Promotion {
+  id   String  @id @default(cuid())
+  code String  @unique
+  name String?
+
+  discountType  String  @map("discount_type")
+  discountValue Decimal @map("discount_value") @db.Decimal(10, 2)
+  maxDiscount   Decimal? @map("max_discount") @db.Decimal(10, 2)
+
+  validFrom DateTime @map("valid_from") @db.Date
+  validTo   DateTime @map("valid_to") @db.Date
+  minNights Int      @default(1) @map("min_nights")
+  minAmount Decimal  @default(0) @map("min_amount") @db.Decimal(10, 2)
+
+  usageLimit      Int?    @map("usage_limit")
+  usedCount       Int     @default(0) @map("used_count")
+  applicableRooms Json    @default("[]") @map("applicable_rooms")
+  isActive        Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("promotions")
+}
+
+model BlockedDate {
+  id        String   @id @default(cuid())
+  roomId    String?  @map("room_id")
+  blockDate DateTime @map("block_date") @db.Date
+  reason    String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  room Room? @relation(fields: [roomId], references: [id])
+
+  @@map("blocked_dates")
+}
+
+// ─────────────────────────────────────────────
+// CHANNEL SYNC & AUDIT
+// ─────────────────────────────────────────────
+
+model ChannelSyncLog {
+  id        String @id @default(cuid())
+  direction String
+  channel   String
+  action    String
+
+  payload      Json?
+  response     Json?
+  status       String
+  errorMessage String? @map("error_message") @db.Text
+  bookingId    String? @map("booking_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@map("channel_sync_log")
+}
+
+model AuditLog {
+  id         String @id @default(cuid())
+  userId     String @map("user_id")
+  action     String
+  entityType String @map("entity_type")
+  entityId   String @map("entity_id")
+
+  oldValue  Json?   @map("old_value")
+  newValue  Json?   @map("new_value")
+  ipAddress String? @map("ip_address")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
+
+// ─────────────────────────────────────────────
+// STAFF / AUTH
+// ─────────────────────────────────────────────
+
+model Staff {
+  id           String  @id @default(cuid())
+  name         String
+  email        String  @unique
+  phone        String?
+  role         String
+  passwordHash String  @map("password_hash")
+  permissions  Json    @default("[]")
+  isActive     Boolean @default(true) @map("is_active")
+  lastLogin    DateTime? @map("last_login")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("staff")
+}
+
+// ─────────────────────────────────────────────
+// WEBSITE CONTENT MODELS
+// ─────────────────────────────────────────────
+
+model Package {
+  id        String @id @default(cuid())
+  nameEn    String @map("name_en")
+  nameHi    String @map("name_hi")
+  nameMr    String @map("name_mr")
+  descEn    String @db.Text @map("desc_en")
+  descHi    String @db.Text @map("desc_hi")
+  descMr    String @db.Text @map("desc_mr")
+  price     Float
+  inclusions String[]
+  imageUrl  String?  @map("image_url")
+  validFrom DateTime? @map("valid_from")
+  validTo   DateTime? @map("valid_to")
+  isActive  Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("packages")
+}
+
+model Testimonial {
+  id         String    @id @default(cuid())
+  guestName  String    @map("guest_name")
+  location   String?
+  review     String    @db.Text
+  rating     Int
+  isApproved Boolean   @default(false) @map("is_approved")
+  stayDate   DateTime? @map("stay_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("testimonials")
+}
+
+model BlogPost {
+  id          String    @id @default(cuid())
+  titleEn     String    @map("title_en")
+  titleHi     String?   @map("title_hi")
+  titleMr     String?   @map("title_mr")
+  slug        String    @unique
+  bodyEn      String    @db.Text @map("body_en")
+  bodyHi      String?   @db.Text @map("body_hi")
+  bodyMr      String?   @db.Text @map("body_mr")
+  coverImage  String?   @map("cover_image")
+  isPublished Boolean   @default(false) @map("is_published")
+  publishedAt DateTime? @map("published_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("blog_posts")
+}
+
+model GalleryImage {
+  id        String  @id @default(cuid())
+  url       String
+  altText   String? @map("alt_text")
+  category  String  @default("general")
+  sortOrder Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("gallery_images")
+}

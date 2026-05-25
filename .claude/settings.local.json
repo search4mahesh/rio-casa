@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)",
+      "PowerShell($env:PATH)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Program Files \\(x86\\)\\\\nodejs\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:APPDATA\\\\npm\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\nvm\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-ItemProperty \"HKLM:\\\\SOFTWARE\\\\Node.js\" -ErrorAction SilentlyContinue; Get-ItemProperty \"HKCU:\\\\SOFTWARE\\\\Node.js\" -ErrorAction SilentlyContinue; $nvm = \"$env:LOCALAPPDATA\\\\nvm\"; if \\(Test-Path $nvm\\) { Get-ChildItem $nvm } else { \"nvm not found at $nvm\" })",
+      "PowerShell(npx --version)"
+    ]
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "home": "Home",
+    "about": "About",
+    "rooms": "Rooms",
+    "gallery": "Gallery",
+    "packages": "Packages",
+    "dining": "Dining & Amenities",
+    "blog": "Blog",
+    "bookNow": "Book Now"
+  },
+  "hero": {
+    "tagline": "Where Nature Meets Luxury",
+    "subTagline": "Nestled in the misty hills of Mahabaleshwar",
+    "cta": "Book Your Stay",
+    "exploreRooms": "Explore Rooms"
+  },
+  "home": {
+    "featuredRoomsTitle": "Our Rooms & Suites",
+    "featuredRoomsSubtitle": "Curated spaces designed for rest and rejuvenation",
+    "packagesTitle": "Special Packages",
+    "packagesSubtitle": "Crafted experiences for every kind of traveller",
+    "testimonialsTitle": "What Our Guests Say",
+    "locationTitle": "Find Us",
+    "locationSubtitle": "In the heart of Mahabaleshwar"
+  },
+  "rooms": {
+    "title": "Rooms & Suites",
+    "subtitle": "Choose your perfect stay",
+    "perNight": "per night",
+    "maxGuests": "up to {count} guests",
+    "bookRoom": "Book This Room",
+    "checkAvailability": "Check Availability",
+    "amenities": "Amenities"
+  },
+  "booking": {
+    "title": "Book Your Stay",
+    "checkIn": "Check-in Date",
+    "checkOut": "Check-out Date",
+    "guests": "Number of Guests",
+    "selectRoom": "Select Room",
+    "guestDetails": "Guest Details",
+    "name": "Full Name",
+    "email": "Email Address",
+    "phone": "Phone Number",
+    "specialRequests": "Special Requests",
+    "payment": "Payment",
+    "payWithRazorpay": "Pay with Card / UPI / Net Banking",
+    "payWithUPI": "Pay via UPI QR",
+    "totalAmount": "Total Amount",
+    "nights": "{count} nights",
+    "confirm": "Confirm Booking",
+    "success": "Booking Confirmed!",
+    "confirmationSent": "A confirmation has been sent to your email."
+  },
+  "packages": {
+    "title": "Packages & Offers",
+    "subtitle": "Special experiences crafted just for you",
+    "includes": "Package Includes",
+    "bookPackage": "Book This Package",
+    "validity": "Valid"
+  },
+  "dining": {
+    "title": "Dining & Amenities",
+    "subtitle": "Savour the flavours of Maharashtra",
+    "restaurant": "Restaurant",
+    "amenitiesTitle": "Resort Amenities",
+    "activitiesTitle": "Nearby Activities"
+  },
+  "gallery": {
+    "title": "Gallery",
+    "subtitle": "Moments captured at Rio Casa",
+    "categories": {
+      "all": "All",
+      "rooms": "Rooms",
+      "dining": "Dining",
+      "amenities": "Amenities",
+      "nature": "Nature",
+      "events": "Events"
+    }
+  },
+  "about": {
+    "title": "About Rio Casa",
+    "subtitle": "Our Story",
+    "mahabaleshwarTitle": "Discover Mahabaleshwar"
+  },
+  "blog": {
+    "title": "Travel Blog",
+    "subtitle": "Stories from the hills",
+    "readMore": "Read More",
+    "backToBlog": "Back to Blog"
+  },
+  "footer": {
+    "tagline": "Your serene escape in the Sahyadri hills",
+    "quickLinks": "Quick Links",
+    "contact": "Contact Us",
+    "address": "Mahabaleshwar, Satara District, Maharashtra — 412806",
+    "phone": "+91 98765 43210",
+    "email": "info@riocasa.in",
+    "followUs": "Follow Us",
+    "copyright": "© {year} Rio Casa. All rights reserved.",
+    "privacyPolicy": "Privacy Policy"
+  },
+  "common": {
+    "learnMore": "Learn More",
+    "viewAll": "View All",
+    "loading": "Loading...",
+    "error": "Something went wrong. Please try again.",
+    "required": "This field is required"
+  }
+}
