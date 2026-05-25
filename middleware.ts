@@ -1,6 +1,7 @@
 import createIntlMiddleware from "next-intl/middleware";
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_COOKIE } from "@/lib/admin-auth";
+
+const ADMIN_COOKIE = "admin_token";
 
 const intlMiddleware = createIntlMiddleware({
   locales: ["en", "hi", "mr"],
