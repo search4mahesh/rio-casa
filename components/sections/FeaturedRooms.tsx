@@ -1,34 +1,34 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Users, Star } from "lucide-react";
+import { Users, Star, Bath, BedDouble } from "lucide-react";
 
-const placeholderRooms = [
+const featuredRooms = [
   {
-    id: "1",
-    slug: "deluxe-garden-view",
-    name: "Deluxe Garden View",
+    slug: "deluxe-room",
+    name: "Deluxe Room",
+    tagline: "Comfort in the hills",
     price: 4500,
     maxGuests: 2,
-    image: "/images/room-1.jpg",
+    badge: null,
     rating: 4.8,
   },
   {
-    id: "2",
-    slug: "premium-valley-suite",
-    name: "Premium Valley Suite",
-    price: 7500,
-    maxGuests: 3,
-    image: "/images/room-2.jpg",
+    slug: "premium-room",
+    name: "Premium Room",
+    tagline: "With soaking bathtub",
+    price: 6500,
+    maxGuests: 2,
+    badge: "Bathtub",
     rating: 4.9,
   },
   {
-    id: "3",
-    slug: "royal-hilltop-suite",
-    name: "Royal Hilltop Suite",
-    price: 12000,
+    slug: "family-room",
+    name: "Family Room",
+    tagline: "2 double beds · Up to 4 guests",
+    price: 7500,
     maxGuests: 4,
-    image: "/images/room-3.jpg",
-    rating: 5.0,
+    badge: "Family Pick",
+    rating: 4.9,
   },
 ];
 
@@ -46,41 +46,45 @@ export default function FeaturedRooms({ locale }: { locale: string }) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {placeholderRooms.map((room) => (
+          {featuredRooms.map((room) => (
             <div
-              key={room.id}
-              className="bg-earth-white rounded-sm overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+              key={room.slug}
+              className="bg-earth-white rounded-sm overflow-hidden shadow-sm hover:shadow-md transition-shadow group flex flex-col"
             >
-              <div className="relative h-56 overflow-hidden">
-                <div className="absolute inset-0 bg-primary-200 flex items-center justify-center text-primary-400 text-sm">
-                  {/* Placeholder until real images are added */}
-                  Room Image
-                </div>
+              {/* Image */}
+              <div className="relative h-56 overflow-hidden bg-primary/10 flex items-center justify-center text-primary/30 text-sm">
+                Room Image
+                {room.badge && (
+                  <span className="absolute top-3 left-3 bg-accent text-white text-xs font-sans font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                    {room.badge === "Bathtub"     && <Bath     size={11} />}
+                    {room.badge === "Family Pick" && <BedDouble size={11} />}
+                    {room.badge}
+                  </span>
+                )}
               </div>
 
-              <div className="p-5">
-                <div className="flex items-start justify-between mb-2">
+              <div className="p-5 flex flex-col flex-1">
+                <div className="flex items-start justify-between mb-1">
                   <h3 className="font-serif text-xl text-earth-text">{room.name}</h3>
-                  <div className="flex items-center gap-1 text-accent">
+                  <div className="flex items-center gap-1 text-accent shrink-0">
                     <Star size={14} fill="currentColor" />
                     <span className="font-sans text-xs">{room.rating}</span>
                   </div>
                 </div>
+
+                <p className="font-sans text-xs text-earth-text/50 italic mb-3">{room.tagline}</p>
 
                 <div className="flex items-center gap-1 text-earth-text/60 text-sm mb-4">
                   <Users size={14} />
                   <span>{rooms("maxGuests", { count: room.maxGuests })}</span>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mt-auto">
                   <div>
                     <span className="font-serif text-2xl text-primary">₹{room.price.toLocaleString("en-IN")}</span>
                     <span className="font-sans text-xs text-earth-text/50 ml-1">{rooms("perNight")}</span>
                   </div>
-                  <Link
-                    href={`${prefix}/rooms/${room.slug}`}
-                    className="btn-outline text-sm py-2 px-4"
-                  >
+                  <Link href={`${prefix}/rooms/${room.slug}`} className="btn-outline text-sm py-2 px-4">
                     {rooms("bookRoom")}
                   </Link>
                 </div>
@@ -90,9 +94,7 @@ export default function FeaturedRooms({ locale }: { locale: string }) {
         </div>
 
         <div className="text-center mt-10">
-          <Link href={`${prefix}/rooms`} className="btn-outline">
-            View All Rooms
-          </Link>
+          <Link href={`${prefix}/rooms`} className="btn-outline">View All Rooms</Link>
         </div>
       </div>
     </section>

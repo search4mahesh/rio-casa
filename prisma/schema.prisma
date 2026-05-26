@@ -332,6 +332,27 @@ model BlockedDate {
 }
 
 // ─────────────────────────────────────────────
+// EXPENSES
+// ─────────────────────────────────────────────
+
+model Expense {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  category      String   // housekeeping | maintenance | food | utilities | staff | marketing | other
+  description   String
+  amount        Decimal  @db.Decimal(10, 2)
+  paymentMethod String   @map("payment_method") // cash | bank | upi | cheque
+  vendor        String?
+  reference     String?
+  recordedBy    String   @map("recorded_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────
 // CHANNEL SYNC & AUDIT
 // ─────────────────────────────────────────────
 

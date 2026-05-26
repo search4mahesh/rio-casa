@@ -1,65 +1,78 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Users, Star, ArrowLeft, Check } from "lucide-react";
+import { Users, Star, ArrowLeft, Check, Bath, BedDouble, Wifi, Tv, Wind, Droplets, UtensilsCrossed } from "lucide-react";
 
 const roomData: Record<string, {
   name: string;
   description: string;
+  longDescription: string;
   price: number;
   maxGuests: number;
+  extraBed: boolean;
   amenities: string[];
+  highlights: { icon: string; label: string }[];
   rating: number;
   reviews: number;
-  longDescription: string;
+  count: number;
 }> = {
-  "deluxe-garden-view": {
-    name: "Deluxe Garden View",
-    description: "A beautifully appointed room overlooking our lush garden.",
-    longDescription: "Wake up to the serene sight of our manicured gardens and the rolling hills of Mahabaleshwar beyond. The Deluxe Garden View room features a plush king-size bed, warm wooden furnishings, and a large window that frames nature like a painting. Perfect for couples seeking a romantic escape.",
+  "deluxe-room": {
+    name: "Deluxe Room",
+    description: "Comfort and calm in the hills of Mahabaleshwar.",
+    longDescription: "A beautifully appointed Deluxe Room designed for couples or solo travellers. Warm earthy décor, a comfortable double bed, and all the essentials for a restorative hill station stay. Six rooms are available across both floors, with Room 104 offering a lovely forest view.",
     price: 4500,
     maxGuests: 2,
-    amenities: ["King Bed", "Air Conditioning", "Hot Water", "Garden View", "Room Service", "Free Wi-Fi", "Daily Housekeeping", "Complimentary Breakfast"],
+    extraBed: true,
+    amenities: ["AC", "WiFi", "LED TV", "Hot Water", "Room Service", "Daily Housekeeping", "Extra Bed on Request", "Complimentary Breakfast"],
+    highlights: [
+      { icon: "wind",   label: "Air Conditioning" },
+      { icon: "wifi",   label: "Free WiFi" },
+      { icon: "tv",     label: "LED TV" },
+      { icon: "water",  label: "24hr Hot Water" },
+    ],
     rating: 4.8,
-    reviews: 42,
+    reviews: 94,
+    count: 6,
   },
-  "premium-valley-suite": {
-    name: "Premium Valley Suite",
-    description: "Spacious suite with panoramic valley views and a private balcony.",
-    longDescription: "Indulge in the expansive Premium Valley Suite, where floor-to-ceiling windows and a private balcony offer unobstructed views of the Mahabaleshwar valley. The separate living area is ideal for families or couples who want space to relax in style.",
+  "premium-room": {
+    name: "Premium Room",
+    description: "Luxury with a soaking bathtub on the upper floor.",
+    longDescription: "The Premium Room takes your stay up a notch with a private soaking bathtub — perfect for unwinding after a day of sightseeing around Mahabaleshwar. Located on the second floor, these two rooms feature premium toiletries, extra-comfortable bedding, and thoughtful touches that make the difference.",
+    price: 6500,
+    maxGuests: 2,
+    extraBed: true,
+    amenities: ["AC", "WiFi", "LED TV", "Hot Water", "Soaking Bathtub", "Premium Toiletries", "Room Service", "Daily Housekeeping", "Extra Bed on Request", "Complimentary Breakfast"],
+    highlights: [
+      { icon: "bath",   label: "Soaking Bathtub" },
+      { icon: "wind",   label: "Air Conditioning" },
+      { icon: "wifi",   label: "Free WiFi" },
+      { icon: "water",  label: "Premium Toiletries" },
+    ],
+    rating: 4.9,
+    reviews: 36,
+    count: 2,
+  },
+  "family-room": {
+    name: "Family Room",
+    description: "Spacious comfort for the whole family.",
+    longDescription: "Our largest room, designed specifically for families. The Family Room features two double beds, a comfortable seating area, and all the space you need for a relaxed Mahabaleshwar holiday. Accommodates up to 4 guests with an additional extra bed available on request — perfect for a family of 5.",
     price: 7500,
-    maxGuests: 3,
-    amenities: ["King Bed", "Air Conditioning", "Private Balcony", "Valley View", "Mini Bar", "Room Service", "Free Wi-Fi", "Complimentary Breakfast", "Evening Snacks"],
+    maxGuests: 4,
+    extraBed: true,
+    amenities: ["AC", "WiFi", "LED TV", "Hot Water", "2 Double Beds", "Seating Area", "Room Service", "Daily Housekeeping", "Extra Bed on Request", "Complimentary Breakfast"],
+    highlights: [
+      { icon: "bed",    label: "2 Double Beds" },
+      { icon: "sofa",   label: "Seating Area" },
+      { icon: "wind",   label: "Air Conditioning" },
+      { icon: "wifi",   label: "Free WiFi" },
+    ],
     rating: 4.9,
     reviews: 28,
-  },
-  "royal-hilltop-suite": {
-    name: "Royal Hilltop Suite",
-    description: "Our most luxurious suite with 360° hilltop views and butler service.",
-    longDescription: "The pinnacle of luxury at Rio Casa — the Royal Hilltop Suite commands sweeping 360° views of the Sahyadri mountains. An in-suite jacuzzi, a dedicated butler, curated in-room dining, and a private terrace make this the ultimate Mahabaleshwar experience.",
-    price: 12000,
-    maxGuests: 4,
-    amenities: ["King + Twin Beds", "Air Conditioning", "Private Jacuzzi", "360° View", "Butler Service", "Mini Bar", "Free Wi-Fi", "Complimentary Breakfast & Dinner", "Private Terrace"],
-    rating: 5.0,
-    reviews: 15,
-  },
-  "classic-double-room": {
-    name: "Classic Double Room",
-    description: "Cozy and comfortable double room for a peaceful getaway.",
-    longDescription: "The Classic Double Room is the ideal choice for travellers who value comfort and value. Tastefully decorated with earthy tones, it offers everything you need for a restorative Mahabaleshwar stay — without compromise.",
-    price: 3200,
-    maxGuests: 2,
-    amenities: ["Double Bed", "Air Conditioning", "Hot Water", "Room Service", "Free Wi-Fi", "Daily Housekeeping"],
-    rating: 4.7,
-    reviews: 67,
+    count: 1,
   },
 };
 
-export default function RoomDetailPage({
-  params,
-}: {
-  params: { locale: string; slug: string };
-}) {
+export default function RoomDetailPage({ params }: { params: { locale: string; slug: string } }) {
   const room = roomData[params.slug];
   if (!room) notFound();
 
@@ -70,10 +83,7 @@ export default function RoomDetailPage({
     <div className="py-16 bg-earth-bg min-h-screen">
       <div className="container-resort">
         {/* Back link */}
-        <Link
-          href={`${prefix}/rooms`}
-          className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary-600 mb-8 font-sans"
-        >
+        <Link href={`${prefix}/rooms`} className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 mb-8 font-sans">
           <ArrowLeft size={16} />
           Back to Rooms
         </Link>
@@ -81,12 +91,12 @@ export default function RoomDetailPage({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           {/* Images */}
           <div>
-            <div className="h-80 bg-primary-100 rounded-sm flex items-center justify-center text-primary-400 mb-3">
+            <div className="h-80 bg-primary/10 rounded-sm flex items-center justify-center text-primary/40 mb-3">
               Main Room Image
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-24 bg-primary-50 rounded-sm flex items-center justify-center text-primary-300 text-xs">
+                <div key={i} className="h-24 bg-primary/5 rounded-sm flex items-center justify-center text-primary/30 text-xs">
                   Photo {i}
                 </div>
               ))}
@@ -95,7 +105,7 @@ export default function RoomDetailPage({
 
           {/* Details */}
           <div>
-            <div className="flex items-start justify-between mb-3">
+            <div className="flex items-start justify-between mb-1">
               <h1 className="font-serif text-3xl text-earth-text">{room.name}</h1>
               <div className="flex items-center gap-1 text-accent shrink-0">
                 <Star size={16} fill="currentColor" />
@@ -104,16 +114,40 @@ export default function RoomDetailPage({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-earth-text/60 text-sm mb-5">
-              <Users size={15} />
-              <span>{t("maxGuests", { count: room.maxGuests })}</span>
+            <p className="font-sans text-sm text-earth-text/50 italic mb-4">{room.description}</p>
+
+            <div className="flex items-center gap-4 text-earth-text/60 text-sm mb-6">
+              <div className="flex items-center gap-1.5">
+                <Users size={15} />
+                <span>Up to {room.maxGuests} guests</span>
+              </div>
+              {room.extraBed && (
+                <div className="flex items-center gap-1.5 text-accent">
+                  <BedDouble size={15} />
+                  <span>Extra bed available</span>
+                </div>
+              )}
             </div>
 
-            <p className="font-sans text-earth-text/70 leading-relaxed mb-6">
-              {room.longDescription}
-            </p>
+            <p className="font-sans text-earth-text/70 leading-relaxed mb-6">{room.longDescription}</p>
 
-            {/* Amenities */}
+            {/* Quick highlights */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {room.highlights.map((h) => (
+                <div key={h.label} className="flex items-center gap-2.5 bg-earth-white rounded-sm px-3 py-2.5">
+                  {h.icon === "bath"  && <Bath   size={16} className="text-primary shrink-0" />}
+                  {h.icon === "wind"  && <Wind   size={16} className="text-primary shrink-0" />}
+                  {h.icon === "wifi"  && <Wifi   size={16} className="text-primary shrink-0" />}
+                  {h.icon === "tv"    && <Tv     size={16} className="text-primary shrink-0" />}
+                  {h.icon === "water" && <Droplets size={16} className="text-primary shrink-0" />}
+                  {h.icon === "bed"   && <BedDouble size={16} className="text-primary shrink-0" />}
+                  {h.icon === "sofa"  && <UtensilsCrossed size={16} className="text-primary shrink-0" />}
+                  <span className="font-sans text-sm text-earth-text/80">{h.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Full amenities */}
             <div className="mb-8">
               <h3 className="font-serif text-lg text-earth-text mb-3">{t("amenities")}</h3>
               <div className="grid grid-cols-2 gap-2">
@@ -128,16 +162,15 @@ export default function RoomDetailPage({
 
             {/* Pricing + CTA */}
             <div className="bg-earth-white rounded-sm p-6 shadow-sm">
-              <div className="flex items-baseline gap-2 mb-4">
-                <span className="font-serif text-3xl text-primary">
-                  ₹{room.price.toLocaleString("en-IN")}
-                </span>
-                <span className="font-sans text-sm text-earth-text/50">{t("perNight")}</span>
+              <div className="flex items-baseline justify-between mb-1">
+                <div>
+                  <span className="font-serif text-3xl text-primary">₹{room.price.toLocaleString("en-IN")}</span>
+                  <span className="font-sans text-sm text-earth-text/50 ml-2">{t("perNight")}</span>
+                </div>
+                <span className="font-sans text-xs text-earth-text/40">+taxes</span>
               </div>
-              <Link
-                href={`${prefix}/booking?room=${params.slug}`}
-                className="btn-primary w-full text-center block"
-              >
+              <p className="font-sans text-xs text-earth-text/50 mb-4">Extra bed charges apply on request</p>
+              <Link href={`${prefix}/booking?room=${params.slug}`} className="btn-primary w-full text-center block">
                 {t("bookRoom")}
               </Link>
             </div>

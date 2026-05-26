@@ -1,47 +1,46 @@
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { Users, Star } from "lucide-react";
+import { Users, Star, Bath, BedDouble } from "lucide-react";
 
 const rooms = [
   {
-    slug: "deluxe-garden-view",
-    name: "Deluxe Garden View",
-    description: "A beautifully appointed room overlooking our lush garden, with a king-size bed and all modern amenities.",
+    slug: "deluxe-room",
+    name: "Deluxe Room",
+    description: "A well-appointed room designed for comfort and relaxation. Perfect for couples or solo travellers seeking a peaceful Mahabaleshwar escape.",
     price: 4500,
     maxGuests: 2,
-    amenities: ["King Bed", "AC", "Hot Water", "Garden View", "Room Service", "Wi-Fi"],
+    extraBed: true,
+    amenities: ["AC", "WiFi", "TV", "Hot Water", "Room Service"],
+    highlight: null,
+    count: 6,
     rating: 4.8,
-    reviews: 42,
+    reviews: 94,
   },
   {
-    slug: "premium-valley-suite",
-    name: "Premium Valley Suite",
-    description: "Spacious suite with panoramic valley views, a separate living area, and a private balcony.",
+    slug: "premium-room",
+    name: "Premium Room",
+    description: "An elevated room featuring a luxurious soaking bathtub. Unwind after a day of exploring Mahabaleshwar with a long, relaxing bath.",
+    price: 6500,
+    maxGuests: 2,
+    extraBed: true,
+    amenities: ["AC", "WiFi", "TV", "Hot Water", "Bathtub", "Premium Toiletries", "Room Service"],
+    highlight: "Bathtub",
+    count: 2,
+    rating: 4.9,
+    reviews: 36,
+  },
+  {
+    slug: "family-room",
+    name: "Family Room",
+    description: "Our spacious family room fits the whole family comfortably with two double beds and a dedicated seating area — ideal for a Mahabaleshwar family holiday.",
     price: 7500,
-    maxGuests: 3,
-    amenities: ["King Bed", "AC", "Balcony", "Valley View", "Mini Bar", "Room Service", "Wi-Fi"],
+    maxGuests: 4,
+    extraBed: true,
+    amenities: ["AC", "WiFi", "TV", "Hot Water", "2 Double Beds", "Seating Area", "Room Service"],
+    highlight: "2 Double Beds",
+    count: 1,
     rating: 4.9,
     reviews: 28,
-  },
-  {
-    slug: "royal-hilltop-suite",
-    name: "Royal Hilltop Suite",
-    description: "Our crown jewel — the most luxurious suite with 360° hilltop views, a jacuzzi, and butler service.",
-    price: 12000,
-    maxGuests: 4,
-    amenities: ["King + Twin Beds", "AC", "Jacuzzi", "360° View", "Butler Service", "Mini Bar", "Wi-Fi"],
-    rating: 5.0,
-    reviews: 15,
-  },
-  {
-    slug: "classic-double-room",
-    name: "Classic Double Room",
-    description: "Cozy and comfortable double room — perfect for couples seeking a peaceful getaway.",
-    price: 3200,
-    maxGuests: 2,
-    amenities: ["Double Bed", "AC", "Hot Water", "Room Service", "Wi-Fi"],
-    rating: 4.7,
-    reviews: 67,
   },
 ];
 
@@ -55,20 +54,30 @@ export default function RoomsPage({ params }: { params: { locale: string } }) {
         <div className="text-center mb-14">
           <p className="section-subheading mb-2">{t("subtitle")}</p>
           <h1 className="section-heading">{t("title")}</h1>
+          <p className="font-sans text-earth-text/60 mt-3 max-w-xl mx-auto text-sm">
+            All rooms include extra bed on request (charges apply). Check-in 12:00 PM · Check-out 11:00 AM.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {rooms.map((room) => (
             <div
               key={room.slug}
-              className="bg-earth-white rounded-sm shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+              className="bg-earth-white rounded-sm shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
             >
               {/* Image placeholder */}
-              <div className="h-56 bg-primary-100 flex items-center justify-center text-primary-400 text-sm">
-                Room Image — {room.name}
+              <div className="h-56 bg-primary/10 flex items-center justify-center text-primary/40 text-sm relative">
+                <span>Room Image</span>
+                {room.highlight && (
+                  <span className="absolute top-3 left-3 bg-accent text-white text-xs font-sans font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                    {room.highlight === "Bathtub" && <Bath size={11} />}
+                    {room.highlight === "2 Double Beds" && <BedDouble size={11} />}
+                    {room.highlight}
+                  </span>
+                )}
               </div>
 
-              <div className="p-6">
+              <div className="p-6 flex flex-col flex-1">
                 <div className="flex items-start justify-between mb-2">
                   <h2 className="font-serif text-2xl text-earth-text">{room.name}</h2>
                   <div className="flex items-center gap-1 text-accent shrink-0">
@@ -78,40 +87,35 @@ export default function RoomsPage({ params }: { params: { locale: string } }) {
                   </div>
                 </div>
 
-                <p className="font-sans text-sm text-earth-text/70 mb-4 leading-relaxed">
+                <p className="font-sans text-sm text-earth-text/70 mb-4 leading-relaxed flex-1">
                   {room.description}
                 </p>
 
                 <div className="flex flex-wrap gap-2 mb-5">
                   {room.amenities.map((amenity) => (
-                    <span
-                      key={amenity}
-                      className="font-sans text-xs bg-primary-50 text-primary px-2.5 py-1 rounded-full"
-                    >
+                    <span key={amenity} className="font-sans text-xs bg-primary/5 text-primary px-2.5 py-1 rounded-full">
                       {amenity}
                     </span>
                   ))}
+                  <span className="font-sans text-xs bg-accent/10 text-accent px-2.5 py-1 rounded-full">
+                    Extra Bed Available
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between pt-4 border-t border-primary-50">
+                <div className="flex items-center justify-between pt-4 border-t border-primary/10">
                   <div className="flex items-center gap-4">
                     <div>
                       <span className="font-serif text-2xl text-primary">
                         ₹{room.price.toLocaleString("en-IN")}
                       </span>
-                      <span className="font-sans text-xs text-earth-text/50 ml-1">
-                        {t("perNight")}
-                      </span>
+                      <span className="font-sans text-xs text-earth-text/50 ml-1">{t("perNight")}</span>
                     </div>
                     <div className="flex items-center gap-1 text-earth-text/50 text-sm">
                       <Users size={14} />
                       <span>{t("maxGuests", { count: room.maxGuests })}</span>
                     </div>
                   </div>
-                  <Link
-                    href={`${prefix}/rooms/${room.slug}`}
-                    className="btn-primary text-sm py-2 px-5"
-                  >
+                  <Link href={`${prefix}/rooms/${room.slug}`} className="btn-primary text-sm py-2 px-5">
                     {t("bookRoom")}
                   </Link>
                 </div>

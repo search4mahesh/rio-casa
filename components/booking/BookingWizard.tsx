@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addDays, format, differenceInCalendarDays } from "date-fns";
-import { Calendar, Users, User, Mail, Phone, CreditCard, QrCode, Check } from "lucide-react";
+import { Calendar, Users, User, CreditCard, QrCode, Check } from "lucide-react";
 
 const guestSchema = z.object({
   guestName: z.string().min(2, "Name must be at least 2 characters"),
@@ -18,12 +18,16 @@ const guestSchema = z.object({
 
 type GuestForm = z.infer<typeof guestSchema>;
 
-const rooms = [
-  { id: "room_1", name: "Deluxe Garden View", slug: "deluxe-garden-view", price: 4500, maxGuests: 2 },
-  { id: "room_2", name: "Premium Valley Suite", slug: "premium-valley-suite", price: 7500, maxGuests: 3 },
-  { id: "room_3", name: "Royal Hilltop Suite", slug: "royal-hilltop-suite", price: 12000, maxGuests: 4 },
-  { id: "room_4", name: "Classic Double Room", slug: "classic-double-room", price: 3200, maxGuests: 2 },
-];
+interface AvailableRoom {
+  id: string;
+  name: string;
+  slug: string;
+  pricePerNight: number;
+  maxGuests: number;
+  roomType: string;
+  extraBed: boolean;
+  amenities: string[];
+}
 
 const STEPS = ["dates", "room", "details", "payment"] as const;
 type Step = (typeof STEPS)[number];
@@ -43,22 +47,51 @@ export default function BookingWizard({
   const [checkIn, setCheckIn] = useState<string>(format(addDays(today, 1), "yyyy-MM-dd"));
   const [checkOut, setCheckOut] = useState<string>(format(addDays(today, 3), "yyyy-MM-dd"));
   const [guests, setGuests] = useState(2);
-  const [selectedRoom, setSelectedRoom] = useState(
-    preselectedSlug ? rooms.find((r) => r.slug === preselectedSlug) : undefined
-  );
-  const [step, setStep] = useState<Step>(preselectedSlug ? "dates" : "dates");
+  const [availableRooms, setAvailableRooms] = useState<AvailableRoom[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState("");
+  const [selectedRoom, setSelectedRoom] = useState<AvailableRoom | undefined>(undefined);
+  const [step, setStep] = useState<Step>("dates");
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "upi">("razorpay");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const nights = differenceInCalendarDays(new Date(checkOut), new Date(checkIn));
-  const totalAmount = selectedRoom ? selectedRoom.price * nights : 0;
+  const totalAmount = selectedRoom ? selectedRoom.pricePerNight * nights : 0;
+
+  async function fetchAvailableRooms() {
+    setRoomsLoading(true);
+    setRoomsError("");
+    setSelectedRoom(undefined);
+    try {
+      const params = new URLSearchParams({ checkIn, checkOut, guests: String(guests) });
+      const res = await fetch(`/api/booking/availability?${params}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to load rooms");
+      const fetched: AvailableRoom[] = data.data;
+      // Deduplicate by roomType — show one option per type, use the first available room's ID
+      const seen = new Set<string>();
+      const deduplicated = fetched.filter((r) => {
+        if (seen.has(r.roomType)) return false;
+        seen.add(r.roomType);
+        return true;
+      });
+      setAvailableRooms(deduplicated);
+      if (preselectedSlug) {
+        const match = deduplicated.find((r) => r.slug.startsWith(preselectedSlug));
+        if (match) setSelectedRoom(match);
+      }
+    } catch (err) {
+      setRoomsError(err instanceof Error ? err.message : "Could not load rooms");
+    } finally {
+      setRoomsLoading(false);
+    }
+  }
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-    getValues,
   } = useForm<GuestForm>({ resolver: zodResolver(guestSchema) });
 
   const stepIndex = STEPS.indexOf(step);
@@ -199,7 +232,7 @@ export default function BookingWizard({
             </p>
           )}
           <button
-            onClick={() => setStep("room")}
+            onClick={async () => { await fetchAvailableRooms(); setStep("room"); }}
             disabled={nights <= 0}
             className="btn-primary w-full disabled:opacity-50"
           >
@@ -212,8 +245,17 @@ export default function BookingWizard({
       {step === "room" && (
         <div className="bg-earth-white rounded-sm shadow-sm p-6">
           <h2 className="font-serif text-2xl mb-6">{t("selectRoom")}</h2>
+          {roomsLoading && (
+            <p className="font-sans text-sm text-earth-text/50 text-center py-8">Checking availability…</p>
+          )}
+          {roomsError && (
+            <p className="font-sans text-sm text-red-500 mb-4">{roomsError}</p>
+          )}
+          {!roomsLoading && availableRooms.length === 0 && !roomsError && (
+            <p className="font-sans text-sm text-earth-text/50 text-center py-8">No rooms available for the selected dates.</p>
+          )}
           <div className="space-y-3 mb-6">
-            {rooms.filter((r) => r.maxGuests >= guests).map((room) => (
+            {availableRooms.map((room) => (
               <button
                 key={room.id}
                 onClick={() => setSelectedRoom(room)}
@@ -226,10 +268,13 @@ export default function BookingWizard({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-serif text-lg text-earth-text">{room.name}</p>
-                    <p className="font-sans text-xs text-earth-text/50 mt-0.5">Up to {room.maxGuests} guests</p>
+                    <p className="font-sans text-xs text-earth-text/50 mt-0.5">
+                      Up to {room.maxGuests} guests
+                      {room.extraBed && " · Extra bed available"}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-serif text-xl text-primary">₹{room.price.toLocaleString("en-IN")}</p>
+                    <p className="font-serif text-xl text-primary">₹{room.pricePerNight.toLocaleString("en-IN")}</p>
                     <p className="font-sans text-xs text-earth-text/50">{t("perNight")}</p>
                   </div>
                 </div>
@@ -238,7 +283,7 @@ export default function BookingWizard({
           </div>
           {selectedRoom && (
             <div className="bg-primary-50 rounded-sm px-4 py-3 mb-4 font-sans text-sm text-primary">
-              {nights} nights × ₹{selectedRoom.price.toLocaleString("en-IN")} ={" "}
+              {nights} nights × ₹{selectedRoom.pricePerNight.toLocaleString("en-IN")} ={" "}
               <strong>₹{totalAmount.toLocaleString("en-IN")}</strong>
             </div>
           )}
