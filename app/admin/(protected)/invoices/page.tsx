@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 
 type Invoice = {
   id: string;
@@ -114,6 +115,7 @@ export default function InvoicesPage() {
                     <th className="text-right px-4 py-3 font-medium text-gray-600">Total</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
+                    <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -134,6 +136,15 @@ export default function InvoicesPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(inv.invoiceDate)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Link href={`/admin/invoices/${inv.id}/print`} target="_blank"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-[#4A6741] border border-[#4A6741]/30 rounded-lg hover:bg-[#4A6741]/5 transition-colors">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          Print
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
