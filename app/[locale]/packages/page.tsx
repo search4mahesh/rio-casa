@@ -73,7 +73,7 @@ const packages = [
 
 export default function PackagesPage({ params }: { params: { locale: string } }) {
   const t = useTranslations("packages");
-  const prefix = params.locale !== "en" ? `/${params.locale}` : "";
+  const prefix = "";
 
   return (
     <div className="min-h-screen bg-earth-bg py-16">

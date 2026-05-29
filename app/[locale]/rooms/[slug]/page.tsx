@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Users, Star, ArrowLeft, Check, Bath, BedDouble, Wifi, Tv, Wind, Droplets, UtensilsCrossed } from "lucide-react";
@@ -15,6 +16,9 @@ const roomData: Record<string, {
   rating: number;
   reviews: number;
   count: number;
+  mainImage: string;
+  mainImageAlt: string;
+  thumbs: { src: string; alt: string }[];
 }> = {
   "deluxe-room": {
     name: "Deluxe Room",
@@ -33,6 +37,13 @@ const roomData: Record<string, {
     rating: 4.8,
     reviews: 94,
     count: 6,
+    mainImage: "/images/rooms/deluxe-main.jpg",
+    mainImageAlt: "Deluxe Room with wood ceiling and double bed",
+    thumbs: [
+      { src: "/images/rooms/deluxe-wardrobe.jpg", alt: "Deluxe Room wardrobe and TV" },
+      { src: "/images/rooms/balcony-chairs.jpg",  alt: "Private balcony with rattan chairs" },
+      { src: "/images/rooms/bathroom-vessel.jpg", alt: "Ensuite bathroom with vessel sink" },
+    ],
   },
   "premium-room": {
     name: "Premium Room",
@@ -51,6 +62,13 @@ const roomData: Record<string, {
     rating: 4.9,
     reviews: 36,
     count: 2,
+    mainImage: "/images/rooms/premium-bed.jpg",
+    mainImageAlt: "Premium Room with luxury upholstered headboard",
+    thumbs: [
+      { src: "/images/rooms/premium-bathtub.jpg",   alt: "Soaking bathtub in marble surround" },
+      { src: "/images/rooms/balcony-courtyard.jpg", alt: "Balcony overlooking courtyard" },
+      { src: "/images/rooms/bathroom-grey.jpg",     alt: "Ensuite bathroom with geyser" },
+    ],
   },
   "family-room": {
     name: "Family Room",
@@ -69,6 +87,13 @@ const roomData: Record<string, {
     rating: 4.9,
     reviews: 28,
     count: 1,
+    mainImage: "/images/rooms/family-main.jpg",
+    mainImageAlt: "Family Room with two double beds and open balcony door",
+    thumbs: [
+      { src: "/images/rooms/family-beds.jpg",    alt: "Two double beds side by side" },
+      { src: "/images/rooms/balcony-wide.jpg",   alt: "Wide balcony with courtyard view" },
+      { src: "/images/rooms/bathroom-dark.jpg",  alt: "Ensuite bathroom with dark marble tiles" },
+    ],
   },
 };
 
@@ -77,7 +102,7 @@ export default function RoomDetailPage({ params }: { params: { locale: string; s
   if (!room) notFound();
 
   const t = useTranslations("rooms");
-  const prefix = params.locale !== "en" ? `/${params.locale}` : "";
+  const prefix = "";
 
   return (
     <div className="py-16 bg-earth-bg min-h-screen">
@@ -91,13 +116,26 @@ export default function RoomDetailPage({ params }: { params: { locale: string; s
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           {/* Images */}
           <div>
-            <div className="h-80 bg-primary/10 rounded-sm flex items-center justify-center text-primary/40 mb-3">
-              Main Room Image
+            <div className="relative h-80 rounded-sm overflow-hidden mb-3">
+              <Image
+                src={room.mainImage}
+                alt={room.mainImageAlt}
+                fill
+                priority
+                className="object-cover"
+                sizes="(max-width: 1024px) 100vw, 50vw"
+              />
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-24 bg-primary/5 rounded-sm flex items-center justify-center text-primary/30 text-xs">
-                  Photo {i}
+              {room.thumbs.map((thumb) => (
+                <div key={thumb.src} className="relative h-24 rounded-sm overflow-hidden">
+                  <Image
+                    src={thumb.src}
+                    alt={thumb.alt}
+                    fill
+                    className="object-cover hover:scale-105 transition-transform duration-300"
+                    sizes="(max-width: 1024px) 33vw, 17vw"
+                  />
                 </div>
               ))}
             </div>

@@ -1,23 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
 
 export default function Hero({ locale }: { locale: string }) {
   const t = useTranslations("hero");
-  const prefix = `/${locale}`;
+  const prefix = "";
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background */}
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/images/hero-bg.jpg')" }}
+      <Image
+        src="/images/hero/hero-night.jpg"
+        alt="Rio Casa Resort at night"
+        fill
+        priority
+        className="object-cover object-center"
+        sizes="100vw"
       />
-      {/* Fallback gradient when no image */}
-      <div className="absolute inset-0 bg-gradient-to-b from-primary-800/80 to-primary-900/90" />
-      <div className="absolute inset-0 bg-hero-gradient" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/70" />
 
       {/* Content */}
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto animate-fade-in">

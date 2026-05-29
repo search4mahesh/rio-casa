@@ -10,7 +10,7 @@ export default function BookingConfirmationPage({
   searchParams: { id?: string; method?: string };
 }) {
   const t = useTranslations("booking");
-  const prefix = params.locale !== "en" ? `/${params.locale}` : "";
+  const prefix = "";
   const isUpi = searchParams.method === "upi";
 
   return (

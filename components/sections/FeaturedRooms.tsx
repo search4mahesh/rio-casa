@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Users, Star, Bath, BedDouble } from "lucide-react";
 
@@ -11,6 +12,8 @@ const featuredRooms = [
     maxGuests: 2,
     badge: null,
     rating: 4.8,
+    image: "/images/rooms/deluxe-main.jpg",
+    imageAlt: "Deluxe Room with wood ceiling and double bed",
   },
   {
     slug: "premium-room",
@@ -20,6 +23,8 @@ const featuredRooms = [
     maxGuests: 2,
     badge: "Bathtub",
     rating: 4.9,
+    image: "/images/rooms/premium-bed.jpg",
+    imageAlt: "Premium Room with upholstered headboard",
   },
   {
     slug: "family-room",
@@ -29,13 +34,15 @@ const featuredRooms = [
     maxGuests: 4,
     badge: "Family Pick",
     rating: 4.9,
+    image: "/images/rooms/family-main.jpg",
+    imageAlt: "Family Room with two double beds",
   },
 ];
 
 export default function FeaturedRooms({ locale }: { locale: string }) {
   const t = useTranslations("home");
   const rooms = useTranslations("rooms");
-  const prefix = `/${locale}`;
+  const prefix = "";
 
   return (
     <section className="py-20 bg-earth-bg">
@@ -52,8 +59,14 @@ export default function FeaturedRooms({ locale }: { locale: string }) {
               className="bg-earth-white rounded-sm overflow-hidden shadow-sm hover:shadow-md transition-shadow group flex flex-col"
             >
               {/* Image */}
-              <div className="relative h-56 overflow-hidden bg-primary/10 flex items-center justify-center text-primary/30 text-sm">
-                Room Image
+              <div className="relative h-56 overflow-hidden">
+                <Image
+                  src={room.image}
+                  alt={room.imageAlt}
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-500"
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                />
                 {room.badge && (
                   <span className="absolute top-3 left-3 bg-accent text-white text-xs font-sans font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5">
                     {room.badge === "Bathtub"     && <Bath     size={11} />}

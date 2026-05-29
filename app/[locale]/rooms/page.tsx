@@ -1,5 +1,6 @@
 import { useTranslations } from "next-intl";
 import Link from "next/link";
+import Image from "next/image";
 import { Users, Star, Bath, BedDouble } from "lucide-react";
 
 const rooms = [
@@ -15,6 +16,8 @@ const rooms = [
     count: 6,
     rating: 4.8,
     reviews: 94,
+    image: "/images/rooms/deluxe-main.jpg",
+    imageAlt: "Deluxe Room with wood ceiling and double bed",
   },
   {
     slug: "premium-room",
@@ -28,6 +31,8 @@ const rooms = [
     count: 2,
     rating: 4.9,
     reviews: 36,
+    image: "/images/rooms/premium-bed.jpg",
+    imageAlt: "Premium Room with luxury bedding",
   },
   {
     slug: "family-room",
@@ -41,12 +46,14 @@ const rooms = [
     count: 1,
     rating: 4.9,
     reviews: 28,
+    image: "/images/rooms/family-main.jpg",
+    imageAlt: "Family Room with two double beds and balcony",
   },
 ];
 
 export default function RoomsPage({ params }: { params: { locale: string } }) {
   const t = useTranslations("rooms");
-  const prefix = params.locale !== "en" ? `/${params.locale}` : "";
+  const prefix = "";
 
   return (
     <div className="py-16 bg-earth-bg min-h-screen">
@@ -65,11 +72,17 @@ export default function RoomsPage({ params }: { params: { locale: string } }) {
               key={room.slug}
               className="bg-earth-white rounded-sm shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
             >
-              {/* Image placeholder */}
-              <div className="h-56 bg-primary/10 flex items-center justify-center text-primary/40 text-sm relative">
-                <span>Room Image</span>
+              {/* Image */}
+              <div className="relative h-56 overflow-hidden group">
+                <Image
+                  src={room.image}
+                  alt={room.imageAlt}
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-500"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 {room.highlight && (
-                  <span className="absolute top-3 left-3 bg-accent text-white text-xs font-sans font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                  <span className="absolute top-3 left-3 bg-accent text-white text-xs font-sans font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 z-10">
                     {room.highlight === "Bathtub" && <Bath size={11} />}
                     {room.highlight === "2 Double Beds" && <BedDouble size={11} />}
                     {room.highlight}
