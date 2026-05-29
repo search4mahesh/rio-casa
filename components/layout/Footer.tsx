@@ -25,7 +25,7 @@ export default function Footer({ locale }: { locale: string }) {
   const nav = useTranslations("nav");
   const year = new Date().getFullYear();
 
-  const prefix = `/${locale}`;
+  const prefix = "";
 
   return (
     <footer className="bg-earth-text text-earth-white/80">

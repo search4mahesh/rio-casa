@@ -19,5 +19,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "prisma/seed-admin.ts", "prisma/seed-demo.ts", "prisma/seed-rooms.ts"]
+  "exclude": ["node_modules", "prisma/seed-admin.ts", "prisma/seed-demo.ts", "prisma/seed-rooms.ts", "__tests__"]
 }

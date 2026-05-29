@@ -5,7 +5,7 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import WhatsAppButton from "@/components/layout/WhatsAppButton";
 
-const locales = ["en", "hi", "mr"];
+const locales = ["en"];
 
 export default async function LocaleLayout({
   children,

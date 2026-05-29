@@ -4,9 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 const ADMIN_COOKIE = "admin_token";
 
 const intlMiddleware = createIntlMiddleware({
-  locales: ["en", "hi", "mr"],
+  locales: ["en"],
   defaultLocale: "en",
-  localePrefix: "always",
+  localePrefix: "as-needed",
 });
 
 export default async function middleware(req: NextRequest) {
