@@ -25,11 +25,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 const TASK_LABEL: Record<string, string> = {
-  cleaning:    "Cleaning",
-  inspection:  "Inspection",
-  maintenance: "Maintenance",
-  turndown:    "Turndown",
-  laundry:     "Laundry",
+  cleaning:       "Cleaning",
+  inspection:     "Inspection",
+  maintenance:    "Maintenance",
+  turndown:       "Turndown",
+  laundry:        "Laundry",
+  checkout_clean: "Checkout Clean",
 };
 
 export default function HousekeepingPage() {
@@ -37,6 +38,8 @@ export default function HousekeepingPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceCount, setMaintenanceCount] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [toast, setToast] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -44,17 +47,24 @@ export default function HousekeepingPage() {
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    const [taskRes, roomRes] = await Promise.all([
+    if (maintenanceMode) {
+      params.set("maintenance", "true");
+    } else if (statusFilter !== "all") {
+      params.set("status", statusFilter);
+    }
+    const [taskRes, roomRes, countRes] = await Promise.all([
       fetch(`/api/admin/housekeeping?${params}`),
       fetch("/api/admin/rooms/status"),
+      fetch("/api/admin/housekeeping?maintenanceCount=true"),
     ]);
     const taskData = await taskRes.json();
     const roomData = await roomRes.json();
+    const countData = await countRes.json();
     if (taskData.success) setTasks(taskData.tasks);
     if (roomData.success) setRooms(roomData.rooms);
+    if (countData.success) setMaintenanceCount(countData.count);
     setLoading(false);
-  }, [statusFilter]);
+  }, [statusFilter, maintenanceMode]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -76,6 +86,19 @@ export default function HousekeepingPage() {
     setActionLoading(null);
   }
 
+  async function resolveMaintenanceFlag(id: string) {
+    setActionLoading(id + "resolve");
+    const res = await fetch(`/api/admin/housekeeping/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed", maintenanceFlag: false }),
+    });
+    const data = await res.json();
+    if (data.success) { showToast("Maintenance issue resolved"); load(); }
+    else showToast(data.error ?? "Error");
+    setActionLoading(null);
+  }
+
   const grouped: Record<string, Task[]> = {};
   for (const t of tasks) {
     const key = t.status;
@@ -92,16 +115,41 @@ export default function HousekeepingPage() {
           <p className="text-sm text-gray-500 mt-0.5">{tasks.length} task{tasks.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+          {/* Maintenance Alerts toggle */}
+          <button
+            onClick={() => { setMaintenanceMode((m) => !m); setStatusFilter("all"); }}
+            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+              maintenanceMode
+                ? "bg-red-600 border-red-600 text-white"
+                : "border-gray-300 text-gray-600 hover:bg-gray-50"
+            }`}
           >
-            <option value="all">All Status</option>
-            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
-            ))}
-          </select>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Maintenance Alerts
+            {maintenanceCount > 0 && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none ${
+                maintenanceMode ? "bg-white text-red-600" : "bg-red-500 text-white"
+              }`}>
+                {maintenanceCount > 9 ? "9+" : maintenanceCount}
+              </span>
+            )}
+          </button>
+
+          {!maintenanceMode && (
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+            >
+              <option value="all">All Status</option>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+          )}
+
           <button
             onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
@@ -114,14 +162,88 @@ export default function HousekeepingPage() {
         </div>
       </div>
 
+      {/* Maintenance mode banner */}
+      {maintenanceMode && (
+        <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl mb-6">
+          <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            <span className="text-sm font-semibold text-red-800">Maintenance Alerts</span>
+            <span className="text-sm text-red-600 ml-2">
+              {tasks.length === 0 ? "No open maintenance issues" : `${tasks.length} open issue${tasks.length !== 1 ? "s" : ""} requiring attention`}
+            </span>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
       ) : tasks.length === 0 ? (
         <div className="text-center py-16">
-          <div className="text-4xl mb-3">✓</div>
-          <div className="text-gray-500">No tasks found</div>
+          <div className="text-4xl mb-3">{maintenanceMode ? "✓" : "✓"}</div>
+          <div className="text-gray-500">
+            {maintenanceMode ? "No open maintenance issues" : "No tasks found"}
+          </div>
+        </div>
+      ) : maintenanceMode ? (
+        /* ── Maintenance mode: flat table with Resolve button ── */
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-red-50">
+                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Room</th>
+                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Task</th>
+                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Status</th>
+                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Assigned To</th>
+                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Notes</th>
+                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Flagged</th>
+                <th className="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {tasks.map((task) => (
+                <tr key={task.id} className="hover:bg-red-50/30">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">
+                      {task.room.roomNumber ? `#${task.room.roomNumber}` : task.room.name}
+                    </div>
+                    {task.room.floor != null && (
+                      <div className="text-xs text-gray-400">Floor {task.room.floor}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                      <span>{TASK_LABEL[task.taskType] ?? task.taskType}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CONFIG[task.status]?.color ?? "bg-gray-100 text-gray-600"}`}>
+                      {STATUS_CONFIG[task.status]?.label ?? task.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">{task.assignedTo || "—"}</td>
+                  <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate">{task.notes || "—"}</td>
+                  <td className="px-4 py-3 text-xs text-gray-400">
+                    {new Date(task.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => resolveMaintenanceFlag(task.id)}
+                      disabled={actionLoading === task.id + "resolve"}
+                      className="px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    >
+                      {actionLoading === task.id + "resolve" ? "…" : "Resolve"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
+        /* ── Normal mode: grouped by status ── */
         <div className="space-y-6">
           {statusOrder.filter((s) => grouped[s]?.length).map((status) => (
             <div key={status}>

@@ -8,25 +8,41 @@ async function requireAuth(req: NextRequest) {
   return token ? await verifyAdminToken(token) : null;
 }
 
-// GET /api/admin/rooms/status — all rooms with current status
+// GET /api/admin/rooms/status — all rooms with current status + today's due check-ins
 export async function GET(req: NextRequest) {
   const staff = await requireAuth(req);
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
 
-  const rooms = await prisma.room.findMany({
-    where: { isActive: true },
-    include: {
-      roomStatus: {
-        include: {
-          currentGuest: { select: { firstName: true, lastName: true, phone: true } },
-          currentBooking: { select: { checkOut: true, bookingNumber: true, adults: true } },
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const [rooms, dueCheckins] = await Promise.all([
+    prisma.room.findMany({
+      where: { isActive: true },
+      include: {
+        roomStatus: {
+          include: {
+            currentGuest: { select: { firstName: true, lastName: true, phone: true } },
+            currentBooking: { select: { id: true, checkOut: true, bookingNumber: true, adults: true, status: true } },
+          },
         },
       },
-    },
-    orderBy: [{ floor: "asc" }, { roomNumber: "asc" }],
-  });
+      orderBy: [{ floor: "asc" }, { roomNumber: "asc" }],
+    }),
+    prisma.booking.findMany({
+      where: { checkIn: { gte: today, lt: tomorrow }, status: "confirmed" },
+      select: { id: true, roomId: true, guestName: true, bookingNumber: true },
+    }),
+  ]);
 
-  return NextResponse.json({ success: true, rooms });
+  const dueCheckinMap: Record<string, { id: string; guestName: string; bookingNumber: string }> = {};
+  for (const b of dueCheckins) dueCheckinMap[b.roomId] = b;
+
+  const enriched = rooms.map((r) => ({ ...r, dueCheckin: dueCheckinMap[r.id] ?? null }));
+
+  return NextResponse.json({ success: true, rooms: enriched });
 }
 
 const PatchSchema = z.object({

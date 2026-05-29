@@ -11,8 +11,10 @@ type RoomStatus = {
   notes?: string;
   lastCleanedAt?: string;
   currentGuest?: { firstName: string; lastName: string; phone: string } | null;
-  currentBooking?: { checkOut: string; bookingNumber: string; adults: number } | null;
+  currentBooking?: { id: string; checkOut: string; bookingNumber: string; adults: number; status: string } | null;
 };
+
+type DueCheckin = { id: string; guestName: string; bookingNumber: string };
 
 type Room = {
   id: string;
@@ -21,6 +23,7 @@ type Room = {
   roomType: string;
   floor?: number;
   roomStatus?: RoomStatus | null;
+  dueCheckin?: DueCheckin | null;
 };
 
 type UpdateForm = { occupancy?: string; housekeeping?: string; notes?: string };
@@ -177,7 +180,6 @@ function OccupancyGrid() {
                   <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">{floor}</span>
                 </div>
                 <div style={{ width: DAYS * COL_W }} className="flex-shrink-0">
-                  {/* Today highlight stripe */}
                   <div style={{ width: COL_W, marginLeft: 0, height: "100%" }} className="bg-[#4A6741]/5 inline-block" />
                 </div>
               </div>
@@ -301,6 +303,8 @@ export default function FrontDeskPage() {
   const [form, setForm] = useState<UpdateForm>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [toast, setToast] = useState("");
 
   async function load() {
     const res = await fetch("/api/admin/rooms/status");
@@ -310,6 +314,29 @@ export default function FrontDeskPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  function showToast(message: string) {
+    setToast(message);
+    setTimeout(() => setToast(""), 3500);
+  }
+
+  async function handleCheckin(bookingId: string) {
+    setActionLoading(bookingId);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/checkin`, { method: "PATCH" });
+    const data = await res.json();
+    if (data.success) { showToast(data.message ?? "Checked in successfully"); await load(); }
+    else showToast(data.error ?? "Check-in failed");
+    setActionLoading(null);
+  }
+
+  async function handleCheckout(bookingId: string) {
+    setActionLoading(bookingId);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/checkout`, { method: "PATCH" });
+    const data = await res.json();
+    if (data.success) { showToast(data.message ?? "Checked out successfully"); await load(); }
+    else showToast(data.error ?? "Check-out failed");
+    setActionLoading(null);
+  }
 
   function openPanel(room: Room) {
     setSelected(room);
@@ -416,11 +443,12 @@ export default function FrontDeskPage() {
                     const hk = room.roomStatus?.housekeeping ?? "clean";
                     const guest = room.roomStatus?.currentGuest;
                     const bk = room.roomStatus?.currentBooking;
+                    const checkinBookingId = room.dueCheckin?.id;
                     return (
-                      <button
+                      <div
                         key={room.id}
                         onClick={() => openPanel(room)}
-                        className="text-left p-3 bg-white rounded-xl border border-gray-200 hover:border-[#4A6741] hover:shadow-sm transition-all"
+                        className="text-left p-3 bg-white rounded-xl border border-gray-200 hover:border-[#4A6741] hover:shadow-sm transition-all cursor-pointer"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <span className="text-lg font-bold text-gray-800">
@@ -440,7 +468,27 @@ export default function FrontDeskPage() {
                             Out: {new Date(bk.checkOut).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                           </div>
                         )}
-                      </button>
+                        {/* Check In button — shown for due_checkin rooms */}
+                        {occ === "due_checkin" && checkinBookingId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCheckin(checkinBookingId); }}
+                            disabled={actionLoading === checkinBookingId}
+                            className="mt-2 w-full py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-lg transition-colors"
+                          >
+                            {actionLoading === checkinBookingId ? "…" : "Check In"}
+                          </button>
+                        )}
+                        {/* Check Out button — shown for occupied / due_checkout rooms */}
+                        {(occ === "occupied" || occ === "due_checkout") && bk?.id && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCheckout(bk.id); }}
+                            disabled={actionLoading === bk.id}
+                            className="mt-2 w-full py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-colors"
+                          >
+                            {actionLoading === bk.id ? "…" : "Check Out"}
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -522,6 +570,13 @@ export default function FrontDeskPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50 animate-in slide-in-from-bottom-2">
+          {toast}
+        </div>
       )}
     </div>
   );
