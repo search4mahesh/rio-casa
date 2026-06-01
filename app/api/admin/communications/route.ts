@@ -1,0 +1,244 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { Resend } from "resend";
+import { prisma } from "@/lib/prisma";
+import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+
+// ─── Audience resolver ────────────────────────────────────────────────────────
+
+const FilterSchema = z.object({
+  type: z.enum(["upcoming-arrivals", "checked-in", "past-guests", "manual"]),
+  days: z.number().int().min(1).max(30).optional(),
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  recipients: z.array(z.object({
+    guestName: z.string(),
+    phone: z.string().optional(),
+    email: z.string().email().optional(),
+  })).optional(),
+});
+
+type Filter = z.infer<typeof FilterSchema>;
+
+type Recipient = {
+  guestName: string;
+  phone: string | null;
+  email: string | null;
+  bookingNumber?: string;
+  checkIn?: string;
+  roomName?: string;
+};
+
+async function resolveRecipients(filter: Filter): Promise<Recipient[]> {
+  if (filter.type === "manual") {
+    return (filter.recipients ?? []).map((r) => ({
+      guestName: r.guestName,
+      phone: r.phone ?? null,
+      email: r.email ?? null,
+    }));
+  }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  if (filter.type === "upcoming-arrivals") {
+    const days = filter.days ?? 1;
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + days);
+    const rows = await prisma.booking.findMany({
+      where: { checkIn: { gte: today, lt: endDate }, status: "confirmed" },
+      select: {
+        guestName: true, guestPhone: true, guestEmail: true,
+        bookingNumber: true, checkIn: true,
+        room: { select: { name: true } },
+      },
+      orderBy: { checkIn: "asc" },
+      take: 500,
+    });
+    return rows.map((r) => ({
+      guestName: r.guestName, phone: r.guestPhone, email: r.guestEmail,
+      bookingNumber: r.bookingNumber,
+      checkIn: r.checkIn.toISOString().split("T")[0],
+      roomName: r.room.name,
+    }));
+  }
+
+  if (filter.type === "checked-in") {
+    const rows = await prisma.booking.findMany({
+      where: { status: "checked_in" },
+      select: {
+        guestName: true, guestPhone: true, guestEmail: true,
+        bookingNumber: true, checkIn: true,
+        room: { select: { name: true } },
+      },
+      take: 500,
+    });
+    return rows.map((r) => ({
+      guestName: r.guestName, phone: r.guestPhone, email: r.guestEmail,
+      bookingNumber: r.bookingNumber,
+      checkIn: r.checkIn.toISOString().split("T")[0],
+      roomName: r.room.name,
+    }));
+  }
+
+  // past-guests
+  const fromDate = filter.fromDate ? new Date(filter.fromDate + "T00:00:00") : new Date(today.getTime() - 365 * 86400000);
+  const toDate = filter.toDate ? new Date(filter.toDate + "T23:59:59") : new Date(today.getTime() - 30 * 86400000);
+  const rows = await prisma.booking.findMany({
+    where: { checkOut: { gte: fromDate, lte: toDate }, status: "checked_out" },
+    select: {
+      guestName: true, guestPhone: true, guestEmail: true,
+      bookingNumber: true, checkIn: true,
+      room: { select: { name: true } },
+    },
+    distinct: ["guestEmail"],
+    take: 1000,
+  });
+  return rows.map((r) => ({
+    guestName: r.guestName, phone: r.guestPhone, email: r.guestEmail,
+    bookingNumber: r.bookingNumber,
+    checkIn: r.checkIn.toISOString().split("T")[0],
+    roomName: r.room.name,
+  }));
+}
+
+function substituteTags(template: string, r: Recipient): string {
+  return template
+    .replace(/\{\{\s*guestName\s*\}\}/g, r.guestName)
+    .replace(/\{\{\s*bookingNumber\s*\}\}/g, r.bookingNumber ?? "")
+    .replace(/\{\{\s*checkIn\s*\}\}/g, r.checkIn ?? "")
+    .replace(/\{\{\s*roomName\s*\}\}/g, r.roomName ?? "");
+}
+
+// ─── GET: list past communications ────────────────────────────────────────────
+
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get(ADMIN_COOKIE)?.value;
+  const staff = token ? await verifyAdminToken(token) : null;
+  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+
+  const logs = await prisma.communicationLog.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  return NextResponse.json({ success: true, logs });
+}
+
+// ─── POST: send (with action=preview to dry-run) ──────────────────────────────
+
+const SendSchema = z.object({
+  action: z.enum(["preview", "send"]).default("send"),
+  channel: z.enum(["email", "whatsapp"]),
+  filter: FilterSchema,
+  subject: z.string().max(200).optional(),
+  body: z.string().min(1).max(4000),
+});
+
+export async function POST(req: NextRequest) {
+  const token = req.cookies.get(ADMIN_COOKIE)?.value;
+  const staff = token ? await verifyAdminToken(token) : null;
+  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+
+  const reqBody = await req.json();
+  const parsed = SendSchema.safeParse(reqBody);
+  if (!parsed.success) {
+    return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
+  }
+
+  const { action, channel, filter, subject, body } = parsed.data;
+
+  if (channel === "email" && !subject) {
+    return NextResponse.json({ success: false, error: "Subject is required for email" }, { status: 400 });
+  }
+
+  const recipients = await resolveRecipients(filter);
+
+  // Channel-specific recipient filtering
+  const reachable = recipients.filter((r) => (channel === "email" ? !!r.email : !!r.phone));
+
+  if (action === "preview") {
+    const sample = reachable[0]
+      ? {
+          to: channel === "email" ? reachable[0].email : reachable[0].phone,
+          subject: subject ? substituteTags(subject, reachable[0]) : undefined,
+          body: substituteTags(body, reachable[0]),
+        }
+      : null;
+    return NextResponse.json({
+      success: true,
+      preview: {
+        totalRecipients: recipients.length,
+        reachableCount: reachable.length,
+        skippedCount: recipients.length - reachable.length,
+        recipients: reachable.slice(0, 10),
+        sample,
+      },
+    });
+  }
+
+  // Live send
+  if (reachable.length === 0) {
+    return NextResponse.json({ success: false, error: "No reachable recipients" }, { status: 400 });
+  }
+
+  let sentCount = 0;
+  const errors: string[] = [];
+  const whatsappLinks: { phone: string; url: string; guestName: string }[] = [];
+
+  if (channel === "email") {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ success: false, error: "Email service not configured" }, { status: 503 });
+    }
+    const resend = new Resend(apiKey);
+
+    for (const r of reachable) {
+      try {
+        await resend.emails.send({
+          from: "Rio Casa <hello@riocasa.com>",
+          to: r.email!,
+          subject: substituteTags(subject!, r),
+          html: `<div style="font-family: Arial; max-width: 600px; padding: 20px; color: #2C2416;">${substituteTags(body, r).replace(/\n/g, "<br/>")}</div>`,
+        });
+        sentCount += 1;
+      } catch (err) {
+        errors.push(`${r.guestName}: ${err instanceof Error ? err.message : "send failed"}`);
+      }
+    }
+  } else {
+    // WhatsApp: generate click-to-chat URLs (owner clicks each to send via WhatsApp Web/app)
+    for (const r of reachable) {
+      const cleanPhone = (r.phone ?? "").replace(/\D/g, "");
+      if (cleanPhone.length < 10) {
+        errors.push(`${r.guestName}: invalid phone`);
+        continue;
+      }
+      const message = encodeURIComponent(substituteTags(body, r));
+      whatsappLinks.push({
+        guestName: r.guestName,
+        phone: r.phone!,
+        url: `https://wa.me/${cleanPhone}?text=${message}`,
+      });
+      sentCount += 1;
+    }
+  }
+
+  // Log the campaign
+  await prisma.communicationLog.create({
+    data: {
+      channel,
+      subject: subject ?? null,
+      body,
+      recipients: sentCount,
+      sentBy: staff.name,
+      filter: JSON.stringify(filter),
+    },
+  });
+
+  return NextResponse.json({
+    success: true,
+    sentCount,
+    skippedCount: recipients.length - sentCount,
+    errors,
+    whatsappLinks: channel === "whatsapp" ? whatsappLinks : undefined,
+  });
+}

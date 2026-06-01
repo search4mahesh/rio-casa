@@ -406,9 +406,62 @@ model Staff {
   isActive     Boolean @default(true) @map("is_active")
   lastLogin    DateTime? @map("last_login")
 
+  shiftAssignments ShiftAssignment[]
+
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("staff")
+}
+
+// ─────────────────────────────────────────────
+// PHASE 4 — Communications, Reviews, Shifts
+// ─────────────────────────────────────────────
+
+model CommunicationLog {
+  id         String   @id @default(cuid())
+  channel    String   // email | whatsapp
+  subject    String?
+  body       String   @db.Text
+  recipients Int
+  sentBy     String   @map("sent_by")
+  filter     String
+
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("communication_log")
+}
+
+model ReviewLog {
+  id          String    @id @default(cuid())
+  platform    String    // google | booking_com | tripadvisor | mmt | other
+  guestName   String    @map("guest_name")
+  rating      Int
+  reviewText  String    @db.Text @map("review_text")
+  reviewUrl   String?   @map("review_url")
+  datePosted  DateTime  @map("date_posted") @db.Date
+  responded   Boolean   @default(false)
+  respondedAt DateTime? @map("responded_at")
+  notes       String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("review_log")
+}
+
+model ShiftAssignment {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  slot      String   // morning | evening | night
+  station   String   // frontdesk | housekeeping | kitchen
+  staffId   String   @map("staff_id")
+  notes     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  staff Staff @relation(fields: [staffId], references: [id])
+
+  @@unique([date, slot, station])
+  @@map("shift_assignments")
 }
 
 // ─────────────────────────────────────────────
