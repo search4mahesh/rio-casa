@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
 
 type LineItem = { description: string; nights?: number; rate?: number; amount: number };
 
@@ -71,8 +71,8 @@ function numberToWords(n: number): string {
   return result + " Only";
 }
 
-export default function InvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function InvoicePrintPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [emailing, setEmailing] = useState(false);

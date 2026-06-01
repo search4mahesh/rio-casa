@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 type Booking = {
@@ -55,8 +55,8 @@ function Field({ label, value, mono = false }: { label: string; value: string | 
   );
 }
 
-export default function GuestProfilePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function GuestProfilePage({ params }: { params: { id: string } }) {
+  const { id } = params;
 
   const [guest, setGuest] = useState<Guest | null>(null);
   const [loading, setLoading] = useState(true);
