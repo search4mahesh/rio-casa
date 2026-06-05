@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { hasMinRole, forbidden } from "@/lib/rbac";
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
 
   const { searchParams } = req.nextUrl;
   const search = searchParams.get("search");

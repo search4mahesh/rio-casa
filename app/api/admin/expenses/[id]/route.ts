@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { hasMinRole, forbidden } from "@/lib/rbac";
 import { z } from "zod";
 
 const UpdateSchema = z.object({
@@ -21,6 +22,7 @@ export async function PATCH(
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
 
   const body = await req.json();
   const parsed = UpdateSchema.safeParse(body);
@@ -47,6 +49,7 @@ export async function DELETE(
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
 
   await prisma.expense.delete({ where: { id: params.id } });
   return NextResponse.json({ success: true });

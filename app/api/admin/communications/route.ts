@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { hasMinRole, forbidden } from "@/lib/rbac";
 
 // ─── Audience resolver ────────────────────────────────────────────────────────
 
@@ -115,6 +116,7 @@ export async function GET(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
 
   const logs = await prisma.communicationLog.findMany({
     orderBy: { createdAt: "desc" },
@@ -137,6 +139,7 @@ export async function POST(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
 
   const reqBody = await req.json();
   const parsed = SendSchema.safeParse(reqBody);

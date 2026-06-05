@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { hasMinRole, forbidden } from "@/lib/rbac";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
 
   const { id } = await params;
 
@@ -53,6 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
 
   const { id } = await params;
   const body = await req.json();

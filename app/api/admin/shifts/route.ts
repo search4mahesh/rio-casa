@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { hasMinRole, forbidden } from "@/lib/rbac";
 
 const SLOT = z.enum(["morning", "evening", "night"]);
 const STATION = z.enum(["frontdesk", "housekeeping", "kitchen"]);
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
 
   const { searchParams } = req.nextUrl;
   const weekStartParam = searchParams.get("weekStart");
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const staff = token ? await verifyAdminToken(token) : null;
   if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
 
   const body = await req.json();
   const parsed = UpsertSchema.safeParse(body);
