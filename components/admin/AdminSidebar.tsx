@@ -4,13 +4,28 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import type { AdminPayload } from "@/lib/admin-auth";
+import { hasMinRole } from "@/lib/rbac-utils";
+import type { Role } from "@/lib/rbac-utils";
 
-const NAV_GROUPS = [
+type NavItem = {
+  label: string;
+  href: string;
+  minRole: Role;
+  icon: React.ReactNode;
+};
+
+type NavGroup = {
+  group: string | null;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
   {
     group: null,
     items: [
       {
         label: "Dashboard",
+        minRole: "housekeeping",
         href: "/admin/dashboard",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -25,6 +40,7 @@ const NAV_GROUPS = [
     items: [
       {
         label: "Front Desk",
+        minRole: "frontdesk" as Role,
         href: "/admin/rooms",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -34,6 +50,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Calendar",
+        minRole: "frontdesk" as Role,
         href: "/admin/calendar",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,6 +60,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Bookings",
+        minRole: "frontdesk" as Role,
         href: "/admin/bookings",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52,6 +70,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Guests",
+        minRole: "frontdesk" as Role,
         href: "/admin/guests",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,6 +80,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Housekeeping",
+        minRole: "housekeeping" as Role,
         href: "/admin/housekeeping",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -70,6 +90,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Blocked Dates",
+        minRole: "frontdesk" as Role,
         href: "/admin/blocked-dates",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -79,6 +100,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Night Audit",
+        minRole: "manager" as Role,
         href: "/admin/night-audit",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -93,6 +115,7 @@ const NAV_GROUPS = [
     items: [
       {
         label: "Rate Plans",
+        minRole: "manager" as Role,
         href: "/admin/rate-plans",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,6 +125,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Promo Codes",
+        minRole: "manager" as Role,
         href: "/admin/promos",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -116,6 +140,7 @@ const NAV_GROUPS = [
     items: [
       {
         label: "Communications",
+        minRole: "manager" as Role,
         href: "/admin/communications",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,6 +150,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Reviews",
+        minRole: "manager" as Role,
         href: "/admin/reviews",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -134,6 +160,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Staff Schedule",
+        minRole: "manager" as Role,
         href: "/admin/shifts",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,6 +175,7 @@ const NAV_GROUPS = [
     items: [
       {
         label: "Invoices",
+        minRole: "frontdesk" as Role,
         href: "/admin/invoices",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,6 +185,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Expenses",
+        minRole: "manager" as Role,
         href: "/admin/expenses",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,6 +195,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Reconciliation",
+        minRole: "manager" as Role,
         href: "/admin/reconciliation",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,6 +205,7 @@ const NAV_GROUPS = [
       },
       {
         label: "Reports",
+        minRole: "manager" as Role,
         href: "/admin/reports",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -189,6 +220,7 @@ const NAV_GROUPS = [
     items: [
       {
         label: "Settings",
+        minRole: "owner" as Role,
         href: "/admin/settings",
         icon: (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,41 +275,47 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-4">
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={gi}>
-            {group.group && (
-              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[#7a9e72]">
-                {group.group}
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
-                const isHousekeeping = item.href === "/admin/housekeeping";
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                      active
-                        ? "bg-[#3d5636] text-white"
-                        : "text-[#c8d9c5] hover:bg-[#3d5636] hover:text-white"
-                    }`}
-                  >
-                    {item.icon}
-                    <span className="flex-1">{item.label}</span>
-                    {isHousekeeping && maintenanceCount > 0 && (
-                      <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
-                        {maintenanceCount > 9 ? "9+" : maintenanceCount}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
+        {NAV_GROUPS.map((group, gi) => {
+          const visibleItems = group.items.filter((item) =>
+            hasMinRole(staff.role, item.minRole)
+          );
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={gi}>
+              {group.group && (
+                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[#7a9e72]">
+                  {group.group}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {visibleItems.map((item) => {
+                  const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                  const isHousekeeping = item.href === "/admin/housekeeping";
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                        active
+                          ? "bg-[#3d5636] text-white"
+                          : "text-[#c8d9c5] hover:bg-[#3d5636] hover:text-white"
+                      }`}
+                    >
+                      {item.icon}
+                      <span className="flex-1">{item.label}</span>
+                      {isHousekeeping && maintenanceCount > 0 && (
+                        <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+                          {maintenanceCount > 9 ? "9+" : maintenanceCount}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Staff info + logout */}

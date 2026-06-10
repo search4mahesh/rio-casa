@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import RoleGuard from "@/components/admin/RoleGuard";
 
 export default async function AdminProtectedLayout({
   children,
@@ -20,7 +21,9 @@ export default async function AdminProtectedLayout({
         {/* Mobile top spacer */}
         <div className="lg:hidden h-14 flex-shrink-0" />
         <main className="flex-1 overflow-auto">
-          {children}
+          <RoleGuard role={staff.role}>
+            {children}
+          </RoleGuard>
         </main>
       </div>
     </div>

@@ -1,30 +1,16 @@
 import { NextResponse } from "next/server";
+import type { Role } from "./rbac-utils";
 
 // ─────────────────────────────────────────────────────────────
-// Role-based access control
+// Role-based access control (server side)
 //
-// Roles form a hierarchy — a higher rank inherits every permission
-// of the ranks below it (an owner can do anything a manager can, etc.):
-//
-//   housekeeping (1)  →  frontdesk (2)  →  manager (3)  →  owner (4)
-//
-// Each protected route declares the MINIMUM role required.
+// Pure utilities (hasMinRole, PAGE_MIN_ROLE, Role type) live in
+// lib/rbac-utils.ts so client components can import them safely.
+// This file adds `forbidden()` which depends on next/server.
 // ─────────────────────────────────────────────────────────────
 
-export type Role = "owner" | "manager" | "frontdesk" | "housekeeping";
-
-const RANK: Record<Role, number> = {
-  housekeeping: 1,
-  frontdesk: 2,
-  manager: 3,
-  owner: 4,
-};
-
-/** True when `role` meets or exceeds the required `min` role. */
-export function hasMinRole(role: string | undefined | null, min: Role): boolean {
-  const have = RANK[(role ?? "") as Role] ?? 0;
-  return have >= RANK[min];
-}
+export type { Role } from "./rbac-utils";
+export { RANK, hasMinRole, PAGE_MIN_ROLE } from "./rbac-utils";
 
 /** Standard 403 response for an authenticated user lacking the required role. */
 export function forbidden(min?: Role) {

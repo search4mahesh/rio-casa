@@ -9,17 +9,22 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+global.fetch = vi.fn().mockResolvedValue({
+  json: () => Promise.resolve({ success: false }),
+}) as unknown as typeof fetch;
+
 vi.mock("next/link", () => ({
   default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
     <a href={href} className={className}>{children}</a>
   ),
 }));
 
+// Use owner role so all nav items (including Settings) are visible
 const staff: AdminPayload = {
   staffId: "s1",
   name: "Ravi Kumar",
   email: "ravi@riocasa.in",
-  role: "manager",
+  role: "owner",
 };
 
 describe("AdminSidebar", () => {
@@ -45,7 +50,7 @@ describe("AdminSidebar", () => {
   it("shows the logged-in staff name and role", () => {
     render(<AdminSidebar staff={staff} />);
     expect(screen.getAllByText("Ravi Kumar").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Manager").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Owner").length).toBeGreaterThan(0);
   });
 
   it("shows sign out button", () => {

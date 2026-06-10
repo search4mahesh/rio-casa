@@ -33,6 +33,7 @@ export default function SettingsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [toast, setToast] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState<string>("");
 
   async function loadStaff() {
     const res = await fetch("/api/admin/staff");
@@ -41,7 +42,13 @@ export default function SettingsPage() {
     setLoading(false);
   }
 
-  useEffect(() => { loadStaff(); }, []);
+  useEffect(() => {
+    loadStaff();
+    fetch("/api/admin/auth/me")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setMyRole(d.staff.role); })
+      .catch(() => {});
+  }, []);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -96,15 +103,17 @@ export default function SettingsPage() {
             <h2 className="font-semibold text-gray-900">Staff Members</h2>
             <p className="text-xs text-gray-500 mt-0.5">{staff.length} member{staff.length !== 1 ? "s" : ""}</p>
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Staff
-          </button>
+          {myRole === "owner" && (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Staff
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -145,13 +154,15 @@ export default function SettingsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <button
-                      onClick={() => toggleActive(m)}
-                      disabled={togglingId === m.id}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                    >
-                      {togglingId === m.id ? "…" : m.isActive ? "Deactivate" : "Activate"}
-                    </button>
+                    {myRole === "owner" && (
+                      <button
+                        onClick={() => toggleActive(m)}
+                        disabled={togglingId === m.id}
+                        className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                      >
+                        {togglingId === m.id ? "…" : m.isActive ? "Deactivate" : "Activate"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
