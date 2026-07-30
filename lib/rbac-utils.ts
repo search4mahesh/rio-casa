@@ -23,6 +23,11 @@ export function hasMinRole(role: string | undefined | null, min: Role): boolean 
  * so nav visibility and page guards can never drift from each other.
  */
 export const PAGE_MIN_ROLE: Record<string, Role> = {
+  // Hub pages. Tab-level access within a hub is enforced separately by
+  // `resolveTab` in lib/admin-nav.ts.
+  "/admin/money":         "frontdesk",
+  "/admin/setup":         "manager",
+
   "/admin/dashboard":     "housekeeping",
   "/admin/housekeeping":  "housekeeping",
   "/admin/rooms":         "frontdesk",

@@ -28,9 +28,9 @@ function staff(role: string): AdminPayload {
 describe("AdminSidebar — housekeeping role", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("shows Dashboard and Housekeeping", () => {
+  it("shows Today and Housekeeping", () => {
     render(<AdminSidebar staff={staff("housekeeping")} />);
-    expect(screen.getAllByText("Dashboard").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Today").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Housekeeping").length).toBeGreaterThan(0);
   });
 
@@ -39,60 +39,50 @@ describe("AdminSidebar — housekeeping role", () => {
     expect(screen.queryByText("Bookings")).toBeNull();
     expect(screen.queryByText("Guests")).toBeNull();
     expect(screen.queryByText("Calendar")).toBeNull();
-    expect(screen.queryByText("Front Desk")).toBeNull();
-    expect(screen.queryByText("Invoices")).toBeNull();
+    expect(screen.queryByText("Money")).toBeNull();
   });
 
-  it("hides manager+ and owner items", () => {
+  it("hides manager+ items", () => {
     render(<AdminSidebar staff={staff("housekeeping")} />);
-    expect(screen.queryByText("Reports")).toBeNull();
-    expect(screen.queryByText("Night Audit")).toBeNull();
-    expect(screen.queryByText("Expenses")).toBeNull();
-    expect(screen.queryByText("Settings")).toBeNull();
+    expect(screen.queryByText("Setup")).toBeNull();
   });
 });
 
 describe("AdminSidebar — frontdesk role", () => {
-  it("shows ops items including Bookings, Guests, Invoices", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows ops items including Bookings, Guests and Money", () => {
     render(<AdminSidebar staff={staff("frontdesk")} />);
     expect(screen.getAllByText("Bookings").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Guests").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Invoices").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Calendar").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Money").length).toBeGreaterThan(0);
   });
 
-  it("hides manager+ items", () => {
+  it("hides the manager-only Setup hub", () => {
     render(<AdminSidebar staff={staff("frontdesk")} />);
-    expect(screen.queryByText("Reports")).toBeNull();
-    expect(screen.queryByText("Night Audit")).toBeNull();
-    expect(screen.queryByText("Expenses")).toBeNull();
-    expect(screen.queryByText("Reconciliation")).toBeNull();
-    expect(screen.queryByText("Settings")).toBeNull();
+    expect(screen.queryByText("Setup")).toBeNull();
   });
 });
 
 describe("AdminSidebar — manager role", () => {
-  it("shows all manager-level items", () => {
-    render(<AdminSidebar staff={staff("manager")} />);
-    expect(screen.getAllByText("Reports").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Night Audit").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Expenses").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Reconciliation").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Rate Plans").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Promo Codes").length).toBeGreaterThan(0);
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  it("does NOT show Settings (owner-only)", () => {
+  it("shows every hub including Setup", () => {
     render(<AdminSidebar staff={staff("manager")} />);
-    expect(screen.queryByText("Settings")).toBeNull();
+    expect(screen.getAllByText("Setup").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Money").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Calendar").length).toBeGreaterThan(0);
   });
 });
 
 describe("AdminSidebar — owner role", () => {
-  it("shows all items including Settings", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows all seven items", () => {
     render(<AdminSidebar staff={staff("owner")} />);
-    expect(screen.getAllByText("Settings").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Reports").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Bookings").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Housekeeping").length).toBeGreaterThan(0);
+    for (const label of ["Today", "Calendar", "Bookings", "Guests", "Housekeeping", "Money", "Setup"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
   });
 });

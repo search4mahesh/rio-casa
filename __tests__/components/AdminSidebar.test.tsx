@@ -19,7 +19,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Use owner role so all nav items (including Settings) are visible
+// Use owner role so every nav item is visible
 const staff: AdminPayload = {
   staffId: "s1",
   name: "Ravi Kumar",
@@ -28,23 +28,38 @@ const staff: AdminPayload = {
 };
 
 describe("AdminSidebar", () => {
-  it("renders all navigation groups", () => {
+  it("renders the seven top-level nav items", () => {
     render(<AdminSidebar staff={staff} />);
-    expect(screen.getAllByText("Operations").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Finance").length).toBeGreaterThan(0);
+    for (const label of [
+      "Today",
+      "Calendar",
+      "Bookings",
+      "Guests",
+      "Housekeeping",
+      "Money",
+      "Setup",
+    ]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
   });
 
-  it("renders all expected nav items", () => {
+  it("does not render pages that moved inside a hub as top-level items", () => {
     render(<AdminSidebar staff={staff} />);
-    expect(screen.getAllByText("Dashboard").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Front Desk").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Bookings").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Guests").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Housekeeping").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Invoices").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Expenses").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Reconciliation").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Settings").length).toBeGreaterThan(0);
+    // These are now tabs within Money / Setup / Calendar, not sidebar entries.
+    for (const label of [
+      "Invoices",
+      "Expenses",
+      "Reconciliation",
+      "Reports",
+      "Night Audit",
+      "Rate Plans",
+      "Promo Codes",
+      "Settings",
+      "Blocked Dates",
+      "Front Desk",
+    ]) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
   });
 
   it("shows the logged-in staff name and role", () => {
@@ -58,10 +73,9 @@ describe("AdminSidebar", () => {
     expect(screen.getAllByText(/sign out/i).length).toBeGreaterThan(0);
   });
 
-  it("highlights the active route (dashboard)", () => {
+  it("highlights the active route (Today)", () => {
     render(<AdminSidebar staff={staff} />);
-    // The active dashboard link should have the active class
-    const links = screen.getAllByRole("link", { name: /dashboard/i });
+    const links = screen.getAllByRole("link", { name: /today/i });
     const activeLink = links.find((l) => l.classList.contains("bg-[#3d5636]"));
     expect(activeLink).toBeTruthy();
   });

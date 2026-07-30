@@ -3,19 +3,25 @@ import { redirect } from "next/navigation";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { NAV, resolveTab, visibleTabs } from "@/lib/admin-nav";
 import HubTabs from "@/components/admin/HubTabs";
-import CalendarMonthPanel from "@/components/admin/panels/CalendarMonth";
-import OccupancyGridPanel from "@/components/admin/panels/OccupancyGrid";
-import BlockedDatesPanel from "@/components/admin/panels/BlockedDates";
+import RatePlansPanel from "@/components/admin/panels/RatePlans";
+import PromosPanel from "@/components/admin/panels/Promos";
+import ReviewsPanel from "@/components/admin/panels/Reviews";
+import CommunicationsPanel from "@/components/admin/panels/Communications";
+import ShiftsPanel from "@/components/admin/panels/Shifts";
+import HotelSettingsPanel from "@/components/admin/panels/HotelSettings";
 
-const HUB = NAV.find((n) => n.href === "/admin/calendar")!;
+const HUB = NAV.find((n) => n.href === "/admin/setup")!;
 
 const PANELS: Record<string, React.ComponentType> = {
-  month:   CalendarMonthPanel,
-  "14day": OccupancyGridPanel,
-  blocked: BlockedDatesPanel,
+  rates:    RatePlansPanel,
+  promos:   PromosPanel,
+  reviews:  ReviewsPanel,
+  messages: CommunicationsPanel,
+  shifts:   ShiftsPanel,
+  hotel:    HotelSettingsPanel,
 };
 
-export default async function CalendarPage({
+export default async function SetupPage({
   searchParams,
 }: {
   searchParams: { tab?: string };
@@ -32,9 +38,9 @@ export default async function CalendarPage({
   return (
     <div>
       <HubTabs
-        title="Calendar"
-        subtitle="Who is staying, and when"
-        basePath="/admin/calendar"
+        title="Setup"
+        subtitle="Pricing, guest messaging and staff configuration"
+        basePath="/admin/setup"
         tabs={visibleTabs(HUB, staff.role)}
         active={tab.slug}
       />

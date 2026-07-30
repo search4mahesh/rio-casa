@@ -3,19 +3,23 @@ import { redirect } from "next/navigation";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { NAV, resolveTab, visibleTabs } from "@/lib/admin-nav";
 import HubTabs from "@/components/admin/HubTabs";
-import CalendarMonthPanel from "@/components/admin/panels/CalendarMonth";
-import OccupancyGridPanel from "@/components/admin/panels/OccupancyGrid";
-import BlockedDatesPanel from "@/components/admin/panels/BlockedDates";
+import InvoicesPanel from "@/components/admin/panels/Invoices";
+import ExpensesPanel from "@/components/admin/panels/Expenses";
+import ReconciliationPanel from "@/components/admin/panels/Reconciliation";
+import ReportsPanel from "@/components/admin/panels/Reports";
+import NightAuditPanel from "@/components/admin/panels/NightAudit";
 
-const HUB = NAV.find((n) => n.href === "/admin/calendar")!;
+const HUB = NAV.find((n) => n.href === "/admin/money")!;
 
 const PANELS: Record<string, React.ComponentType> = {
-  month:   CalendarMonthPanel,
-  "14day": OccupancyGridPanel,
-  blocked: BlockedDatesPanel,
+  invoices:   InvoicesPanel,
+  expenses:   ExpensesPanel,
+  reconcile:  ReconciliationPanel,
+  reports:    ReportsPanel,
+  nightaudit: NightAuditPanel,
 };
 
-export default async function CalendarPage({
+export default async function MoneyPage({
   searchParams,
 }: {
   searchParams: { tab?: string };
@@ -32,9 +36,9 @@ export default async function CalendarPage({
   return (
     <div>
       <HubTabs
-        title="Calendar"
-        subtitle="Who is staying, and when"
-        basePath="/admin/calendar"
+        title="Money"
+        subtitle="Invoices, spending and revenue reporting"
+        basePath="/admin/money"
         tabs={visibleTabs(HUB, staff.role)}
         active={tab.slug}
       />
