@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ROOM_TYPE_FILTER_LABEL as ROOM_TYPE_LABEL } from "@/lib/labels";
+import { ROOM_TYPE_FILTER_LABEL as ROOM_TYPE_LABEL, RATE_PLAN_ROOM_TYPES } from "@/lib/labels";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type RatePlan = {
@@ -238,10 +238,9 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
                 <label className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
                 <select required value={form.roomType} onChange={f("roomType")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
-                  <option value="all">All Rooms</option>
-                  <option value="deluxe">Deluxe</option>
-                  <option value="premium">Premium</option>
-                  <option value="family">Family</option>
+                  {RATE_PLAN_ROOM_TYPES.map((t) => (
+                    <option key={t} value={t}>{ROOM_TYPE_LABEL[t] ?? "All Rooms"}</option>
+                  ))}
                 </select>
               </div>
               <div>

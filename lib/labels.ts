@@ -18,12 +18,29 @@ export const ROLE_LABEL: Record<string, string> = {
   housekeeping: "Housekeeping",
 };
 
-/** Room types — mirrors Room.roomType values seeded in prisma/seed-rooms.ts. */
+/**
+ * Room types currently sold, cheapest first — see prisma/seed-rooms.ts.
+ *   standard  101–104
+ *   deluxe    202, 203
+ *   luxury    201, 204
+ *   family    105
+ */
+export const SELLABLE_ROOM_TYPES = ["standard", "deluxe", "luxury", "family"] as const;
+
+/**
+ * Display names for room types.
+ *
+ * Retired types (premium, presidential) are kept so historical bookings and
+ * invoices still render a real name instead of a raw enum. Don't offer them
+ * in pickers — use SELLABLE_ROOM_TYPES for that.
+ */
 export const ROOM_TYPE_LABEL: Record<string, string> = {
-  deluxe: "Deluxe",
-  premium: "Premium",
-  family: "Family",
   standard: "Standard",
+  deluxe: "Deluxe",
+  luxury: "Luxury",
+  family: "Family",
+  premium: "Premium",
+  presidential: "Presidential",
 };
 
 /**
@@ -35,3 +52,6 @@ export const ROOM_TYPE_FILTER_LABEL: Record<string, string> = {
   ...ROOM_TYPE_LABEL,
   all: "All Rooms",
 };
+
+/** Options for a rate-plan room-type picker: the sellable types plus "all". */
+export const RATE_PLAN_ROOM_TYPES = ["all", ...SELLABLE_ROOM_TYPES] as const;

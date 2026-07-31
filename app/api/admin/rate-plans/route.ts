@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { RATE_PLAN_ROOM_TYPES } from "@/lib/labels";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
@@ -6,7 +7,7 @@ import { ok, failValidation } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(100),
-  roomType: z.enum(["deluxe", "premium", "family", "all"]),
+  roomType: z.enum(RATE_PLAN_ROOM_TYPES),
   baseRate: z.number().positive("Base rate must be positive"),
   extraBedRate: z.number().min(0).default(0),
   validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),

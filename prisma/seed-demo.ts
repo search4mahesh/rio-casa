@@ -1,54 +1,10 @@
 import { PrismaClient } from "@prisma/client";
+// Rooms come from the canonical inventory so the demo seed can never
+// reintroduce duplicate room numbers — defining a second list here is
+// exactly what produced the extra 101 / 201 / 202.
+import { ROOMS } from "./seed-rooms";
 
 const prisma = new PrismaClient();
-
-const ROOMS = [
-  {
-    name: "Forest View Room",
-    slug: "forest-view-room",
-    roomNumber: "101",
-    roomType: "standard",
-    floor: 1,
-    maxGuests: 2,
-    pricePerNight: 4500,
-    baseRate: 4500,
-    descriptionEn: "A cozy room with a stunning view of the Mahabaleshwar forest canopy.",
-    descriptionHi: "महाबलेश्वर के जंगल के मनोरम दृश्य वाला आरामदायक कमरा।",
-    descriptionMr: "महाबळेश्वरच्या जंगलाचे सुंदर दृश्य असलेली आरामदायक खोली।",
-    amenities: ["AC", "WiFi", "TV", "Hot Water", "Forest View", "Room Service"],
-    images: ["/images/rooms/forest-view-1.jpg"],
-  },
-  {
-    name: "Valley View Deluxe",
-    slug: "valley-view-deluxe",
-    roomNumber: "201",
-    roomType: "deluxe",
-    floor: 2,
-    maxGuests: 2,
-    pricePerNight: 5500,
-    baseRate: 5500,
-    descriptionEn: "Deluxe room with panoramic valley views and premium furnishings.",
-    descriptionHi: "प्रीमियम साज-सज्जा और घाटी के मनोरम दृश्य वाला डीलक्स कमरा।",
-    descriptionMr: "प्रीमियम सुविधा आणि दरीचे विहंगम दृश्य असलेली डिलक्स खोली।",
-    amenities: ["AC", "WiFi", "TV", "Hot Water", "Valley View", "Balcony", "Tea/Coffee Maker"],
-    images: ["/images/rooms/valley-view-1.jpg"],
-  },
-  {
-    name: "Presidential Suite",
-    slug: "presidential-suite",
-    roomNumber: "202",
-    roomType: "presidential",
-    floor: 2,
-    maxGuests: 4,
-    pricePerNight: 12000,
-    baseRate: 12000,
-    descriptionEn: "Our most luxurious suite with a living room, kitchenette and 270° views.",
-    descriptionHi: "लिविंग रूम, किचनेट और 270° दृश्य के साथ हमारा सबसे शानदार सुइट।",
-    descriptionMr: "लिव्हिंग रूम, किचनेट आणि 270° दृश्य असलेला आमचा सर्वात विलासी सुइट।",
-    amenities: ["AC", "WiFi", "Smart TV", "Hot Water", "360° View", "Living Room", "Jacuzzi", "Butler Service", "Mini Bar"],
-    images: ["/images/rooms/presidential-1.jpg"],
-  },
-];
 
 const GUESTS = [
   { firstName: "Rahul",  lastName: "Sharma",   phone: "9823456701", email: "rahul.sharma@gmail.com",  city: "Pune",       state: "Maharashtra" },
@@ -89,7 +45,8 @@ async function main() {
       update: {},
       create: {
         ...r,
-        baseRate: r.baseRate,
+        images: [],
+        photos: [],
         status: "available",
         isActive: true,
       },
