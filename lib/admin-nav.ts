@@ -58,6 +58,10 @@ export const NAV: NavItem[] = [
     label: "Housekeeping",
     href: "/admin/housekeeping",
     minRole: "housekeeping",
+    tabs: [
+      { slug: "rooms",   label: "Room Tasks", minRole: "housekeeping" },
+      { slug: "laundry", label: "Laundry",    minRole: "housekeeping" },
+    ],
   },
   {
     icon: "rupee",

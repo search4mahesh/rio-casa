@@ -116,6 +116,32 @@ forcing every client to know a different key per endpoint.
 Clients therefore always read `data.data` for payloads and `data.message`
 for acknowledgements.
 
+## Laundry (linen sent to the laundryman)
+`/admin/housekeeping?tab=laundry` — models `LinenItem`, `LaundryBatch`,
+`LaundryBatchItem`.
+
+A batch goes out with a count per item type and comes back days later; the
+difference is what went missing. Two rules the code depends on:
+- **Quantities and rates are snapshotted per line** at dispatch, so editing
+  the catalogue later never rewrites what a past batch cost.
+- **A batch is only `returned` when every piece is accounted for.** Returned
+  + damaged must equal sent; anything short keeps the batch `partial` so the
+  missing pieces stay visible in the outstanding list. The API rejects a
+  return larger than the dispatch — otherwise the outstanding count goes
+  negative and the system invents linen.
+
+Seed the catalogue with `npx tsx prisma/seed-linen.ts` (idempotent; upserts
+by name and preserves rates edited in the admin panel).
+
+## Seed scripts
+```bash
+npm run seed:admin                    # staff logins (see run-app skill)
+npx tsx prisma/seed-rooms.ts          # ⚠️ destructive — wipes bookings
+npx tsx prisma/normalize-rooms.ts     # reshape rooms, keeping bookings (dry run)
+npx tsx prisma/seed-linen.ts          # linen catalogue
+npx tsx prisma/seed-bookings.ts       # bookings around today
+```
+
 ## Scheduled Jobs (`vercel.json` → `crons`)
 | Path | Schedule (UTC) | Purpose |
 |---|---|---|

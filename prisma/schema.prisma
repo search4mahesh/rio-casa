@@ -332,6 +332,84 @@ model BlockedDate {
 }
 
 // ─────────────────────────────────────────────
+// LAUNDRY (linen sent out to the laundryman)
+//
+// A batch goes out with a count per item type, comes back days
+// later, and the difference is what went missing. Quantities are
+// snapshotted per line along with the rate, so editing the
+// catalogue later never rewrites the history of a past batch.
+// ─────────────────────────────────────────────
+
+model LinenItem {
+  id       String @id @default(cuid())
+  name     String @unique
+  category String @default("linen") // towel | bedding | other
+
+  /// Default charge per piece. Copied onto each batch line at dispatch.
+  ratePerPiece Decimal @default(0) @map("rate_per_piece") @db.Decimal(8, 2)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  batchItems LaundryBatchItem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("linen_items")
+}
+
+model LaundryBatch {
+  id          String @id @default(cuid())
+  batchNumber String @unique @map("batch_number")
+
+  sentDate     DateTime  @map("sent_date") @db.Date
+  returnedDate DateTime? @map("returned_date") @db.Date
+
+  /// sent → partial → returned, or cancelled
+  status String @default("sent")
+
+  /// Snapshot of who it went to, so renaming the vendor doesn't rewrite history.
+  vendorName String? @map("vendor_name")
+
+  notes      String? @db.Text
+  sentBy     String  @map("sent_by")
+  receivedBy String? @map("received_by")
+
+  /// Denormalised roll-ups so the list view doesn't aggregate on every render.
+  totalPieces Int     @default(0) @map("total_pieces")
+  totalCost   Decimal @default(0) @map("total_cost") @db.Decimal(10, 2)
+
+  items LaundryBatchItem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([sentDate])
+  @@map("laundry_batches")
+}
+
+model LaundryBatchItem {
+  id          String @id @default(cuid())
+  batchId     String @map("batch_id")
+  linenItemId String @map("linen_item_id")
+
+  qtySent     Int @map("qty_sent")
+  qtyReturned Int @default(0) @map("qty_returned")
+  qtyDamaged  Int @default(0) @map("qty_damaged")
+
+  /// Rate at dispatch time, not the item's current rate.
+  ratePerPiece Decimal @map("rate_per_piece") @db.Decimal(8, 2)
+
+  batch     LaundryBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  linenItem LinenItem    @relation(fields: [linenItemId], references: [id])
+
+  @@unique([batchId, linenItemId])
+  @@map("laundry_batch_items")
+}
+
+// ─────────────────────────────────────────────
 // EXPENSES
 // ─────────────────────────────────────────────
 
