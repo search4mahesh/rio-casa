@@ -38,3 +38,6 @@ next-env.d.ts
 
 # Raw source photos (processed versions are in public/images/)
 photosriocasa/
+
+# Playwright screenshots from scripts/shot.mjs
+.screenshots/
