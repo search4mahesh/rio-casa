@@ -7,6 +7,13 @@ const COL_W = 40;
 const ROW_H = 50;
 const LABEL_W = 148;
 
+// Stacking order inside the scroll area. The frozen room-label column has to
+// sit above the booking bars: at equal z-index the bars win on DOM order and
+// slide over the labels as soon as the grid is scrolled sideways.
+const Z_BAR = "z-10";
+const Z_STICKY_LABEL = "z-20";
+const Z_HEADER_CORNER = "z-30";
+
 // A rolling window, not a calendar month. Starting rigidly at the 1st meant
 // the view always opened on history nobody needed and cut off the end of the
 // month; a window anchored a little before today shows what the front desk
@@ -163,7 +170,7 @@ export default function CalendarMonthPanel() {
               {/* Day header */}
               <div className="flex border-b-2 border-gray-200 bg-gray-50">
                 <div style={{ width: LABEL_W, minWidth: LABEL_W }}
-                  className="flex-shrink-0 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-r border-gray-200 sticky left-0 bg-gray-50 z-30">
+                  className={`flex-shrink-0 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-r border-gray-200 sticky left-0 bg-gray-50 ${Z_HEADER_CORNER}`}>
                   Room
                 </div>
                 {days.map((dt, i) => {
@@ -191,7 +198,7 @@ export default function CalendarMonthPanel() {
                 <div key={floor}>
                   <div className="flex bg-gray-50/70 border-b border-gray-100">
                     <div style={{ width: LABEL_W, minWidth: LABEL_W }}
-                      className="flex-shrink-0 px-4 py-1 sticky left-0 bg-gray-50/70 z-10">
+                      className={`flex-shrink-0 px-4 py-1 sticky left-0 bg-gray-50/70 ${Z_STICKY_LABEL}`}>
                       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">{floor}</span>
                     </div>
                     <div style={{ width: RANGE_DAYS * COL_W }} className="flex-shrink-0" />
@@ -204,7 +211,7 @@ export default function CalendarMonthPanel() {
                         className={`flex hover:bg-amber-50/20 transition-colors ${idx === floorRooms.length - 1 ? "border-b-2 border-gray-200" : "border-b border-gray-100"}`}>
                         {/* Room label sticky */}
                         <div style={{ width: LABEL_W, minWidth: LABEL_W, height: ROW_H }}
-                          className="flex-shrink-0 flex items-center px-4 gap-2.5 border-r border-gray-200 sticky left-0 bg-white z-10">
+                          className={`flex-shrink-0 flex items-center px-4 gap-2.5 border-r border-gray-200 sticky left-0 bg-white ${Z_STICKY_LABEL}`}>
                           <div className="w-7 h-7 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-bold text-gray-600">{room.roomNumber ?? room.name.slice(0, 2)}</span>
                           </div>
@@ -257,7 +264,7 @@ export default function CalendarMonthPanel() {
                                 key={b.id}
                                 onClick={() => setSelected(b)}
                                 style={{ position: "absolute", left, width, top: 9, height: 32 }}
-                                className={`${cfg.bar} ${cfg.text} flex items-center px-2 gap-1 overflow-hidden hover:opacity-90 hover:shadow-md transition-all z-10 text-left
+                                className={`${cfg.bar} ${cfg.text} flex items-center px-2 gap-1 overflow-hidden hover:opacity-90 hover:shadow-md transition-all ${Z_BAR} text-left
                                   ${crossesLeft ? "rounded-r-md" : "rounded-l-md"}
                                   ${crossesRight ? "rounded-l-md" : "rounded-r-md"}
                                   ${!crossesLeft && !crossesRight ? "rounded-md" : ""}

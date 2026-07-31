@@ -76,6 +76,39 @@ describe("calendar window — anchored on today, not the 1st", () => {
   });
 });
 
+describe("stacking — regression: booking bars must not cover the frozen room column", () => {
+  it("gives the sticky room label a higher z-index than the booking bars", async () => {
+    const room = { id: "r1", name: "Standard", roomNumber: "101", roomType: "standard", floor: 1 };
+    const today = new Date(2026, 7, 15);
+    mockCalendar({
+      rooms: [room],
+      bookings: [
+        {
+          id: "bk1", bookingNumber: "BK1", guestName: "Priya Sharma", roomId: "r1",
+          // Starts before the window so the bar is wide and runs under the label.
+          checkIn: new Date(2026, 7, 1).toISOString(),
+          checkOut: new Date(2026, 7, 20).toISOString(),
+          nights: 19, status: "confirmed", adults: 2, totalAmount: 40000,
+        },
+      ],
+    });
+    const { container } = render(<CalendarMonthPanel />);
+    await waitFor(() => expect(screen.queryByText("Loading calendar…")).toBeNull());
+    void today;
+
+    const label = container.querySelector<HTMLElement>(".sticky.left-0.bg-white");
+    const bar = container.querySelector<HTMLElement>("button[title*='Priya']");
+    expect(label, "sticky room label not found").toBeTruthy();
+    expect(bar, "booking bar not found").toBeTruthy();
+
+    const z = (el: HTMLElement | null) =>
+      Number(Array.from(el?.classList ?? []).find((c) => /^z-\d+$/.test(c))?.slice(2) ?? 0);
+
+    // Equal z-index lets the bar win on DOM order and slide over the label.
+    expect(z(label)).toBeGreaterThan(z(bar));
+  });
+});
+
 describe("blocked dates — regression: keys must not collide across months", () => {
   it("shades only the blocked day, not the same day-number in other months", async () => {
     // Keying cells by getDate() meant a block on 5 Sep also shaded 5 Aug,
