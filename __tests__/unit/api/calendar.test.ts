@@ -110,6 +110,47 @@ describe("GET /api/admin/calendar", () => {
     expect(typeof data.blockedDates[0].blockDate).toBe("string");
   });
 
+  it("supports a rolling ?from=&days= window", async () => {
+    mockRoomFindMany.mockResolvedValueOnce([]);
+    mockBookingFindMany.mockResolvedValueOnce([]);
+    mockBlockedFindMany.mockResolvedValueOnce([]);
+
+    const res = await GET(makeReq({ from: "2026-08-08", days: "90" }));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.rangeStart).toBe("2026-08-08");
+    expect(data.days).toBe(90);
+    // Range mode is not a month, so the month-only fields are null.
+    expect(data.daysInMonth).toBeNull();
+    expect(data.monthStart).toBeNull();
+  });
+
+  it("queries bookings across the whole window, not just one month", async () => {
+    mockRoomFindMany.mockResolvedValueOnce([]);
+    mockBookingFindMany.mockResolvedValueOnce([]);
+    mockBlockedFindMany.mockResolvedValueOnce([]);
+
+    await GET(makeReq({ from: "2026-08-08", days: "90" }));
+    const where = mockBookingFindMany.mock.calls.at(-1)?.[0].where;
+    // 8 Aug + 90 days = 6 Nov — the window must span past August.
+    expect((where.checkIn.lt as Date).getTime()).toBe(new Date(2026, 10, 6).getTime());
+    expect((where.checkOut.gt as Date).getTime()).toBe(new Date(2026, 7, 8).getTime());
+  });
+
+  it("clamps an oversized days value", async () => {
+    mockRoomFindMany.mockResolvedValueOnce([]);
+    mockBookingFindMany.mockResolvedValueOnce([]);
+    mockBlockedFindMany.mockResolvedValueOnce([]);
+    const res = await GET(makeReq({ from: "2026-08-08", days: "9999" }));
+    const { data } = await res.json();
+    expect(data.days).toBe(180);
+  });
+
+  it("returns 400 for a malformed from date", async () => {
+    const res = await GET(makeReq({ from: "08-08-2026" }));
+    expect(res.status).toBe(400);
+  });
+
   it("uses current month when month param is omitted", async () => {
     mockRoomFindMany.mockResolvedValueOnce([]);
     mockBookingFindMany.mockResolvedValueOnce([]);

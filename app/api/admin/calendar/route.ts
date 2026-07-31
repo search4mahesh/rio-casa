@@ -3,25 +3,54 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
 
-// GET /api/admin/calendar?month=YYYY-MM
+const MAX_RANGE_DAYS = 180;
+
+// GET /api/admin/calendar
+//   ?from=YYYY-MM-DD&days=N   rolling window (used by the timeline view)
+//   ?month=YYYY-MM            whole calendar month (kept for callers that
+//                             still think in months; also the default)
 export async function GET(req: NextRequest) {
   const auth = await requireRole(req, "frontdesk");
   if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
-  const rawMonth = searchParams.get("month") ?? new Date().toISOString().slice(0, 7);
+  const from = searchParams.get("from");
 
-  const parts = rawMonth.split("-");
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10);
+  let rangeStart: Date;
+  let rangeDays: number;
+  // Only meaningful in month mode; kept in the response for back-compat.
+  let monthStart: Date | null = null;
+  let daysInMonth: number | null = null;
 
-  if (!year || !month || month < 1 || month > 12 || isNaN(year)) {
-    return NextResponse.json({ success: false, error: "Use YYYY-MM format" }, { status: 400 });
+  if (from) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from);
+    if (!m) {
+      return NextResponse.json({ success: false, error: "Use YYYY-MM-DD for from" }, { status: 400 });
+    }
+    rangeStart = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (isNaN(rangeStart.getTime())) {
+      return NextResponse.json({ success: false, error: "Invalid from date" }, { status: 400 });
+    }
+    const requested = parseInt(searchParams.get("days") ?? "60", 10);
+    rangeDays = Math.min(MAX_RANGE_DAYS, Math.max(1, isNaN(requested) ? 60 : requested));
+  } else {
+    const rawMonth = searchParams.get("month") ?? new Date().toISOString().slice(0, 7);
+    const parts = rawMonth.split("-");
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+
+    if (!year || !month || month < 1 || month > 12 || isNaN(year)) {
+      return NextResponse.json({ success: false, error: "Use YYYY-MM format" }, { status: 400 });
+    }
+
+    monthStart = new Date(year, month - 1, 1);
+    daysInMonth = new Date(year, month, 0).getDate();
+    rangeStart = monthStart;
+    rangeDays = daysInMonth;
   }
 
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month, 0).getDate();
+  const rangeEnd = new Date(rangeStart);
+  rangeEnd.setDate(rangeEnd.getDate() + rangeDays);
 
   const [rooms, bookings, blockedDates] = await Promise.all([
     prisma.room.findMany({
@@ -31,8 +60,8 @@ export async function GET(req: NextRequest) {
     }),
     prisma.booking.findMany({
       where: {
-        checkIn: { lt: monthEnd },
-        checkOut: { gt: monthStart },
+        checkIn: { lt: rangeEnd },
+        checkOut: { gt: rangeStart },
         status: { notIn: ["cancelled"] },
       },
       select: {
@@ -43,23 +72,32 @@ export async function GET(req: NextRequest) {
       orderBy: { checkIn: "asc" },
     }),
     prisma.blockedDate.findMany({
-      where: { blockDate: { gte: monthStart, lt: monthEnd } },
+      where: { blockDate: { gte: rangeStart, lt: rangeEnd } },
       select: { id: true, roomId: true, blockDate: true, reason: true },
     }),
   ]);
 
+  // Dates go out as plain YYYY-MM-DD, not ISO instants: the client keys
+  // cells by calendar day, and an instant would shift across the date line
+  // for anyone east or west of the server's timezone.
+  const isoDay = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
   return ok({
-      rooms,
-      bookings: bookings.map((b) => ({
-        ...b,
-        checkIn: b.checkIn.toISOString(),
-        checkOut: b.checkOut.toISOString(),
-      })),
-      blockedDates: blockedDates.map((bd) => ({
-        ...bd,
-        blockDate: bd.blockDate.toISOString(),
-      })),
-      daysInMonth,
-      monthStart: monthStart.toISOString(),
-    });
+    rooms,
+    bookings: bookings.map((b) => ({
+      ...b,
+      checkIn: b.checkIn.toISOString(),
+      checkOut: b.checkOut.toISOString(),
+    })),
+    blockedDates: blockedDates.map((bd) => ({
+      ...bd,
+      blockDate: bd.blockDate.toISOString(),
+    })),
+    rangeStart: isoDay(rangeStart),
+    days: rangeDays,
+    // Month-mode only — null when called with ?from=
+    daysInMonth,
+    monthStart: monthStart ? monthStart.toISOString() : null,
+  });
 }

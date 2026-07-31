@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 
-const COL_W = 36;
+const COL_W = 40;
 const ROW_H = 50;
 const LABEL_W = 148;
+
+// A rolling window, not a calendar month. Starting rigidly at the 1st meant
+// the view always opened on history nobody needed and cut off the end of the
+// month; a window anchored a little before today shows what the front desk
+// actually cares about — who is in now, and who is arriving next.
+const DAYS_BEFORE = 7;
+const RANGE_DAYS = 90;
+const NUDGE_DAYS = 14; // how far the ‹ › buttons shift the window
 
 type CalBook = {
   id: string; bookingNumber: string; guestName: string; roomId: string;
@@ -13,56 +21,71 @@ type CalBook = {
 };
 type CalRoom = { id: string; name: string; roomNumber?: string | null; roomType: string; floor?: number | null };
 type CalBlocked = { id: string; roomId: string | null; blockDate: string; reason?: string | null };
-type CalData = { rooms: CalRoom[]; bookings: CalBook[]; blockedDates: CalBlocked[]; daysInMonth: number; monthStart: string };
+type CalData = { rooms: CalRoom[]; bookings: CalBook[]; blockedDates: CalBlocked[] };
 
 const STATUS_CFG: Record<string, { bar: string; text: string; label: string }> = {
   confirmed:   { bar: "bg-blue-500",   text: "text-white", label: "Confirmed" },
-  checked_in:  { bar: "bg-primary",  text: "text-white", label: "Checked In" },
+  checked_in:  { bar: "bg-primary",    text: "text-white", label: "Checked In" },
   checked_out: { bar: "bg-gray-400",   text: "text-white", label: "Checked Out" },
   no_show:     { bar: "bg-orange-400", text: "text-white", label: "No Show" },
 };
 
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function addDays(d: Date, n: number): Date {
+  const o = new Date(d);
+  o.setDate(o.getDate() + n);
+  return o;
+}
+/** Stable per-day key. Keying by getDate() collides across months. */
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+/** Parse a date-only value without letting the timezone shift the day. */
 function localDate(iso: string): Date {
   const [y, m, d] = iso.split("T")[0].split("-").map(Number);
   return new Date(y, m - 1, d);
 }
-
 function daysBetween(a: Date, b: Date): number {
   return Math.round((Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()) -
                      Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
 }
 
-function monthKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 export default function CalendarMonthPanel() {
-  const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const today = startOfDay(new Date());
+  const [rangeStart, setRangeStart] = useState(() => addDays(startOfDay(new Date()), -DAYS_BEFORE));
   const [data, setData] = useState<CalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<CalBook | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/calendar?month=${monthKey(currentMonth)}`);
+    const res = await fetch(`/api/admin/calendar?from=${dayKey(rangeStart)}&days=${RANGE_DAYS}`);
     const d = await res.json();
     if (d.success) setData(d.data);
     setLoading(false);
-  }, [currentMonth]);
+  }, [rangeStart]);
 
   useEffect(() => { load(); }, [load]);
 
-  const daysInMonth = data?.daysInMonth ?? new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const todayIsThisMonth = today.getMonth() === currentMonth.getMonth() && today.getFullYear() === currentMonth.getFullYear();
-  const todayDay = todayIsThisMonth ? today.getDate() : -1;
+  const days = Array.from({ length: RANGE_DAYS }, (_, i) => addDays(rangeStart, i));
+  const todayOffset = daysBetween(today, rangeStart);
 
-  // Blocked date lookup: "roomId:day" | "all:day"
+  // Open with today just inside the left edge rather than at the far left, so
+  // the immediately-preceding days stay glanceable.
+  useEffect(() => {
+    if (loading) return;
+    const el = scrollRef.current;
+    if (!el || todayOffset < 0) return;
+    el.scrollLeft = Math.max(0, (todayOffset - 2) * COL_W);
+  }, [loading, todayOffset]);
+
   const blockedSet = new Set<string>();
   for (const bd of data?.blockedDates ?? []) {
-    const day = localDate(bd.blockDate).getDate();
-    blockedSet.add(bd.roomId ? `${bd.roomId}:${day}` : `all:${day}`);
+    const key = dayKey(localDate(bd.blockDate));
+    blockedSet.add(bd.roomId ? `${bd.roomId}:${key}` : `all:${key}`);
   }
 
   const byRoom: Record<string, CalBook[]> = {};
@@ -73,29 +96,31 @@ export default function CalendarMonthPanel() {
     (byFloor[r.floor != null ? `Floor ${r.floor}` : "Other"] ??= []).push(r);
   }
 
-  const totalWidth = LABEL_W + daysInMonth * COL_W;
-  const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const totalWidth = LABEL_W + RANGE_DAYS * COL_W;
+  const rangeEnd = addDays(rangeStart, RANGE_DAYS - 1);
+  const rangeLabel =
+    rangeStart.getFullYear() === rangeEnd.getFullYear()
+      ? `${rangeStart.toLocaleString("en-IN", { month: "short" })} – ${rangeEnd.toLocaleString("en-IN", { month: "short" })} ${rangeEnd.getFullYear()}`
+      : `${rangeStart.toLocaleString("en-IN", { month: "short", year: "numeric" })} – ${rangeEnd.toLocaleString("en-IN", { month: "short", year: "numeric" })}`;
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">
-          {currentMonth.toLocaleString("en-IN", { month: "long", year: "numeric" })}
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-800">{rangeLabel}</h2>
         <div className="flex items-center gap-2">
-          <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Previous month">
+          <button onClick={() => setRangeStart(addDays(rangeStart, -NUDGE_DAYS))}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Back ${NUDGE_DAYS} days`}>
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <button onClick={() => setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${todayIsThisMonth ? "bg-primary text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}>
+          <button onClick={() => setRangeStart(addDays(startOfDay(new Date()), -DAYS_BEFORE))}
+            className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
             Today
           </button>
-          <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Next month">
+          <button onClick={() => setRangeStart(addDays(rangeStart, NUDGE_DAYS))}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Forward ${NUDGE_DAYS} days`}>
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -125,33 +150,36 @@ export default function CalendarMonthPanel() {
           <div className="w-3 h-3 rounded-sm bg-primary/10 border border-primary/30" />
           <span className="text-gray-500">Today</span>
         </div>
+        <span className="ml-auto text-gray-400">Scroll sideways for more dates →</span>
       </div>
 
       {loading ? (
         <div className="text-center py-20 text-gray-400">Loading calendar…</div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200">
+          <div ref={scrollRef} className="overflow-x-auto rounded-xl">
             <div style={{ minWidth: totalWidth }}>
 
               {/* Day header */}
-              <div className="flex border-b-2 border-gray-200 bg-gray-50 sticky top-0 z-20">
+              <div className="flex border-b-2 border-gray-200 bg-gray-50">
                 <div style={{ width: LABEL_W, minWidth: LABEL_W }}
                   className="flex-shrink-0 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-r border-gray-200 sticky left-0 bg-gray-50 z-30">
                   Room
                 </div>
-                {days.map((day) => {
-                  const dt = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-                  const isToday = day === todayDay;
+                {days.map((dt, i) => {
+                  const isToday = daysBetween(dt, today) === 0;
                   const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                  const isMonthStart = dt.getDate() === 1 || i === 0;
                   return (
-                    <div key={day} style={{ width: COL_W, minWidth: COL_W }}
-                      className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-r border-gray-200 ${isToday ? "bg-primary/10" : ""}`}>
+                    <div key={dayKey(dt)} style={{ width: COL_W, minWidth: COL_W }}
+                      className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-gray-200 ${isMonthStart ? "border-l-2 border-l-gray-300" : "border-r"} ${isToday ? "bg-primary/10" : ""}`}>
                       <span className={`text-[9px] font-medium leading-none mb-0.5 ${isToday ? "text-primary" : isWeekend ? "text-amber-500" : "text-gray-400"}`}>
-                        {dt.toLocaleDateString("en-IN", { weekday: "narrow" })}
+                        {isMonthStart
+                          ? dt.toLocaleDateString("en-IN", { month: "short" })
+                          : dt.toLocaleDateString("en-IN", { weekday: "narrow" })}
                       </span>
                       <span className={`text-sm font-bold ${isToday ? "text-primary" : isWeekend ? "text-amber-700" : "text-gray-700"}`}>
-                        {day}
+                        {dt.getDate()}
                       </span>
                     </div>
                   );
@@ -166,7 +194,7 @@ export default function CalendarMonthPanel() {
                       className="flex-shrink-0 px-4 py-1 sticky left-0 bg-gray-50/70 z-10">
                       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">{floor}</span>
                     </div>
-                    <div style={{ width: daysInMonth * COL_W }} className="flex-shrink-0" />
+                    <div style={{ width: RANGE_DAYS * COL_W }} className="flex-shrink-0" />
                   </div>
 
                   {floorRooms.map((room, idx) => {
@@ -189,20 +217,20 @@ export default function CalendarMonthPanel() {
                         </div>
 
                         {/* Grid area with background cells + booking bars */}
-                        <div style={{ width: daysInMonth * COL_W, height: ROW_H }} className="relative flex-shrink-0">
-                          {/* Day background cells */}
+                        <div style={{ width: RANGE_DAYS * COL_W, height: ROW_H }} className="relative flex-shrink-0">
                           <div className="absolute inset-0 flex">
-                            {days.map((day) => {
-                              const dt = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-                              const isToday = day === todayDay;
+                            {days.map((dt, i) => {
+                              const key = dayKey(dt);
+                              const isToday = daysBetween(dt, today) === 0;
                               const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-                              const isBlocked = blockedSet.has(`${room.id}:${day}`) || blockedSet.has(`all:${day}`);
+                              const isMonthStart = dt.getDate() === 1 || i === 0;
+                              const isBlocked = blockedSet.has(`${room.id}:${key}`) || blockedSet.has(`all:${key}`);
                               return (
-                                <div key={day} style={{
+                                <div key={key} style={{
                                   width: COL_W, minWidth: COL_W,
                                   ...(isBlocked ? { backgroundImage: "repeating-linear-gradient(-45deg,#fee2e2 0,#fee2e2 2px,#fff5f5 2px,#fff5f5 6px)" } : {}),
                                 }}
-                                  className={`flex-shrink-0 h-full border-r border-gray-100 ${isToday && !isBlocked ? "bg-primary/5" : isWeekend && !isBlocked ? "bg-amber-50/30" : ""}`}
+                                  className={`flex-shrink-0 h-full border-gray-100 ${isMonthStart ? "border-l-2 border-l-gray-300" : "border-r"} ${isToday && !isBlocked ? "bg-primary/5" : isWeekend && !isBlocked ? "bg-amber-50/30" : ""}`}
                                 />
                               );
                             })}
@@ -212,17 +240,17 @@ export default function CalendarMonthPanel() {
                           {roomBooks.map((b) => {
                             const checkIn = localDate(b.checkIn);
                             const checkOut = localDate(b.checkOut);
-                            const startOffset = daysBetween(checkIn, monthStart);
-                            const endOffset = daysBetween(checkOut, monthStart);
+                            const startOffset = daysBetween(checkIn, rangeStart);
+                            const endOffset = daysBetween(checkOut, rangeStart);
                             const clampedStart = Math.max(0, startOffset);
-                            const clampedEnd = Math.min(daysInMonth, endOffset);
+                            const clampedEnd = Math.min(RANGE_DAYS, endOffset);
                             if (clampedEnd <= clampedStart) return null;
 
                             const left = clampedStart * COL_W + 2;
                             const width = (clampedEnd - clampedStart) * COL_W - 4;
                             const cfg = STATUS_CFG[b.status] ?? { bar: "bg-gray-500", text: "text-white" };
                             const crossesLeft = startOffset < 0;
-                            const crossesRight = endOffset > daysInMonth;
+                            const crossesRight = endOffset > RANGE_DAYS;
 
                             return (
                               <button
