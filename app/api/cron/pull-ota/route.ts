@@ -1,14 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { pullOTABookings } from "@/lib/booking-service";
 import { ok } from "@/lib/api-response";
+import { denyIfNotCron } from "@/lib/cron-auth";
 
-// Vercel Cron: every 3 minutes (see vercel.json)
-// Protected by CRON_SECRET to prevent unauthorized triggers
+// NOT SCHEDULED — deliberately absent from vercel.json.
+//
+// pullOTABookings() targets eZee Centrix, a channel manager this property
+// does not use; the integration was evaluated and shelved. EZEE_API_URL is
+// still set in .env, so scheduling this would fire real HTTP requests at a
+// third party every run using placeholder credentials.
+//
+// Kept reachable for manual testing only. Delete this route together with
+// pullOTABookings/syncWithChannelManager in lib/booking-service.ts when the
+// eZee stubs are removed.
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = denyIfNotCron(req);
+  if (denied) return denied;
 
   await pullOTABookings();
   return ok(new Date().toISOString());

@@ -116,6 +116,27 @@ forcing every client to know a different key per endpoint.
 Clients therefore always read `data.data` for payloads and `data.message`
 for acknowledgements.
 
+## Scheduled Jobs (`vercel.json` → `crons`)
+| Path | Schedule (UTC) | Purpose |
+|---|---|---|
+| `/api/cron/night-audit` | `15 0 * * *` (05:45 IST) | Mark no-shows, flag arrivals/departures |
+| `/api/cron/detect-conflicts` | `45 0 * * *` (06:15 IST) | Double-booking safety net |
+
+Constraints worth knowing before editing the schedule:
+- **Vercel schedules in UTC**, not IST. `runNightAudit()` derives "yesterday"
+  from the server clock, so it must run shortly *after* UTC midnight. Moving it
+  to midnight IST (18:30 UTC) would audit a day that is still in progress.
+- **Sub-daily schedules require a Pro plan** and fail at deploy time on Hobby.
+  Hourly conflict detection would be better; on Pro use `"0 * * * *"`.
+- **`/api/cron/pull-ota` is deliberately unscheduled** — it targets eZee
+  Centrix, which this property does not use. See `CHANNEL-MANAGER-PLAN.md`.
+
+Auth: Vercel sends `Authorization: Bearer $CRON_SECRET` when `CRON_SECRET` is
+set as a project env var. Guard every cron route with `denyIfNotCron(req)` from
+`lib/cron-auth.ts` — never compare against `process.env.CRON_SECRET` inline,
+which renders `"Bearer undefined"` and fails *open* when the var is missing.
+**`CRON_SECRET` must be set in the Vercel project**, or every cron returns 503.
+
 ## Booking Flow
 1. User picks dates + guests → `/api/booking/availability?roomId=&checkIn=&checkOut=`
 2. User selects room → clicks "Book Now"

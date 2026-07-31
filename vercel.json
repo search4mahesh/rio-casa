@@ -1,3 +1,13 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/night-audit",
+      "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/cron/detect-conflicts",
+      "schedule": "45 0 * * *"
+    }
+  ]
 }
