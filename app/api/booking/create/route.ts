@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createOrder } from "@/lib/razorpay";
 import { createBooking } from "@/lib/booking-service";
+import { ok, fail, failValidation } from "@/lib/api-response";
 
 const schema = z.object({
   roomId: z.string().min(1),
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const {
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     const statusCode = result.errorCode === "ROOM_NOT_AVAILABLE" ? 409
       : result.errorCode === "INVALID_DATES" ? 400
       : 500;
-    return NextResponse.json({ success: false, error: result.error }, { status: statusCode });
+    return fail(result.error ?? "Booking could not be created", statusCode);
   }
 
   // Create Razorpay order
@@ -68,9 +69,7 @@ export async function POST(req: NextRequest) {
     data: { razorpayOrderId: order.id },
   });
 
-  return NextResponse.json({
-    success: true,
-    data: {
+  return ok({
       bookingId: result.booking.id,
       bookingNumber: result.booking.bookingNumber,
       orderId: order.id,
@@ -79,6 +78,5 @@ export async function POST(req: NextRequest) {
       sgstAmount: result.booking.sgstAmount,
       nights: result.booking.nights,
       roomName: result.booking.room.name,
-    },
-  });
+    });
 }

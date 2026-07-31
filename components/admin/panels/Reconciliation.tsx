@@ -66,7 +66,7 @@ export default function ReconciliationPanel() {
           type="month"
           value={month}
           onChange={(e) => setMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
         />
       </div>
 
@@ -125,7 +125,7 @@ export default function ReconciliationPanel() {
                 key={t}
                 onClick={() => setTab(t)}
                 className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
-                  tab === t ? "border-[#4A6741] text-[#4A6741]" : "border-transparent text-gray-400 hover:text-gray-600"
+                  tab === t ? "border-primary text-primary" : "border-transparent text-gray-400 hover:text-gray-600"
                 }`}
               >
                 {t === "summary" ? "Summary" : "Day-by-Day"}

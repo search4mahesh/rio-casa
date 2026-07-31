@@ -81,7 +81,7 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
   useEffect(() => {
     fetch(`/api/admin/invoices/${id}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setInvoice(d.invoice); setLoading(false); });
+      .then((d) => { if (d.success) setInvoice(d.data); setLoading(false); });
   }, [id]);
 
   async function sendEmail() {
@@ -107,7 +107,7 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
       {/* Action bar — hidden in print */}
       <div className="print:hidden bg-gray-100 border-b border-gray-300 px-6 py-3 flex items-center gap-3">
         <button onClick={() => window.print()}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors">
+          className="flex items-center gap-2 px-4 py-2 btn-admin">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
           </svg>
@@ -128,14 +128,14 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
       <div className="max-w-4xl mx-auto p-10 bg-white print:p-8 print:max-w-full" id="invoice-print">
 
         {/* Header */}
-        <div className="flex items-start justify-between pb-6 border-b-2 border-[#4A6741]">
+        <div className="flex items-start justify-between pb-6 border-b-2 border-primary">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 rounded bg-[#4A6741] flex items-center justify-center">
+              <div className="w-12 h-12 rounded bg-primary flex items-center justify-center">
                 <span className="text-white text-sm font-bold">RC</span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-[#4A6741]">{invoice.hotelName}</h1>
+                <h1 className="text-2xl font-bold text-primary">{invoice.hotelName}</h1>
                 <p className="text-xs text-gray-500">Mahabaleshwar, Maharashtra</p>
               </div>
             </div>
@@ -181,7 +181,7 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
         {/* Line items */}
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-[#4A6741] text-white">
+            <tr className="bg-primary text-white">
               <th className="text-left px-3 py-2.5 font-semibold">Description</th>
               <th className="text-right px-3 py-2.5 font-semibold w-20">Nights</th>
               <th className="text-right px-3 py-2.5 font-semibold w-28">Rate (₹)</th>
@@ -230,16 +230,16 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
                   <td className="text-right px-3 py-1.5">₹{fmtINR(invoice.sgstAmount)}</td>
                 </tr>
               )}
-              <tr className="border-t-2 border-[#4A6741]">
+              <tr className="border-t-2 border-primary">
                 <td className="px-3 py-2.5 font-bold text-base">TOTAL</td>
-                <td className="text-right px-3 py-2.5 font-bold text-base text-[#4A6741]">₹{fmtINR(invoice.totalAmount)}</td>
+                <td className="text-right px-3 py-2.5 font-bold text-base text-primary">₹{fmtINR(invoice.totalAmount)}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         {/* Amount in words */}
-        <div className="mt-6 p-3 bg-gray-50 border-l-4 border-[#4A6741] rounded">
+        <div className="mt-6 p-3 bg-gray-50 border-l-4 border-primary rounded">
           <div className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Amount in Words</div>
           <div className="text-sm font-medium text-gray-800">{numberToWords(Number(invoice.totalAmount))}</div>
         </div>

@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
   const rawFrom = searchParams.get("from");
@@ -150,9 +148,7 @@ export async function GET(req: NextRequest) {
     pct: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0,
   })).sort((a, b) => b.revenue - a.revenue);
 
-  return NextResponse.json({
-    success: true,
-    report: {
+  return ok({
       from: from.toISOString(),
       to: to.toISOString(),
       daysInRange,
@@ -171,6 +167,5 @@ export async function GET(req: NextRequest) {
       monthlySeries,
       sourceBreakdown,
       roomTypeBreakdown,
-    },
-  });
+    });
 }

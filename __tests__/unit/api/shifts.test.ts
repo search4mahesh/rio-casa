@@ -65,8 +65,8 @@ describe("GET /api/admin/shifts", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.assignments).toHaveLength(1);
-    expect(body.staff).toHaveLength(1);
+    expect(body.data.assignments).toHaveLength(1);
+    expect(body.data.staff).toHaveLength(1);
   });
 
   it("queries shifts for exactly the 7-day window", async () => {

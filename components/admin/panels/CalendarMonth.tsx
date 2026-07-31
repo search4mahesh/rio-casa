@@ -17,7 +17,7 @@ type CalData = { rooms: CalRoom[]; bookings: CalBook[]; blockedDates: CalBlocked
 
 const STATUS_CFG: Record<string, { bar: string; text: string; label: string }> = {
   confirmed:   { bar: "bg-blue-500",   text: "text-white", label: "Confirmed" },
-  checked_in:  { bar: "bg-[#4A6741]",  text: "text-white", label: "Checked In" },
+  checked_in:  { bar: "bg-primary",  text: "text-white", label: "Checked In" },
   checked_out: { bar: "bg-gray-400",   text: "text-white", label: "Checked Out" },
   no_show:     { bar: "bg-orange-400", text: "text-white", label: "No Show" },
 };
@@ -91,7 +91,7 @@ export default function CalendarMonthPanel() {
             </svg>
           </button>
           <button onClick={() => setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${todayIsThisMonth ? "bg-[#4A6741] text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}>
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${todayIsThisMonth ? "bg-primary text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}>
             Today
           </button>
           <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
@@ -122,7 +122,7 @@ export default function CalendarMonthPanel() {
           <span className="text-gray-500">Blocked</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-[#4A6741]/10 border border-[#4A6741]/30" />
+          <div className="w-3 h-3 rounded-sm bg-primary/10 border border-primary/30" />
           <span className="text-gray-500">Today</span>
         </div>
       </div>
@@ -146,11 +146,11 @@ export default function CalendarMonthPanel() {
                   const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
                   return (
                     <div key={day} style={{ width: COL_W, minWidth: COL_W }}
-                      className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-r border-gray-200 ${isToday ? "bg-[#4A6741]/10" : ""}`}>
-                      <span className={`text-[9px] font-medium leading-none mb-0.5 ${isToday ? "text-[#4A6741]" : isWeekend ? "text-amber-500" : "text-gray-400"}`}>
+                      className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-r border-gray-200 ${isToday ? "bg-primary/10" : ""}`}>
+                      <span className={`text-[9px] font-medium leading-none mb-0.5 ${isToday ? "text-primary" : isWeekend ? "text-amber-500" : "text-gray-400"}`}>
                         {dt.toLocaleDateString("en-IN", { weekday: "narrow" })}
                       </span>
-                      <span className={`text-sm font-bold ${isToday ? "text-[#4A6741]" : isWeekend ? "text-amber-700" : "text-gray-700"}`}>
+                      <span className={`text-sm font-bold ${isToday ? "text-primary" : isWeekend ? "text-amber-700" : "text-gray-700"}`}>
                         {day}
                       </span>
                     </div>
@@ -202,7 +202,7 @@ export default function CalendarMonthPanel() {
                                   width: COL_W, minWidth: COL_W,
                                   ...(isBlocked ? { backgroundImage: "repeating-linear-gradient(-45deg,#fee2e2 0,#fee2e2 2px,#fff5f5 2px,#fff5f5 6px)" } : {}),
                                 }}
-                                  className={`flex-shrink-0 h-full border-r border-gray-100 ${isToday && !isBlocked ? "bg-[#4A6741]/5" : isWeekend && !isBlocked ? "bg-amber-50/30" : ""}`}
+                                  className={`flex-shrink-0 h-full border-r border-gray-100 ${isToday && !isBlocked ? "bg-primary/5" : isWeekend && !isBlocked ? "bg-amber-50/30" : ""}`}
                                 />
                               );
                             })}
@@ -301,7 +301,7 @@ export default function CalendarMonthPanel() {
               </div>
               <Link href={`/admin/bookings/${selected.id}`}
                 onClick={() => setSelected(null)}
-                className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors">
+                className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 btn-admin">
                 View Full Booking
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />

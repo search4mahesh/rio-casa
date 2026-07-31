@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import type { AdminPayload } from "@/lib/admin-auth";
 import { hasMinRole } from "@/lib/rbac-utils";
 import { NAV } from "@/lib/admin-nav";
+import { ROLE_LABEL } from "@/lib/labels";
 
 const ICONS: Record<string, React.ReactNode> = {
   home: (
@@ -34,12 +35,6 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: "Owner",
-  manager: "Manager",
-  frontdesk: "Front Desk",
-  housekeeping: "Housekeeping",
-};
 
 export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
   const pathname = usePathname();
@@ -50,7 +45,7 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
   useEffect(() => {
     fetch("/api/admin/housekeeping?maintenanceCount=true")
       .then((r) => r.json())
-      .then((d) => { if (d.success) setMaintenanceCount(d.count); })
+      .then((d) => { if (d.success) setMaintenanceCount(d.data); })
       .catch(() => {});
   }, [pathname]); // refresh count when navigating
 
@@ -64,9 +59,9 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-[#3d5636]">
+      <div className="px-6 py-5 border-b border-primary-600">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#8B6914] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
             <span className="text-white text-xs font-bold">RC</span>
           </div>
           <div>
@@ -88,8 +83,8 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
               onClick={() => setMobileOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                 active
-                  ? "bg-[#3d5636] text-white"
-                  : "text-[#c8d9c5] hover:bg-[#3d5636] hover:text-white"
+                  ? "bg-primary-600 text-white"
+                  : "text-[#c8d9c5] hover:bg-primary-600 hover:text-white"
               }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,9 +102,9 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
       </nav>
 
       {/* Staff info + logout */}
-      <div className="px-3 py-4 border-t border-[#3d5636]">
+      <div className="px-3 py-4 border-t border-primary-600">
         <div className="flex items-center gap-3 px-3 py-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-[#8B6914] flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-medium">
               {staff.name.charAt(0).toUpperCase()}
             </span>
@@ -121,7 +116,7 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#c8d9c5] hover:bg-[#3d5636] hover:text-white transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#c8d9c5] hover:bg-primary-600 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -135,14 +130,14 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
   return (
     <>
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex w-60 flex-shrink-0 bg-[#4A6741] flex-col">
+      <div className="hidden lg:flex w-60 flex-shrink-0 bg-primary flex-col">
         <SidebarContent />
       </div>
 
       {/* Mobile top bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-[#4A6741] px-4 py-3 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-primary px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded bg-[#8B6914] flex items-center justify-center">
+          <div className="w-7 h-7 rounded bg-accent flex items-center justify-center">
             <span className="text-white text-xs font-bold">RC</span>
           </div>
           <span className="text-white text-sm font-semibold">Rio Casa Admin</span>
@@ -161,8 +156,8 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
             className="lg:hidden fixed inset-0 z-40 bg-black/50"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="lg:hidden fixed top-0 left-0 bottom-0 z-50 w-64 bg-[#4A6741] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#3d5636]">
+          <div className="lg:hidden fixed top-0 left-0 bottom-0 z-50 w-64 bg-primary flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-primary-600">
               <span className="text-white font-semibold text-sm">Menu</span>
               <button onClick={() => setMobileOpen(false)} className="text-white">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

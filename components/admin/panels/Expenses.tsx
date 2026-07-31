@@ -147,7 +147,7 @@ export default function ExpensesPanel() {
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-end gap-3 mb-6">
-        <button onClick={openAdd} className="flex items-center gap-2 bg-[#4A6741] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#3d5636] transition-colors">
+        <button onClick={openAdd} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
           <Plus size={16} />
           Add Expense
         </button>
@@ -159,12 +159,12 @@ export default function ExpensesPanel() {
           type="month"
           value={month}
           onChange={(e) => setMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
         />
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
         >
           <option value="all">All Categories</option>
           {CATEGORIES.map((c) => (
@@ -204,7 +204,7 @@ export default function ExpensesPanel() {
           <div className="p-12 text-center">
             <IndianRupee size={32} className="text-gray-200 mx-auto mb-3" />
             <p className="text-gray-400 text-sm">No expenses recorded for {monthLabel}</p>
-            <button onClick={openAdd} className="mt-3 text-[#4A6741] text-sm font-medium hover:underline">Add first expense →</button>
+            <button onClick={openAdd} className="mt-3 text-primary text-sm font-medium hover:underline">Add first expense →</button>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -238,7 +238,7 @@ export default function ExpensesPanel() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
-                        <button onClick={() => openEdit(e)} className="p-1.5 text-gray-400 hover:text-[#4A6741] hover:bg-gray-100 rounded transition-colors">
+                        <button onClick={() => openEdit(e)} className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors">
                           <Pencil size={14} />
                         </button>
                         <button onClick={() => setDeleteId(e.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
@@ -276,12 +276,12 @@ export default function ExpensesPanel() {
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Date *</label>
                   <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Category *</label>
                   <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
                     {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
@@ -290,19 +290,19 @@ export default function ExpensesPanel() {
                 <label className="block text-xs font-medium text-gray-500 mb-1">Description *</label>
                 <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="e.g. Monthly housekeeping supplies"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Amount (₹) *</label>
                   <input type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })}
                     placeholder="0.00"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Payment Method *</label>
                   <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
                     {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
@@ -312,20 +312,20 @@ export default function ExpensesPanel() {
                   <label className="block text-xs font-medium text-gray-500 mb-1">Vendor / Payee</label>
                   <input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })}
                     placeholder="Supplier name"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Reference / Receipt #</label>
                   <input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })}
                     placeholder="INV-001"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Recorded By *</label>
                 <input value={form.recordedBy} onChange={(e) => setForm({ ...form, recordedBy: e.target.value })}
                   placeholder="Your name"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4A6741]" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
               </div>
               {formError && <p className="text-red-500 text-xs">{formError}</p>}
             </div>
@@ -334,7 +334,7 @@ export default function ExpensesPanel() {
                 Cancel
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="flex-1 bg-[#4A6741] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#3d5636] disabled:opacity-50 transition-colors">
+                className="flex-1 bg-primary text-white rounded-lg py-2 text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                 {saving ? "Saving…" : editing ? "Save Changes" : "Add Expense"}
               </button>
             </div>

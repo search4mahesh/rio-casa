@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type RoomStatus = {
   occupancy: string;
@@ -66,21 +67,17 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   async function load() {
     const res = await fetch("/api/admin/rooms/status");
     const data = await res.json();
-    if (data.success) setRooms(data.rooms);
+    if (data.success) setRooms(data.data);
     setLoading(false);
   }
 
   useEffect(() => { load(); }, []);
 
-  function showToast(message: string) {
-    setToast(message);
-    setTimeout(() => setToast(""), 3500);
-  }
 
   async function handleCheckin(bookingId: string) {
     setActionLoading(bookingId);
@@ -163,7 +160,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
                   <div
                     key={room.id}
                     onClick={() => openPanel(room)}
-                    className="text-left p-3 bg-white rounded-xl border border-gray-200 hover:border-[#4A6741] hover:shadow-sm transition-all cursor-pointer"
+                    className="text-left p-3 bg-white rounded-xl border border-gray-200 hover:border-primary hover:shadow-sm transition-all cursor-pointer"
                   >
                     <div className="flex items-start justify-between mb-2">
                       <span className="text-lg font-bold text-gray-800">
@@ -237,7 +234,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
                       <input type="radio" name="occupancy" value={val}
                         checked={form.occupancy === val}
                         onChange={() => setForm((f) => ({ ...f, occupancy: val }))}
-                        className="accent-[#4A6741]" />
+                        className="accent-primary" />
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
                     </label>
                   ))}
@@ -252,7 +249,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
                       <input type="radio" name="housekeeping" value={val}
                         checked={form.housekeeping === val}
                         onChange={() => setForm((f) => ({ ...f, housekeeping: val }))}
-                        className="accent-[#4A6741]" />
+                        className="accent-primary" />
                       <span className={`text-xs px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
                     </label>
                   ))}
@@ -263,7 +260,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea rows={3} value={form.notes ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#4A6741] resize-none"
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                   placeholder="Maintenance note, guest request…" />
               </div>
 
@@ -272,7 +269,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
 
             <div className="px-5 py-4 border-t">
               <button onClick={handleSave} disabled={saving}
-                className="w-full py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                className="w-full py-2.5 btn-admin">
                 {saving ? "Saving…" : "Update Status"}
               </button>
             </div>
@@ -280,11 +277,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
         </>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
     </section>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { ROOM_TYPE_FILTER_LABEL as ROOM_TYPE_LABEL } from "@/lib/labels";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type RatePlan = {
   id: string; name: string; roomType: string;
@@ -8,10 +10,6 @@ type RatePlan = {
   validFrom: string; validTo: string;
   weekendMarkup: number; minNights: number; priority: number;
   isActive: boolean; createdAt: string;
-};
-
-const ROOM_TYPE_LABEL: Record<string, string> = {
-  deluxe: "Deluxe", premium: "Premium", family: "Family", all: "All Rooms",
 };
 
 function fmtDate(iso: string) {
@@ -25,19 +23,18 @@ export default function RatePlansPanel() {
   const [editing, setEditing] = useState<RatePlan | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/admin/rate-plans");
     const data = await res.json();
-    if (data.success) setPlans(data.plans);
+    if (data.success) setPlans(data.data);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   async function toggleActive(plan: RatePlan) {
     setTogglingId(plan.id);
@@ -65,7 +62,7 @@ export default function RatePlansPanel() {
     <div className="p-6 max-w-6xl">
       <div className="flex items-center justify-end gap-3 mb-6">
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors">
+          className="flex items-center gap-2 px-4 py-2 btn-admin">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
@@ -157,9 +154,7 @@ export default function RatePlansPanel() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">{toast}</div>
-      )}
+      <Toast message={toast} />
 
       {(showAdd || editing) && (
         <RatePlanModal
@@ -236,13 +231,13 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name *</label>
               <input required value={form.name} onChange={f("name")} placeholder='e.g. "Peak Season 2026"'
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
                 <select required value={form.roomType} onChange={f("roomType")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                   <option value="all">All Rooms</option>
                   <option value="deluxe">Deluxe</option>
                   <option value="premium">Premium</option>
@@ -252,52 +247,52 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Base Rate (₹/night) *</label>
                 <input required type="number" min="0" step="0.01" value={form.baseRate} onChange={f("baseRate")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Valid From *</label>
                 <input required type="date" value={form.validFrom} onChange={f("validFrom")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Valid To *</label>
                 <input required type="date" min={form.validFrom} value={form.validTo} onChange={f("validTo")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Weekend Markup (%)</label>
                 <input type="number" min="0" max="100" step="0.1" value={form.weekendMarkup} onChange={f("weekendMarkup")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Min Nights</label>
                 <input type="number" min="1" value={form.minNights} onChange={f("minNights")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
                 <input type="number" min="0" value={form.priority} onChange={f("priority")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Extra Bed Rate (₹/night)</label>
               <input type="number" min="0" step="0.01" value={form.extraBedRate} onChange={f("extraBedRate")}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="isActive" checked={form.isActive}
-                onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} className="accent-[#4A6741]" />
+                onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} className="accent-primary" />
               <label htmlFor="isActive" className="text-sm text-gray-700">Active (applies to new bookings)</label>
             </div>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
               <button type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Saving…" : plan ? "Save Changes" : "Add Rate Plan"}
               </button>
             </div>

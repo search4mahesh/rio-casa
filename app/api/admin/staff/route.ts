@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { requireRole } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   name: z.string().min(2),
@@ -14,10 +15,8 @@ const CreateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const members = await prisma.staff.findMany({
     orderBy: { createdAt: "asc" },
@@ -33,7 +32,7 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true, staff: members });
+  return ok(members);
 }
 
 export async function POST(req: NextRequest) {
@@ -61,5 +60,5 @@ export async function POST(req: NextRequest) {
     select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
   });
 
-  return NextResponse.json({ success: true, staff: member });
+  return ok(member);
 }

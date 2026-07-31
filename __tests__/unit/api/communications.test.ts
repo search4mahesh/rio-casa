@@ -63,7 +63,7 @@ describe("GET /api/admin/communications", () => {
     const res = await GET(makeReq("GET"));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.logs).toHaveLength(1);
+    expect(body.data).toHaveLength(1);
   });
 });
 
@@ -103,9 +103,9 @@ describe("POST /api/admin/communications — preview", () => {
     }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.preview.totalRecipients).toBe(3);
-    expect(body.preview.reachableCount).toBe(2);
-    expect(body.preview.skippedCount).toBe(1);
+    expect(body.data.totalRecipients).toBe(3);
+    expect(body.data.reachableCount).toBe(2);
+    expect(body.data.skippedCount).toBe(1);
   });
 
   it("substitutes merge tags in sample body", async () => {
@@ -115,8 +115,8 @@ describe("POST /api/admin/communications — preview", () => {
       subject: "Hi {{guestName}}", body: "Booking {{bookingNumber}}",
     }));
     const body = await res.json();
-    expect(body.preview.sample.subject).toBe("Hi Priya Sharma");
-    expect(body.preview.sample.body).toBe("Booking BK999");
+    expect(body.data.sample.subject).toBe("Hi Priya Sharma");
+    expect(body.data.sample.body).toBe("Booking BK999");
   });
 
   it("queries upcoming arrivals with status: confirmed", async () => {
@@ -142,8 +142,8 @@ describe("POST /api/admin/communications — preview", () => {
     }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.preview.totalRecipients).toBe(2);
-    expect(body.preview.reachableCount).toBe(1); // only one has email
+    expect(body.data.totalRecipients).toBe(2);
+    expect(body.data.reachableCount).toBe(1); // only one has email
   });
 });
 
@@ -187,7 +187,7 @@ describe("POST /api/admin/communications — send", () => {
     }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.sentCount).toBe(2);
+    expect(body.data.sentCount).toBe(2);
     expect(mockResendSend).toHaveBeenCalledTimes(2);
     expect(mockLogCreate).toHaveBeenCalledTimes(1);
   });
@@ -200,8 +200,8 @@ describe("POST /api/admin/communications — send", () => {
     expect(res.status).toBe(200);
     expect(mockResendSend).not.toHaveBeenCalled();
     const body = await res.json();
-    expect(body.whatsappLinks).toHaveLength(1);
-    expect(body.whatsappLinks[0].url).toMatch(/^https:\/\/wa\.me\/919876543210\?text=/);
+    expect(body.data.whatsappLinks).toHaveLength(1);
+    expect(body.data.whatsappLinks[0].url).toMatch(/^https:\/\/wa\.me\/919876543210\?text=/);
   });
 
   it("skips recipients with invalid phone numbers", async () => {
@@ -213,8 +213,8 @@ describe("POST /api/admin/communications — send", () => {
       action: "send", channel: "whatsapp", filter: { type: "checked-in" }, body: "Hi",
     }));
     const body = await res.json();
-    expect(body.sentCount).toBe(1);
-    expect(body.errors.length).toBe(1);
+    expect(body.data.sentCount).toBe(1);
+    expect(body.data.errors.length).toBe(1);
   });
 
   it("captures send errors per recipient and continues", async () => {
@@ -230,7 +230,7 @@ describe("POST /api/admin/communications — send", () => {
       subject: "x", body: "y",
     }));
     const body = await res.json();
-    expect(body.sentCount).toBe(1);
-    expect(body.errors).toHaveLength(1);
+    expect(body.data.sentCount).toBe(1);
+    expect(body.data.errors).toHaveLength(1);
   });
 });

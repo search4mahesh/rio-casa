@@ -61,17 +61,17 @@ describe("GET /api/admin/reports", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.report.daysInRange).toBeGreaterThan(300);
+    expect(body.data.daysInRange).toBeGreaterThan(300);
   });
 
   it("returns zero KPIs when no bookings exist", async () => {
     const res = await GET(makeReq({ from: "2026-06-01", to: "2026-06-30" }));
     const body = await res.json();
-    expect(body.report.kpi.occupancyRate).toBe(0);
-    expect(body.report.kpi.adr).toBe(0);
-    expect(body.report.kpi.revpar).toBe(0);
-    expect(body.report.kpi.totalBookings).toBe(0);
-    expect(body.report.kpi.totalRevenue).toBe(0);
+    expect(body.data.kpi.occupancyRate).toBe(0);
+    expect(body.data.kpi.adr).toBe(0);
+    expect(body.data.kpi.revpar).toBe(0);
+    expect(body.data.kpi.totalBookings).toBe(0);
+    expect(body.data.kpi.totalRevenue).toBe(0);
   });
 
   it("calculates occupancy correctly for a single 3-night booking in June (9 rooms × 30 days)", async () => {
@@ -81,9 +81,9 @@ describe("GET /api/admin/reports", () => {
     ]);
     const res = await GET(makeReq({ from: "2026-06-01", to: "2026-06-30" }));
     const body = await res.json();
-    expect(body.report.kpi.occupiedNights).toBe(3);
-    expect(body.report.kpi.totalRevenue).toBe(15000);
-    expect(body.report.kpi.totalBookings).toBe(1);
+    expect(body.data.kpi.occupiedNights).toBe(3);
+    expect(body.data.kpi.totalRevenue).toBe(15000);
+    expect(body.data.kpi.totalBookings).toBe(1);
   });
 
   it("calculates ADR as revenue / occupied nights", async () => {
@@ -92,7 +92,7 @@ describe("GET /api/admin/reports", () => {
     ]);
     const res = await GET(makeReq({ from: "2026-06-01", to: "2026-06-30" }));
     const body = await res.json();
-    expect(body.report.kpi.adr).toBe(5000); // 15000 / 3
+    expect(body.data.kpi.adr).toBe(5000); // 15000 / 3
   });
 
   it("breaks down bookings by source", async () => {
@@ -103,8 +103,8 @@ describe("GET /api/admin/reports", () => {
     ]);
     const res = await GET(makeReq({ from: "2026-06-01", to: "2026-06-30" }));
     const body = await res.json();
-    expect(body.report.sourceBreakdown).toHaveLength(2);
-    const website = body.report.sourceBreakdown.find((s: { source: string }) => s.source === "website");
+    expect(body.data.sourceBreakdown).toHaveLength(2);
+    const website = body.data.sourceBreakdown.find((s: { source: string }) => s.source === "website");
     expect(website.bookings).toBe(2);
     expect(website.revenue).toBe(18000);
   });
@@ -116,18 +116,18 @@ describe("GET /api/admin/reports", () => {
     ]);
     const res = await GET(makeReq({ from: "2026-06-01", to: "2026-06-30" }));
     const body = await res.json();
-    expect(body.report.roomTypeBreakdown).toHaveLength(2);
+    expect(body.data.roomTypeBreakdown).toHaveLength(2);
     // sorted by revenue desc — premium first
-    expect(body.report.roomTypeBreakdown[0].roomType).toBe("premium");
-    expect(body.report.roomTypeBreakdown[0].revenue).toBe(18000);
+    expect(body.data.roomTypeBreakdown[0].roomType).toBe("premium");
+    expect(body.data.roomTypeBreakdown[0].revenue).toBe(18000);
   });
 
   it("includes a monthly series with one entry per month in the range", async () => {
     const res = await GET(makeReq({ from: "2026-01-01", to: "2026-03-31" }));
     const body = await res.json();
-    expect(body.report.monthlySeries).toHaveLength(3);
-    expect(body.report.monthlySeries[0].month).toBe("2026-01");
-    expect(body.report.monthlySeries[2].month).toBe("2026-03");
+    expect(body.data.monthlySeries).toHaveLength(3);
+    expect(body.data.monthlySeries[0].month).toBe("2026-01");
+    expect(body.data.monthlySeries[2].month).toBe("2026-03");
   });
 
   it("counts total guests as sum of adults + children across bookings", async () => {
@@ -137,7 +137,7 @@ describe("GET /api/admin/reports", () => {
     ]);
     const res = await GET(makeReq({ from: "2026-06-01", to: "2026-06-30" }));
     const body = await res.json();
-    expect(body.report.kpi.totalGuests).toBe(6); // (2+1) + (3+0)
+    expect(body.data.kpi.totalGuests).toBe(6); // (2+1) + (3+0)
   });
 
   it("excludes cancelled and no_show bookings from queries", async () => {

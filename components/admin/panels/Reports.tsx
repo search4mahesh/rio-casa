@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { ROOM_TYPE_LABEL } from "@/lib/labels";
 
 type Report = {
   from: string;
@@ -22,18 +23,14 @@ const SOURCE_LABEL: Record<string, string> = {
   booking_com: "Booking.com", mmt: "MakeMyTrip", agoda: "Agoda", airbnb: "Airbnb",
 };
 
-const ROOM_TYPE_LABEL: Record<string, string> = {
-  deluxe: "Deluxe", premium: "Premium", family: "Family", standard: "Standard",
-};
-
 const SOURCE_COLOR: Record<string, string> = {
-  website: "bg-[#4A6741]", walkin: "bg-amber-500", phone: "bg-blue-500",
+  website: "bg-primary", walkin: "bg-amber-500", phone: "bg-blue-500",
   booking_com: "bg-blue-700", mmt: "bg-orange-500", agoda: "bg-red-500",
   airbnb: "bg-pink-500", other: "bg-gray-400",
 };
 
 const ROOM_TYPE_COLOR: Record<string, string> = {
-  deluxe: "bg-[#4A6741]", premium: "bg-amber-500", family: "bg-blue-500", standard: "bg-gray-500",
+  deluxe: "bg-primary", premium: "bg-amber-500", family: "bg-blue-500", standard: "bg-gray-500",
 };
 
 function fmtINR(n: number) {
@@ -118,7 +115,7 @@ export default function ReportsPanel() {
     setLoading(true);
     const res = await fetch(`/api/admin/reports?from=${from}&to=${to}`);
     const data = await res.json();
-    if (data.success) setReport(data.report);
+    if (data.success) setReport(data.data);
     setLoading(false);
   }, [from, to]);
 
@@ -158,12 +155,12 @@ export default function ReportsPanel() {
           <div>
             <label className="block text-xs text-gray-500 mb-1">From</label>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} max={to}
-              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">To</label>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} min={from}
-              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <div className="flex gap-1 ml-auto">
             <button onClick={() => applyPreset("this-month")} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">This Month</button>
@@ -182,7 +179,7 @@ export default function ReportsPanel() {
         <>
           {/* KPI Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <KPICard label="Occupancy Rate" value={`${report.kpi.occupancyRate}%`} sub={`${report.kpi.occupiedNights} / ${report.kpi.totalAvailableNights} nights`} accent="border-[#4A6741]" />
+            <KPICard label="Occupancy Rate" value={`${report.kpi.occupancyRate}%`} sub={`${report.kpi.occupiedNights} / ${report.kpi.totalAvailableNights} nights`} accent="border-primary" />
             <KPICard label="ADR" value={fmtINR(report.kpi.adr)} sub="Avg Daily Rate" accent="border-amber-300" />
             <KPICard label="RevPAR" value={fmtINR(report.kpi.revpar)} sub="Revenue per available room" accent="border-blue-300" />
             <KPICard label="Total Revenue" value={fmtINR(report.kpi.totalRevenue)} sub={`${report.daysInRange} days`} accent="border-green-300" />
@@ -203,7 +200,7 @@ export default function ReportsPanel() {
                     <div className="text-xs font-semibold text-gray-700 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {m.occupancyPct.toFixed(0)}%
                     </div>
-                    <div className="w-full bg-[#4A6741] rounded-t-md transition-all hover:bg-[#3d5636]"
+                    <div className="w-full bg-primary rounded-t-md transition-all hover:bg-primary-600"
                       style={{ height: `${Math.max(2, h)}%` }} title={`${fmtMonth(m.month)}: ${m.occupancyPct.toFixed(1)}%`} />
                     <div className="text-[10px] text-gray-500 mt-1.5 truncate w-full text-center">{fmtMonth(m.month)}</div>
                   </div>

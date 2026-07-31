@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Staff = { id: string; name: string; role: string };
 
@@ -49,19 +50,18 @@ export default function ShiftsPanel() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<{ date: string; slot: string; station: string; existing?: Assignment } | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     const res = await fetch(`/api/admin/shifts?weekStart=${toISO(weekStart)}`);
     const data = await res.json();
-    if (data.success) { setAssignments(data.assignments); setStaff(data.staff); }
+    if (data.success) { setAssignments(data.data.assignments); setStaff(data.data.staff); }
     setLoading(false);
   }, [weekStart]);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   function getAssignment(dateISO: string, slot: string, station: string): Assignment | undefined {
     return assignments.find((a) => a.date.split("T")[0] === dateISO && a.slot === slot && a.station === station);
@@ -120,9 +120,9 @@ export default function ShiftsPanel() {
                   const isToday = toISO(d) === toISO(new Date());
                   const isWeekend = d.getDay() === 0 || d.getDay() === 6;
                   return (
-                    <th key={i} className={`text-center px-3 py-3 font-medium min-w-[140px] ${isToday ? "bg-[#4A6741]/10" : ""}`}>
-                      <div className={`text-xs ${isToday ? "text-[#4A6741]" : isWeekend ? "text-amber-600" : "text-gray-500"}`}>{dayName}</div>
-                      <div className={`text-base font-bold ${isToday ? "text-[#4A6741]" : "text-gray-700"}`}>{dayNum}</div>
+                    <th key={i} className={`text-center px-3 py-3 font-medium min-w-[140px] ${isToday ? "bg-primary/10" : ""}`}>
+                      <div className={`text-xs ${isToday ? "text-primary" : isWeekend ? "text-amber-600" : "text-gray-500"}`}>{dayName}</div>
+                      <div className={`text-base font-bold ${isToday ? "text-primary" : "text-gray-700"}`}>{dayNum}</div>
                       <div className="text-[10px] text-gray-400">{monthShort}</div>
                     </th>
                   );
@@ -149,7 +149,7 @@ export default function ShiftsPanel() {
                         <td key={i} className="p-1.5 align-top">
                           <button onClick={() => setEditing({ date: dateISO, slot: slot.id, station: station.id, existing: a })}
                             className={`w-full p-2 rounded-lg border-2 text-left transition-all ${
-                              a ? `${station.color} hover:shadow-sm` : "border-dashed border-gray-200 hover:border-[#4A6741] hover:bg-gray-50"
+                              a ? `${station.color} hover:shadow-sm` : "border-dashed border-gray-200 hover:border-primary hover:bg-gray-50"
                             }`}>
                             {a ? (
                               <div>
@@ -181,7 +181,7 @@ export default function ShiftsPanel() {
         ))}
       </div>
 
-      {toast && <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50 print:hidden">{toast}</div>}
+      <Toast message={toast} className="print:hidden" />
 
       {editing && (
         <EditAssignmentModal
@@ -258,7 +258,7 @@ function EditAssignmentModal({
               <button onClick={onClose}
                 className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
               <button onClick={() => staffId && onSave(staffId, notes)} disabled={!staffId}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-50 text-white text-sm font-medium rounded-lg">
+                className="flex-1 py-2.5 btn-admin">
                 {editing.existing ? "Update" : "Assign"}
               </button>
             </div>

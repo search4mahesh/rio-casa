@@ -27,6 +27,13 @@
     @apply border border-primary text-primary px-6 py-3 rounded-sm font-sans font-medium tracking-wide hover:bg-primary hover:text-earth-white transition-colors duration-200;
   }
 
+  /* Admin-panel action button. Appearance only — callers keep their own
+     layout utilities (flex-1, w-full, px-4 py-2) alongside it, since the
+     same button shape is used as a toolbar action and a modal submit. */
+  .btn-admin {
+    @apply bg-primary hover:bg-primary-600 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors;
+  }
+
   .section-heading {
     @apply font-serif text-3xl md:text-4xl lg:text-5xl text-earth-text leading-tight;
   }

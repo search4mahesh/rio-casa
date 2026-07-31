@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
 import { z } from "zod";
+import { requireRole } from "@/lib/api-auth";
+import { ok, failValidation } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
@@ -16,10 +16,8 @@ const CreateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
   const month = searchParams.get("month"); // YYYY-MM
@@ -43,19 +41,17 @@ export async function GET(req: NextRequest) {
 
   const total = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
-  return NextResponse.json({ success: true, data: { expenses, total } });
+  return ok({ expenses, total });
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const { date, amount, ...rest } = parsed.data;
@@ -67,5 +63,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true, data: expense }, { status: 201 });
+  return ok(expense, 201);
 }

@@ -1,14 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/admin/night-audit/summary — today's operational snapshot
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -55,15 +53,12 @@ export async function GET(req: NextRequest) {
     return list.map((b) => ({ ...b, checkIn: b.checkIn.toISOString(), checkOut: b.checkOut.toISOString() }));
   }
 
-  return NextResponse.json({
-    success: true,
-    summary: {
+  return ok({
       date: today.toISOString(),
       arrivals: serializeDates(arrivals),
       departures: serializeDates(departures),
       noShows: serializeDates(noShows),
       inHouse: serializeDates(inHouse),
       todayRevenue: Number(revenue._sum.totalAmount ?? 0),
-    },
-  });
+    });
 }

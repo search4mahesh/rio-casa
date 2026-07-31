@@ -47,7 +47,7 @@ export default function InvoicesPanel() {
     if (statusFilter !== "all") params.set("status", statusFilter);
     const res = await fetch(`/api/admin/invoices?${params}`);
     const data = await res.json();
-    if (data.success) { setInvoices(data.invoices); setTotal(data.total); }
+    if (data.success) { setInvoices(data.data.invoices); setTotal(data.data.total); }
     setLoading(false);
   }, [page, search, statusFilter]);
 
@@ -65,12 +65,12 @@ export default function InvoicesPanel() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInput); setPage(1); } }}
-          className="flex-1 min-w-48 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+          className="flex-1 min-w-48 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
         >
           <option value="all">All Status</option>
           <option value="generated">Generated</option>
@@ -79,7 +79,7 @@ export default function InvoicesPanel() {
         </select>
         <button
           onClick={() => { setSearch(searchInput); setPage(1); }}
-          className="px-4 py-2 text-sm bg-[#4A6741] text-white rounded-lg hover:bg-[#3d5636] transition-colors"
+          className="px-4 py-2 btn-admin"
         >
           Search
         </button>
@@ -114,7 +114,7 @@ export default function InvoicesPanel() {
                 <tbody className="divide-y divide-gray-100">
                   {invoices.map((inv) => (
                     <tr key={inv.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-[#4A6741] font-medium">{inv.invoiceNumber}</td>
+                      <td className="px-4 py-3 font-mono text-primary font-medium">{inv.invoiceNumber}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{inv.booking.bookingNumber}</td>
                       <td className="px-4 py-3">
                         <div className="font-medium text-gray-900">{inv.guestName}</div>
@@ -131,7 +131,7 @@ export default function InvoicesPanel() {
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(inv.invoiceDate)}</td>
                       <td className="px-4 py-3 text-right">
                         <Link href={`/admin/invoices/${inv.id}/print`} target="_blank"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-[#4A6741] border border-[#4A6741]/30 rounded-lg hover:bg-[#4A6741]/5 transition-colors">
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors">
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                           </svg>

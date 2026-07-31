@@ -19,7 +19,7 @@ type GridRoom = { id: string; name: string; roomNumber?: string; roomType: strin
 
 const GRID_STATUS_COLOR: Record<string, { bar: string; text: string }> = {
   confirmed:   { bar: "bg-blue-500",   text: "text-white" },
-  checked_in:  { bar: "bg-[#4A6741]",  text: "text-white" },
+  checked_in:  { bar: "bg-primary",  text: "text-white" },
   checked_out: { bar: "bg-gray-300",   text: "text-gray-600" },
 };
 
@@ -57,7 +57,7 @@ export default function OccupancyGridPanel() {
     fetch("/api/admin/occupancy")
       .then((r) => r.json())
       .then((d) => {
-        if (d.success) { setRooms(d.rooms); setBookings(d.bookings); }
+        if (d.success) { setRooms(d.data.rooms); setBookings(d.data.bookings); }
         setLoading(false);
       });
   }, []);
@@ -96,15 +96,15 @@ export default function OccupancyGridPanel() {
                   <div
                     key={i}
                     style={{ width: COL_W, minWidth: COL_W }}
-                    className={`flex-shrink-0 flex flex-col items-center justify-center py-2 border-r border-gray-200 ${isToday ? "bg-[#4A6741]/10" : ""}`}
+                    className={`flex-shrink-0 flex flex-col items-center justify-center py-2 border-r border-gray-200 ${isToday ? "bg-primary/10" : ""}`}
                   >
-                    <span className={`text-xs font-medium ${isToday ? "text-[#4A6741]" : isWeekend ? "text-amber-600" : "text-gray-400"}`}>
+                    <span className={`text-xs font-medium ${isToday ? "text-primary" : isWeekend ? "text-amber-600" : "text-gray-400"}`}>
                       {day.toLocaleDateString("en-IN", { weekday: "short" })}
                     </span>
-                    <span className={`text-sm font-bold leading-tight ${isToday ? "text-[#4A6741]" : isWeekend ? "text-amber-700" : "text-gray-700"}`}>
+                    <span className={`text-sm font-bold leading-tight ${isToday ? "text-primary" : isWeekend ? "text-amber-700" : "text-gray-700"}`}>
                       {day.getDate()}
                     </span>
-                    {isToday && <span className="text-[9px] text-[#4A6741] font-semibold uppercase tracking-wide">Today</span>}
+                    {isToday && <span className="text-[9px] text-primary font-semibold uppercase tracking-wide">Today</span>}
                   </div>
                 );
               })}
@@ -122,7 +122,7 @@ export default function OccupancyGridPanel() {
                     <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">{floor}</span>
                   </div>
                   <div style={{ width: DAYS * COL_W }} className="flex-shrink-0">
-                    <div style={{ width: COL_W, marginLeft: 0, height: "100%" }} className="bg-[#4A6741]/5 inline-block" />
+                    <div style={{ width: COL_W, marginLeft: 0, height: "100%" }} className="bg-primary/5 inline-block" />
                   </div>
                 </div>
 
@@ -155,7 +155,7 @@ export default function OccupancyGridPanel() {
                           <div
                             key={i}
                             style={{ position: "absolute", left: i * COL_W, width: COL_W, top: 0, bottom: 0 }}
-                            className={`border-r border-gray-100 ${i === 0 ? "bg-[#4A6741]/5" : ""}`}
+                            className={`border-r border-gray-100 ${i === 0 ? "bg-primary/5" : ""}`}
                           />
                         ))}
 
@@ -219,10 +219,10 @@ export default function OccupancyGridPanel() {
         <div className="flex flex-wrap items-center gap-5 px-5 py-3 border-t border-gray-100 bg-gray-50">
           <span className="text-xs text-gray-400 font-medium">Legend:</span>
           {[
-            { color: "bg-[#4A6741]", label: "Checked In" },
+            { color: "bg-primary", label: "Checked In" },
             { color: "bg-blue-500",  label: "Confirmed" },
             { color: "bg-gray-300",  label: "Checked Out" },
-            { color: "bg-[#4A6741]/5 border border-[#4A6741]/20", label: "Today" },
+            { color: "bg-primary/5 border border-primary/20", label: "Today" },
             { color: "bg-amber-50 border border-amber-200",       label: "Weekend" },
           ].map(({ color, label }) => (
             <div key={label} className="flex items-center gap-1.5">

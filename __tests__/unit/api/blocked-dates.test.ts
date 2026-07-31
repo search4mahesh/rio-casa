@@ -47,15 +47,15 @@ describe("GET /api/admin/blocked-dates", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(Array.isArray(body.blocked)).toBe(true);
-    expect(body.blocked).toHaveLength(1);
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data).toHaveLength(1);
   });
 
   it("returns empty array when no dates are blocked", async () => {
     const res = await GET(makeReq("GET"));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.blocked).toHaveLength(0);
+    expect(body.data).toHaveLength(0);
   });
 
   it("returns 401 without auth", async () => {
@@ -75,7 +75,7 @@ describe("POST /api/admin/blocked-dates", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.count).toBe(3);
+    expect(body.data).toBe(3);
   });
 
   it("returns count of 1 when startDate equals endDate (single day)", async () => {
@@ -83,7 +83,7 @@ describe("POST /api/admin/blocked-dates", () => {
     const res = await POST(makeReq("POST", { startDate: "2026-12-25", endDate: "2026-12-25" }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.count).toBe(1);
+    expect(body.data).toBe(1);
   });
 
   it("accepts an optional roomId for room-specific blocking", async () => {

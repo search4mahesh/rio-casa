@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { okMessage } from "@/lib/api-response";
 
 const CancelSchema = z.object({
   reason: z.string().optional(),
@@ -10,10 +10,9 @@ const CancelSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   const booking = await prisma.booking.findUnique({ where: { id: params.id } });
   if (!booking) {
@@ -61,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }),
     ]);
 
-    return NextResponse.json({ success: true, message: `Booking ${booking.bookingNumber} cancelled` });
+    return okMessage(`Booking ${booking.bookingNumber} cancelled`);
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });

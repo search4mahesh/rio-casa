@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok, failValidation } from "@/lib/api-response";
 
 const SLOT = z.enum(["morning", "evening", "night"]);
 const STATION = z.enum(["frontdesk", "housekeeping", "kitchen"]);
@@ -17,10 +17,8 @@ const UpsertSchema = z.object({
 
 // GET /api/admin/shifts?weekStart=YYYY-MM-DD — returns 7 days of assignments + all active staff
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
   const weekStartParam = searchParams.get("weekStart");
@@ -46,26 +44,18 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  return NextResponse.json({
-    success: true,
-    weekStart: weekStart.toISOString().split("T")[0],
-    weekEnd: weekEnd.toISOString().split("T")[0],
-    assignments,
-    staff: staffList,
-  });
+  return ok({ weekStart: weekStart.toISOString().split("T")[0], weekEnd: weekEnd.toISOString().split("T")[0], assignments, staff: staffList });
 }
 
 // POST /api/admin/shifts — upsert assignment by (date, slot, station)
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const parsed = UpsertSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const { date, slot, station, staffId, notes } = parsed.data;
@@ -83,5 +73,5 @@ export async function POST(req: NextRequest) {
     include: { staff: { select: { id: true, name: true, role: true } } },
   });
 
-  return NextResponse.json({ success: true, assignment });
+  return ok(assignment);
 }

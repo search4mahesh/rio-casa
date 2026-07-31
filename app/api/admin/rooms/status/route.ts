@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-
-async function requireAuth(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  return token ? await verifyAdminToken(token) : null;
-}
+import { requireAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/admin/rooms/status — all rooms with current status + today's due check-ins
 export async function GET(req: NextRequest) {
-  const staff = await requireAuth(req);
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -42,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   const enriched = rooms.map((r) => ({ ...r, dueCheckin: dueCheckinMap[r.id] ?? null }));
 
-  return NextResponse.json({ success: true, rooms: enriched });
+  return ok(enriched);
 }
 
 const PatchSchema = z.object({
@@ -54,8 +50,9 @@ const PatchSchema = z.object({
 
 // PATCH /api/admin/rooms/status — update room occupancy / housekeeping
 export async function PATCH(req: NextRequest) {
-  const staff = await requireAuth(req);
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   try {
     const body = await req.json();
@@ -88,7 +85,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, status });
+    return ok(status);
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAvailability, getAvailableRooms } from "@/lib/booking-service";
+import { ok } from "@/lib/api-response";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -31,14 +32,12 @@ export async function GET(req: NextRequest) {
   // Single-room check
   if (roomId) {
     const result = await checkAvailability(roomId, checkInDate, checkOutDate);
-    return NextResponse.json({ success: true, data: result });
+    return ok(result);
   }
 
   // All available rooms for the date range
   const rooms = await getAvailableRooms(checkInDate, checkOutDate, guests);
-  return NextResponse.json({
-    success: true,
-    data: rooms.map((r) => ({
+  return ok(rooms.map((r) => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
@@ -48,6 +47,5 @@ export async function GET(req: NextRequest) {
       images: r.images,
       roomType: r.roomType,
       extraBed: r.extraBed,
-    })),
-  });
+    })));
 }

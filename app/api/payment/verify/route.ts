@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifySignature } from "@/lib/razorpay";
 import { syncWithChannelManager } from "@/lib/booking-service";
 import { Resend } from "resend";
+import { ok } from "@/lib/api-response";
 
 const schema = z.object({
   bookingId: z.string(),
@@ -107,5 +108,5 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ success: true, data: { bookingId: booking.id, bookingNumber: booking.bookingNumber } });
+  return ok({ bookingId: booking.id, bookingNumber: booking.bookingNumber });
 }

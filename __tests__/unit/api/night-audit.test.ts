@@ -53,12 +53,12 @@ describe("GET /api/admin/night-audit/summary", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.summary).toHaveProperty("arrivals");
-    expect(body.summary).toHaveProperty("departures");
-    expect(body.summary).toHaveProperty("noShows");
-    expect(body.summary).toHaveProperty("inHouse");
-    expect(body.summary).toHaveProperty("todayRevenue");
-    expect(body.summary).toHaveProperty("date");
+    expect(body.data).toHaveProperty("arrivals");
+    expect(body.data).toHaveProperty("departures");
+    expect(body.data).toHaveProperty("noShows");
+    expect(body.data).toHaveProperty("inHouse");
+    expect(body.data).toHaveProperty("todayRevenue");
+    expect(body.data).toHaveProperty("date");
   });
 
   it("returns arrivals as a list with serialised dates", async () => {
@@ -69,7 +69,7 @@ describe("GET /api/admin/night-audit/summary", () => {
       .mockResolvedValueOnce([])              // noShows
       .mockResolvedValueOnce([]);             // inHouse
     const res = await GET(makeReq("GET"));
-    const { summary } = await res.json();
+    const { data: summary } = await res.json();
     expect(summary.arrivals).toHaveLength(1);
     expect(typeof summary.arrivals[0].checkIn).toBe("string");
   });
@@ -77,14 +77,14 @@ describe("GET /api/admin/night-audit/summary", () => {
   it("returns todayRevenue as 0 when no paid bookings today", async () => {
     mockAggregate.mockResolvedValueOnce({ _sum: { totalAmount: null } });
     const res = await GET(makeReq("GET"));
-    const { summary } = await res.json();
+    const { data: summary } = await res.json();
     expect(summary.todayRevenue).toBe(0);
   });
 
   it("returns todayRevenue as a number from aggregate result", async () => {
     mockAggregate.mockResolvedValueOnce({ _sum: { totalAmount: 25000 } });
     const res = await GET(makeReq("GET"));
-    const { summary } = await res.json();
+    const { data: summary } = await res.json();
     expect(summary.todayRevenue).toBe(25000);
   });
 });
@@ -113,9 +113,9 @@ describe("POST /api/admin/night-audit/run", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.result.noShowsMarked).toBe(2);
-    expect(body.result.arrivalsFlagged).toBe(1);
-    expect(body.result.departuresFlagged).toBe(1);
+    expect(body.data.noShowsMarked).toBe(2);
+    expect(body.data.arrivalsFlagged).toBe(1);
+    expect(body.data.departuresFlagged).toBe(1);
   });
 
   it("marks confirmed bookings with past checkIn as no_show", async () => {

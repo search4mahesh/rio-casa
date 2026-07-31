@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { z } from "zod";
+import { requireAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   roomId: z.string(),
@@ -11,9 +12,8 @@ const CreateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
   const status = searchParams.get("status");
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const count = await prisma.housekeepingLog.count({
       where: { maintenanceFlag: true, status: { not: "completed" } },
     });
-    return NextResponse.json({ success: true, count });
+    return ok(count);
   }
 
   const where: Record<string, unknown> = {};
@@ -45,13 +45,12 @@ export async function GET(req: NextRequest) {
     take: 100,
   });
 
-  return NextResponse.json({ success: true, tasks });
+  return ok(tasks);
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const parsed = CreateSchema.safeParse(body);
@@ -68,5 +67,5 @@ export async function POST(req: NextRequest) {
     include: { room: { select: { name: true, roomNumber: true } } },
   });
 
-  return NextResponse.json({ success: true, task });
+  return ok(task);
 }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { z } from "zod";
+import { requireAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 const UpdateSchema = z.object({
   status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
@@ -11,9 +12,8 @@ const UpdateSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
   const body = await req.json();
@@ -32,5 +32,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { room: { select: { name: true, roomNumber: true } } },
   });
 
-  return NextResponse.json({ success: true, task });
+  return ok(task);
 }

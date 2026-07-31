@@ -65,16 +65,16 @@ describe("GET /api/admin/reviews", () => {
     const res = await GET(makeReq("GET"));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.kpi.total).toBe(10);
-    expect(body.kpi.avgRating).toBe(4.5);
-    expect(body.kpi.respondedPct).toBe(60);
+    expect(body.data.kpi.total).toBe(10);
+    expect(body.data.kpi.avgRating).toBe(4.5);
+    expect(body.data.kpi.respondedPct).toBe(60);
   });
 
   it("returns avgRating: 0 when there are no reviews", async () => {
     const res = await GET(makeReq("GET"));
     const body = await res.json();
-    expect(body.kpi.avgRating).toBe(0);
-    expect(body.kpi.respondedPct).toBe(0);
+    expect(body.data.kpi.avgRating).toBe(0);
+    expect(body.data.kpi.respondedPct).toBe(0);
   });
 
   it("filters by platform", async () => {

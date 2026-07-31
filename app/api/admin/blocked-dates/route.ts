@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok, failValidation } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   roomId: z.string().nullable().optional(),
@@ -13,10 +13,8 @@ const CreateSchema = z.object({
 
 // GET /api/admin/blocked-dates — upcoming blocked dates
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
+  const auth = await requireRole(req, "frontdesk");
+  if (!auth.ok) return auth.response;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -28,20 +26,18 @@ export async function GET(req: NextRequest) {
     take: 500,
   });
 
-  return NextResponse.json({ success: true, blocked });
+  return ok(blocked);
 }
 
 // POST /api/admin/blocked-dates — block a date range for a room (or all rooms)
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
+  const auth = await requireRole(req, "frontdesk");
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const { roomId, startDate, endDate, reason } = parsed.data;
@@ -73,5 +69,5 @@ export async function POST(req: NextRequest) {
     })),
   });
 
-  return NextResponse.json({ success: true, count: dates.length });
+  return ok(dates.length);
 }

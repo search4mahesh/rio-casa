@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Task = {
   id: string;
@@ -41,7 +42,7 @@ export default function HousekeepingPage() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceCount, setMaintenanceCount] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -60,18 +61,14 @@ export default function HousekeepingPage() {
     const taskData = await taskRes.json();
     const roomData = await roomRes.json();
     const countData = await countRes.json();
-    if (taskData.success) setTasks(taskData.tasks);
-    if (roomData.success) setRooms(roomData.rooms);
-    if (countData.success) setMaintenanceCount(countData.count);
+    if (taskData.success) setTasks(taskData.data);
+    if (roomData.success) setRooms(roomData.data);
+    if (countData.success) setMaintenanceCount(countData.data);
     setLoading(false);
   }, [statusFilter, maintenanceMode]);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3000);
-  }
 
   async function updateStatus(id: string, status: string) {
     setActionLoading(id + status);
@@ -141,7 +138,7 @@ export default function HousekeepingPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+              className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
             >
               <option value="all">All Status</option>
               {Object.entries(STATUS_CONFIG).map(([k, v]) => (
@@ -152,7 +149,7 @@ export default function HousekeepingPage() {
 
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 btn-admin"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -329,11 +326,7 @@ export default function HousekeepingPage() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
 
       {showAdd && <AddTaskModal rooms={rooms} onClose={() => { setShowAdd(false); load(); }} />}
     </div>
@@ -379,7 +372,7 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Room *</label>
               <select required value={form.roomId} onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="">Select room</option>
                 {rooms.map((r) => (
                   <option key={r.id} value={r.id}>{r.roomNumber ? `#${r.roomNumber} — ` : ""}{r.name}</option>
@@ -390,7 +383,7 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Task Type *</label>
               <select value={form.taskType} onChange={(e) => setForm((f) => ({ ...f, taskType: e.target.value }))}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="cleaning">Cleaning</option>
                 <option value="inspection">Inspection</option>
                 <option value="maintenance">Maintenance</option>
@@ -403,14 +396,14 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
               <input type="text" value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
                 placeholder="Staff name (optional)"
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
               <textarea rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 placeholder="Any specific instructions…"
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] resize-none" />
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -419,7 +412,7 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
                 Cancel
               </button>
               <button type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Adding…" : "Add Task"}
               </button>
             </div>

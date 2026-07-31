@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Recipient = { guestName: string; phone: string | null; email: string | null; bookingNumber?: string; checkIn?: string; roomName?: string };
 
@@ -48,12 +49,11 @@ export default function CommunicationsPanel() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [sendResult, setSendResult] = useState<SendResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   // Log state
   const [logs, setLogs] = useState<Log[]>([]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   function buildFilter() {
     if (filterType === "upcoming-arrivals") return { type: filterType, days };
@@ -78,7 +78,7 @@ export default function CommunicationsPanel() {
       body: JSON.stringify({ action: "preview", channel, filter: buildFilter(), subject, body }),
     });
     const data = await res.json();
-    if (data.success) setPreview(data.preview);
+    if (data.success) setPreview(data.data);
     else showToast(data.error ?? "Preview failed");
     setLoading(false);
   }
@@ -106,7 +106,7 @@ export default function CommunicationsPanel() {
   const loadLogs = useCallback(async () => {
     const res = await fetch("/api/admin/communications");
     const data = await res.json();
-    if (data.success) setLogs(data.logs);
+    if (data.success) setLogs(data.data);
   }, []);
 
   useEffect(() => { if (tab === "log") loadLogs(); }, [tab, loadLogs]);
@@ -137,7 +137,7 @@ export default function CommunicationsPanel() {
                 {(["email", "whatsapp"] as const).map((c) => (
                   <button key={c} onClick={() => setChannel(c)}
                     className={`flex-1 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
-                      channel === c ? "border-[#4A6741] bg-[#4A6741]/5 text-[#4A6741]" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                      channel === c ? "border-primary bg-primary/5 text-primary" : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}>
                     {c === "email" ? "Email (via Resend)" : "WhatsApp (click-to-chat)"}
                   </button>
@@ -149,7 +149,7 @@ export default function CommunicationsPanel() {
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
               <label className="block text-sm font-semibold text-gray-700">Audience</label>
               <select value={filterType} onChange={(e) => setFilterType(e.target.value as typeof filterType)}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 {Object.entries(FILTER_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
 
@@ -157,7 +157,7 @@ export default function CommunicationsPanel() {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Within next N days</label>
                   <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Number(e.target.value))}
-                    className="w-32 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                    className="w-32 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
               )}
 
@@ -204,7 +204,7 @@ export default function CommunicationsPanel() {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Subject *</label>
                   <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200}
-                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
               )}
 
@@ -212,7 +212,7 @@ export default function CommunicationsPanel() {
                 <label className="block text-xs text-gray-500 mb-1">Body *</label>
                 <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} maxLength={4000}
                   placeholder="Hi {{guestName}}, ..."
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] resize-none" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
                 <div className="text-xs text-gray-400 mt-1">
                   Merge tags: <code className="bg-gray-100 px-1 rounded">{`{{guestName}}`}</code>{" "}
                   <code className="bg-gray-100 px-1 rounded">{`{{checkIn}}`}</code>{" "}
@@ -228,7 +228,7 @@ export default function CommunicationsPanel() {
                 {loading ? "Loading…" : "Preview"}
               </button>
               <button onClick={doSend} disabled={loading || !preview || preview.reachableCount === 0}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Sending…" : preview ? `Send to ${preview.reachableCount}` : "Send"}
               </button>
             </div>
@@ -352,7 +352,7 @@ export default function CommunicationsPanel() {
         </div>
       )}
 
-      {toast && <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">{toast}</div>}
+      <Toast message={toast} />
     </div>
   );
 }

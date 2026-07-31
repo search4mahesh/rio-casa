@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Review = {
   id: string; platform: string; guestName: string; rating: number;
@@ -44,7 +45,7 @@ export default function ReviewsPanel() {
   const [platformFilter, setPlatformFilter] = useState("all");
   const [respondedFilter, setRespondedFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,13 +54,12 @@ export default function ReviewsPanel() {
     if (respondedFilter !== "all") params.set("responded", respondedFilter);
     const res = await fetch(`/api/admin/reviews?${params}`);
     const data = await res.json();
-    if (data.success) { setReviews(data.reviews); setKpi(data.kpi); }
+    if (data.success) { setReviews(data.data.reviews); setKpi(data.data.kpi); }
     setLoading(false);
   }, [platformFilter, respondedFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   async function toggleResponded(id: string, current: boolean) {
     const res = await fetch(`/api/admin/reviews/${id}`, {
@@ -85,7 +85,7 @@ export default function ReviewsPanel() {
       {/* Header */}
       <div className="flex items-center justify-end gap-3 mb-6">
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg">
+          className="flex items-center gap-2 px-4 py-2 btn-admin">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
@@ -106,21 +106,21 @@ export default function ReviewsPanel() {
             <span className="text-xl"><Stars rating={Math.round(kpi.avgRating)} /></span>
           </div>
         </div>
-        <div className="bg-white rounded-xl border-2 border-[#4A6741]/30 p-4">
+        <div className="bg-white rounded-xl border-2 border-primary/30 p-4">
           <div className="text-xs text-gray-500 uppercase tracking-wide">Responded</div>
-          <div className="text-2xl font-bold text-[#4A6741] mt-1">{kpi.respondedPct.toFixed(0)}%</div>
+          <div className="text-2xl font-bold text-primary mt-1">{kpi.respondedPct.toFixed(0)}%</div>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex gap-3 mb-5">
         <select value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)}
-          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
           <option value="all">All Platforms</option>
           {Object.entries(PLATFORM_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <select value={respondedFilter} onChange={(e) => setRespondedFilter(e.target.value)}
-          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
           <option value="all">All Status</option>
           <option value="false">Pending Response</option>
           <option value="true">Responded</option>
@@ -162,7 +162,7 @@ export default function ReviewsPanel() {
                   )}
                   {r.reviewUrl && (
                     <a href={r.reviewUrl} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-[#4A6741] hover:underline">Open ↗</a>
+                      className="text-xs text-primary hover:underline">Open ↗</a>
                   )}
                   <button onClick={() => handleDelete(r.id)} className="text-xs text-red-500 hover:underline">Delete</button>
                 </div>
@@ -174,7 +174,7 @@ export default function ReviewsPanel() {
         </div>
       )}
 
-      {toast && <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">{toast}</div>}
+      <Toast message={toast} />
 
       {showAdd && <AddReviewModal onClose={() => { setShowAdd(false); load(); }} />}
     </div>
@@ -294,7 +294,7 @@ function AddReviewModal({ onClose }: { onClose: () => void }) {
               <button type="button" onClick={onClose}
                 className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
               <button type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Saving…" : "Log Review"}
               </button>
             </div>

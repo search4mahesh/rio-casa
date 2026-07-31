@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runNightAudit } from "@/lib/booking-service";
+import { ok } from "@/lib/api-response";
 
 // Vercel Cron: midnight daily (see vercel.json)
 export async function GET(req: NextRequest) {
@@ -9,5 +10,5 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await runNightAudit();
-  return NextResponse.json({ success: true, ...result, timestamp: new Date().toISOString() });
+  return ok({ ...result, timestamp: new Date().toISOString() });
 }

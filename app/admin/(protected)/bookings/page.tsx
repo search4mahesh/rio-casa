@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Booking = {
   id: string;
@@ -60,7 +61,7 @@ export default function BookingsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   // Filters
   const [status, setStatus] = useState("all");
@@ -78,18 +79,14 @@ export default function BookingsPage() {
     const res = await fetch(`/api/admin/bookings?${params}`);
     const data = await res.json();
     if (data.success) {
-      setBookings(data.bookings);
-      setTotal(data.total);
+      setBookings(data.data.bookings);
+      setTotal(data.data.total);
     }
     setLoading(false);
   }, [page, status, source, search]);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3000);
-  }
 
   async function doAction(id: string, action: "checkin" | "checkout" | "cancel") {
     setActionLoading(id + action);
@@ -118,7 +115,7 @@ export default function BookingsPage() {
         </div>
         <button
           onClick={() => setShowWalkIn(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 btn-admin"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -137,12 +134,12 @@ export default function BookingsPage() {
           onKeyDown={(e) => {
             if (e.key === "Enter") { setSearch(searchInput); setPage(1); }
           }}
-          className="flex-1 min-w-40 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+          className="flex-1 min-w-40 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
         >
           <option value="all">All Status</option>
           <option value="confirmed">Confirmed</option>
@@ -154,7 +151,7 @@ export default function BookingsPage() {
         <select
           value={source}
           onChange={(e) => { setSource(e.target.value); setPage(1); }}
-          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+          className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
         >
           <option value="all">All Sources</option>
           {Object.entries(SOURCE_LABEL).map(([k, v]) => (
@@ -163,7 +160,7 @@ export default function BookingsPage() {
         </select>
         <button
           onClick={() => { setSearch(searchInput); setPage(1); }}
-          className="px-3 py-2 text-sm bg-[#4A6741] text-white rounded-lg hover:bg-[#3d5636] transition-colors"
+          className="px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-600 transition-colors"
         >
           Search
         </button>
@@ -199,7 +196,7 @@ export default function BookingsPage() {
                 bookings.map((b) => (
                   <tr key={b.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <Link href={`/admin/bookings/${b.id}`} className="font-mono text-[#4A6741] hover:underline">
+                      <Link href={`/admin/bookings/${b.id}`} className="font-mono text-primary hover:underline">
                         {b.bookingNumber}
                       </Link>
                     </td>
@@ -299,11 +296,7 @@ export default function BookingsPage() {
       </div>
 
       {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
 
       {/* Walk-in modal */}
       {showWalkIn && <WalkInModal onClose={() => { setShowWalkIn(false); load(); }} />}
@@ -331,7 +324,7 @@ function WalkInModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     fetch("/api/admin/rooms/status").then((r) => r.json()).then((d) => {
-      if (d.success) setRooms(d.rooms);
+      if (d.success) setRooms(d.data);
     });
   }, []);
 
@@ -368,7 +361,7 @@ function WalkInModal({ onClose }: { onClose: () => void }) {
       {...props}
       value={String(form[props.name])}
       onChange={(e) => setForm((f) => ({ ...f, [props.name]: e.target.value }))}
-      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
     />
   );
 
@@ -392,7 +385,7 @@ function WalkInModal({ onClose }: { onClose: () => void }) {
                 required
                 value={form.roomId}
                 onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
               >
                 <option value="">Select a room</option>
                 {rooms.map((r) => (
@@ -420,7 +413,7 @@ function WalkInModal({ onClose }: { onClose: () => void }) {
                 <select
                   value={form.paymentMethod}
                   onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
                 >
                   <option value="cash">Cash</option>
                   <option value="upi">UPI</option>
@@ -435,7 +428,7 @@ function WalkInModal({ onClose }: { onClose: () => void }) {
                 rows={2}
                 value={form.specialRequests}
                 onChange={(e) => setForm((f) => ({ ...f, specialRequests: e.target.value }))}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] resize-none"
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                 placeholder="Any special requests…"
               />
             ))}
@@ -451,7 +444,7 @@ function WalkInModal({ onClose }: { onClose: () => void }) {
             <button
               onClick={handleSubmit as unknown as React.MouseEventHandler}
               disabled={loading}
-              className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+              className="flex-1 py-2.5 btn-admin"
             >
               {loading ? "Creating…" : "Create Booking"}
             </button>

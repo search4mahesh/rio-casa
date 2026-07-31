@@ -4,13 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { hasMinRole, PAGE_MIN_ROLE } from "@/lib/rbac-utils";
 import type { Role } from "@/lib/rbac-utils";
-
-const ROLE_LABEL: Record<string, string> = {
-  owner:        "Owner",
-  manager:      "Manager",
-  frontdesk:    "Front Desk",
-  housekeeping: "Housekeeping",
-};
+import { ROLE_LABEL } from "@/lib/labels";
 
 export default function RoleGuard({
   role,
@@ -65,7 +59,7 @@ function AccessDenied({ minRole }: { minRole: Role }) {
         </p>
         <Link
           href="/admin/dashboard"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 btn-admin"
         >
           <svg
             className="w-4 h-4"

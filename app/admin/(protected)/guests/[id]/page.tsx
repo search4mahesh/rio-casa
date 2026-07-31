@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Booking = {
   id: string; bookingNumber: string;
@@ -64,7 +65,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
   const [saving, setSaving] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
   const [notes, setNotes] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
   const [form, setForm] = useState<Partial<Guest>>({});
 
   const load = useCallback(async () => {
@@ -72,15 +73,14 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
     const res = await fetch(`/api/admin/guests/${id}`);
     const data = await res.json();
     if (data.success) {
-      setGuest(data.guest);
-      setNotes(data.guest.notes ?? "");
+      setGuest(data.data);
+      setNotes(data.data.notes ?? "");
     }
     setLoading(false);
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   function startEdit() {
     if (!guest) return;
@@ -131,7 +131,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
   if (loading) return <div className="p-6 text-center text-gray-400 py-20">Loading guest…</div>;
   if (!guest) return (
     <div className="p-6">
-      <Link href="/admin/guests" className="text-sm text-[#4A6741] hover:underline">← Back to Guests</Link>
+      <Link href="/admin/guests" className="text-sm text-primary hover:underline">← Back to Guests</Link>
       <div className="text-center py-20 text-gray-400">Guest not found</div>
     </div>
   );
@@ -139,7 +139,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
   return (
     <div className="p-6 max-w-6xl">
       {/* Breadcrumb */}
-      <Link href="/admin/guests" className="text-sm text-[#4A6741] hover:underline inline-flex items-center gap-1 mb-4">
+      <Link href="/admin/guests" className="text-sm text-primary hover:underline inline-flex items-center gap-1 mb-4">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
@@ -149,7 +149,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-[#4A6741] flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+          <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
             {guest.firstName.charAt(0)}{guest.lastName.charAt(0)}
           </div>
           <div>
@@ -177,9 +177,9 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
 
       {/* Lifetime stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white border-2 border-[#4A6741]/30 rounded-xl p-4">
+        <div className="bg-white border-2 border-primary/30 rounded-xl p-4">
           <div className="text-xs text-gray-500 uppercase tracking-wide">Total Stays</div>
-          <div className="text-2xl font-bold text-[#4A6741] mt-1">{guest.totalStays}</div>
+          <div className="text-2xl font-bold text-primary mt-1">{guest.totalStays}</div>
         </div>
         <div className="bg-white border-2 border-amber-200 rounded-xl p-4">
           <div className="text-xs text-gray-500 uppercase tracking-wide">Lifetime Value</div>
@@ -207,74 +207,74 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">First Name *</label>
                     <input value={form.firstName ?? ""} onChange={f("firstName")} required
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Last Name *</label>
                     <input value={form.lastName ?? ""} onChange={f("lastName")} required
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Phone *</label>
                   <input value={form.phone ?? ""} onChange={f("phone")} required
-                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Alt Phone</label>
                   <input value={form.altPhone ?? ""} onChange={f("altPhone")}
-                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Email</label>
                   <input type="email" value={form.email ?? ""} onChange={f("email")}
-                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Address</label>
                   <input value={form.address ?? ""} onChange={f("address")}
-                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">City</label>
                     <input value={form.city ?? ""} onChange={f("city")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">State</label>
                     <input value={form.state ?? ""} onChange={f("state")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Pincode</label>
                     <input value={form.pincode ?? ""} onChange={f("pincode")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Country</label>
                     <input value={form.country ?? ""} onChange={f("country")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">GSTIN</label>
                     <input value={form.gstin ?? ""} onChange={f("gstin")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Company Name</label>
                     <input value={form.companyName ?? ""} onChange={f("companyName")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button onClick={() => setEditing(false)} className="flex-1 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
                   <button onClick={saveEdit} disabled={saving}
-                    className="flex-1 py-2 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg">
+                    className="flex-1 py-2 btn-admin">
                     {saving ? "Saving…" : "Save Changes"}
                   </button>
                 </div>
@@ -315,7 +315,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
               <h2 className="text-sm font-semibold text-gray-700">Internal Notes</h2>
               {notes !== (guest.notes ?? "") && (
                 <button onClick={saveNotes} disabled={savingNotes}
-                  className="px-2.5 py-1 text-xs bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white rounded-lg transition-colors">
+                  className="px-2.5 py-1 text-xs btn-admin">
                   {savingNotes ? "…" : "Save"}
                 </button>
               )}
@@ -326,7 +326,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
               onBlur={() => { if (notes !== (guest.notes ?? "")) saveNotes(); }}
               rows={5}
               placeholder='e.g. "Prefers quiet room. Vegetarian. Birthday in June."'
-              className="w-full text-sm px-3 py-2 border border-gray-200 bg-yellow-50/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] resize-none" />
+              className="w-full text-sm px-3 py-2 border border-gray-200 bg-yellow-50/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
           </section>
         </div>
 
@@ -355,7 +355,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
                   {guest.bookings.map((b) => (
                     <tr key={b.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5">
-                        <Link href={`/admin/bookings/${b.id}`} className="font-mono text-xs text-[#4A6741] hover:underline">{b.bookingNumber}</Link>
+                        <Link href={`/admin/bookings/${b.id}`} className="font-mono text-xs text-primary hover:underline">{b.bookingNumber}</Link>
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-gray-800">{b.room.roomNumber ? `#${b.room.roomNumber}` : b.room.name}</div>
@@ -397,7 +397,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
                 <tbody className="divide-y divide-gray-100">
                   {guest.invoices.map((inv) => (
                     <tr key={inv.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-mono text-xs text-[#4A6741]">{inv.invoiceNumber}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-primary">{inv.invoiceNumber}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{fmtDate(inv.invoiceDate)}</td>
                       <td className="px-4 py-2.5 text-right font-medium text-gray-800">{fmtCurrency(inv.totalAmount)}</td>
                       <td className="px-4 py-2.5">
@@ -405,7 +405,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <Link href={`/admin/invoices/${inv.id}/print`} target="_blank"
-                          className="text-xs text-[#4A6741] hover:underline">View</Link>
+                          className="text-xs text-primary hover:underline">View</Link>
                       </td>
                     </tr>
                   ))}
@@ -416,9 +416,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
         </div>
       </div>
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">{toast}</div>
-      )}
+      <Toast message={toast} />
     </div>
   );
 }

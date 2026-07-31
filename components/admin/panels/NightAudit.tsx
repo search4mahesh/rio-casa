@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type AuditBooking = {
   id: string; bookingNumber: string; guestName: string; guestPhone: string;
@@ -73,7 +74,7 @@ function BookingTable({ bookings, emptyMsg }: { bookings: AuditBooking[]; emptyM
             <td className="px-4 py-3 font-medium text-gray-800">₹{b.totalAmount.toLocaleString("en-IN")}</td>
             <td className="px-4 py-3">
               <Link href={`/admin/bookings/${b.id}`}
-                className="px-2.5 py-1 text-xs text-[#4A6741] border border-[#4A6741]/30 rounded-lg hover:bg-[#4A6741]/5 transition-colors">
+                className="px-2.5 py-1 text-xs text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors">
                 View
               </Link>
             </td>
@@ -89,14 +90,14 @@ export default function NightAuditPanel() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
   const [activeTab, setActiveTab] = useState<"arrivals" | "departures" | "inHouse" | "noShows">("arrivals");
 
   async function loadSummary() {
     setLoading(true);
     const res = await fetch("/api/admin/night-audit/summary");
     const data = await res.json();
-    if (data.success) setSummary(data.summary);
+    if (data.success) setSummary(data.data);
     setLoading(false);
   }
 
@@ -107,13 +108,11 @@ export default function NightAuditPanel() {
     const res = await fetch("/api/admin/night-audit/run", { method: "POST" });
     const data = await res.json();
     if (data.success) {
-      setResult(data.result);
-      setToast(`Audit complete — ${data.result.noShowsMarked} no-show${data.result.noShowsMarked !== 1 ? "s" : ""} marked`);
-      setTimeout(() => setToast(""), 4000);
+      setResult(data.data);
+      showToast(`Audit complete — ${data.data.noShowsMarked} no-show${data.data.noShowsMarked !== 1 ? "s" : ""} marked`);
       await loadSummary();
     } else {
-      setToast(data.error ?? "Audit failed");
-      setTimeout(() => setToast(""), 4000);
+      showToast(data.error ?? "Audit failed");
     }
     setRunning(false);
   }
@@ -123,7 +122,7 @@ export default function NightAuditPanel() {
   const TABS = [
     { key: "arrivals",   label: "Arrivals",   count: summary?.arrivals.length ?? 0,   color: "text-blue-600" },
     { key: "departures", label: "Departures", count: summary?.departures.length ?? 0,  color: "text-orange-600" },
-    { key: "inHouse",    label: "In House",   count: summary?.inHouse.length ?? 0,     color: "text-[#4A6741]" },
+    { key: "inHouse",    label: "In House",   count: summary?.inHouse.length ?? 0,     color: "text-primary" },
     { key: "noShows",    label: "No Shows",   count: summary?.noShows.length ?? 0,     color: "text-red-600" },
   ] as const;
 
@@ -139,7 +138,7 @@ export default function NightAuditPanel() {
             Refresh
           </button>
           <button onClick={runAudit} disabled={running}
-            className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+            className="flex items-center gap-2 px-4 py-2 btn-admin">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -189,7 +188,7 @@ export default function NightAuditPanel() {
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === tab.key
-                      ? `border-[#4A6741] ${tab.color}`
+                      ? `border-primary ${tab.color}`
                       : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   }`}>
                   {tab.label}
@@ -219,11 +218,7 @@ export default function NightAuditPanel() {
         </>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
     </div>
   );
 }

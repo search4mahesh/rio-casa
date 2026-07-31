@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
 import { z } from "zod";
+import { requireRole } from "@/lib/api-auth";
+import { ok, okEmpty, failValidation } from "@/lib/api-response";
 
 const UpdateSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -19,15 +19,13 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const parsed = UpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const { date, ...rest } = parsed.data;
@@ -39,18 +37,16 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json({ success: true, data: expense });
+  return ok(expense);
 }
 
 export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   await prisma.expense.delete({ where: { id: params.id } });
-  return NextResponse.json({ success: true });
+  return okEmpty();
 }

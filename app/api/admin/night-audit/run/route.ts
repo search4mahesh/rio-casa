@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // POST /api/admin/night-audit/run — execute the night audit
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -65,12 +64,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({
-    success: true,
-    result: {
+  return ok({
       noShowsMarked: noShows.count,
       arrivalsFlagged: todayArrivals.length,
       departuresFlagged: dueDepartures.length,
-    },
-  });
+    });
 }

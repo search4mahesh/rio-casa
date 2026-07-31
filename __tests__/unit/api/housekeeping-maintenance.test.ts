@@ -72,14 +72,14 @@ describe("GET /api/admin/housekeeping — ?maintenanceCount=true", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.count).toBe(5);
+    expect(body.data).toBe(5);
     expect(body).not.toHaveProperty("tasks");
   });
 
   it("returns 0 when there are no open maintenance issues", async () => {
     mockCount.mockResolvedValueOnce(0);
     const res = await GET(makeGetReq({ maintenanceCount: "true" }));
-    expect((await res.json()).count).toBe(0);
+    expect((await res.json()).data).toBe(0);
   });
 
   it("calls prisma.count — not findMany — for the count query", async () => {
@@ -106,8 +106,8 @@ describe("GET /api/admin/housekeeping — ?maintenance=true", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.tasks).toHaveLength(1);
-    expect(body.tasks[0].maintenanceFlag).toBe(true);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].maintenanceFlag).toBe(true);
   });
 
   it("queries with maintenanceFlag:true filter", async () => {
@@ -123,7 +123,7 @@ describe("GET /api/admin/housekeeping — ?maintenance=true", () => {
   it("returns empty list when all maintenance issues are resolved", async () => {
     mockFindMany.mockResolvedValueOnce([]);
     const res = await GET(makeGetReq({ maintenance: "true" }));
-    expect((await res.json()).tasks).toHaveLength(0);
+    expect((await res.json()).data).toHaveLength(0);
   });
 });
 

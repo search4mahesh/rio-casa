@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type Promo = {
   id: string; code: string; name?: string | null;
@@ -22,19 +23,18 @@ export default function PromosPanel() {
   const [editing, setEditing] = useState<Promo | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/admin/promos");
     const data = await res.json();
-    if (data.success) setPromos(data.promos);
+    if (data.success) setPromos(data.data);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3500); }
 
   async function toggleActive(promo: Promo) {
     setTogglingId(promo.id);
@@ -70,7 +70,7 @@ export default function PromosPanel() {
     <div className="p-6 max-w-6xl">
       <div className="flex items-center justify-end gap-3 mb-6">
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors">
+          className="flex items-center gap-2 px-4 py-2 btn-admin">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
@@ -168,9 +168,7 @@ export default function PromosPanel() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">{toast}</div>
-      )}
+      <Toast message={toast} />
 
       {(showAdd || editing) && (
         <PromoModal promo={editing} onClose={() => { setShowAdd(false); setEditing(null); load(); }} />
@@ -247,13 +245,13 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
                 <label className="block text-sm font-medium text-gray-700 mb-1">Code *</label>
                 <input required value={form.code} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
                   disabled={!!promo} placeholder="SUMMER20"
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] font-mono disabled:bg-gray-50"
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-mono disabled:bg-gray-50"
                   pattern="[A-Z0-9_-]+" title="Uppercase letters, numbers, _ and - only" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Internal Name</label>
                 <input value={form.name} onChange={f("name")} placeholder="e.g. Summer promo 2026"
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
@@ -261,7 +259,7 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type *</label>
                 <select required value={form.discountType} onChange={f("discountType")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                   <option value="percentage">Percentage (%)</option>
                   <option value="flat">Flat Amount (₹)</option>
                 </select>
@@ -271,7 +269,7 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
                   {form.discountType === "percentage" ? "Discount (%)" : "Discount (₹)"} *
                 </label>
                 <input required type="number" min="0.01" step="0.01" value={form.discountValue} onChange={f("discountValue")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
@@ -279,7 +277,7 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Max Discount Cap (₹)</label>
                 <input type="number" min="0" step="0.01" value={form.maxDiscount} onChange={f("maxDiscount")} placeholder="Leave blank for no cap"
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             )}
 
@@ -287,12 +285,12 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Valid From *</label>
                 <input required type="date" value={form.validFrom} onChange={f("validFrom")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Valid To *</label>
                 <input required type="date" min={form.validFrom} value={form.validTo} onChange={f("validTo")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
@@ -300,30 +298,30 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Min Nights</label>
                 <input type="number" min="1" value={form.minNights} onChange={f("minNights")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Min Amount (₹)</label>
                 <input type="number" min="0" value={form.minAmount} onChange={f("minAmount")}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Usage Limit</label>
                 <input type="number" min="1" value={form.usageLimit} onChange={f("usageLimit")} placeholder="Unlimited"
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]" />
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <input type="checkbox" id="promoActive" checked={form.isActive}
-                onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} className="accent-[#4A6741]" />
+                onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} className="accent-primary" />
               <label htmlFor="promoActive" className="text-sm text-gray-700">Active (bookings can use this code)</label>
             </div>
 
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
               <button type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Saving…" : promo ? "Save Changes" : "Add Promo Code"}
               </button>
             </div>

@@ -34,7 +34,7 @@ export default function HubTabs({
                 href={`${basePath}?tab=${tab.slug}`}
                 className={`whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   isActive
-                    ? "border-[#4A6741] text-[#4A6741]"
+                    ? "border-primary text-primary"
                     : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300"
                 }`}
               >

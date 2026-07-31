@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 const WalkInSchema = z.object({
   roomId: z.string(),
@@ -20,10 +20,9 @@ const WalkInSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
+  const auth = await requireRole(req, "frontdesk");
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   try {
     const body = await req.json();
@@ -118,7 +117,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, booking });
+    return ok(booking);
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });

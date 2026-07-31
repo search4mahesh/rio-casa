@@ -39,7 +39,7 @@ export default function GuestsPage() {
     if (search) params.set("search", search);
     const res = await fetch(`/api/admin/guests?${params}`);
     const data = await res.json();
-    if (data.success) { setGuests(data.guests); setTotal(data.total); }
+    if (data.success) { setGuests(data.data.guests); setTotal(data.data.total); }
     setLoading(false);
   }, [page, search]);
 
@@ -64,11 +64,11 @@ export default function GuestsPage() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInput); setPage(1); } }}
-          className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+          className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <button
           onClick={() => { setSearch(searchInput); setPage(1); }}
-          className="px-4 py-2 text-sm bg-[#4A6741] text-white rounded-lg hover:bg-[#3d5636] transition-colors"
+          className="px-4 py-2 btn-admin"
         >
           Search
         </button>
@@ -97,7 +97,7 @@ export default function GuestsPage() {
               ) : guests.map((g) => (
                 <tr key={g.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <Link href={`/admin/guests/${g.id}`} className="font-medium text-gray-900 hover:text-[#4A6741] hover:underline">
+                    <Link href={`/admin/guests/${g.id}`} className="font-medium text-gray-900 hover:text-primary hover:underline">
                       {g.firstName} {g.lastName}
                     </Link>
                     {g.email && <div className="text-xs text-gray-500">{g.email}</div>}

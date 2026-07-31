@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 const SOURCE_LABEL: Record<string, string> = {
   website: "Website",
@@ -25,10 +25,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
   // Default: current month
@@ -111,9 +109,7 @@ export async function GET(req: NextRequest) {
     expenses: dayExpenseMap.get(day) ?? 0,
   }));
 
-  return NextResponse.json({
-    success: true,
-    data: {
+  return ok({
       month,
       revenue: {
         total: revenueTotal,
@@ -143,6 +139,5 @@ export async function GET(req: NextRequest) {
       },
       net: revenueTotal - expenseTotal,
       dailyBreakdown,
-    },
-  });
+    });
 }

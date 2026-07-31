@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type BlockedDate = {
   id: string;
@@ -18,7 +19,7 @@ export default function BlockedDatesPanel() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,17 +29,13 @@ export default function BlockedDatesPanel() {
     ]);
     const blockedData = await blockedRes.json();
     const roomsData = await roomsRes.json();
-    if (blockedData.success) setBlocked(blockedData.blocked);
-    if (roomsData.success) setRooms(roomsData.rooms);
+    if (blockedData.success) setBlocked(blockedData.data);
+    if (roomsData.success) setRooms(roomsData.data);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3500);
-  }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -64,7 +61,7 @@ export default function BlockedDatesPanel() {
       <div className="flex items-center justify-end gap-3 mb-6">
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 btn-admin"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -154,11 +151,7 @@ export default function BlockedDatesPanel() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
 
       {showAdd && <BlockDatesModal rooms={rooms} onClose={() => { setShowAdd(false); load(); }} />}
     </div>
@@ -221,7 +214,7 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
               <select
                 value={form.roomId}
                 onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
               >
                 <option value="">All Rooms</option>
                 {rooms.map((r) => (
@@ -241,7 +234,7 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
                   min={today}
                   value={form.startDate}
                   onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
               <div>
@@ -252,7 +245,7 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
                   min={form.startDate || today}
                   value={form.endDate}
                   onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             </div>
@@ -272,7 +265,7 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
                 onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
                 placeholder="e.g. Private event, maintenance, seasonal closure…"
                 maxLength={200}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
@@ -282,7 +275,7 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
                 Cancel
               </button>
               <button type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Blocking…" : "Block Dates"}
               </button>
             </div>

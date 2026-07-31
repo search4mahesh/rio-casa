@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok, failValidation } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   platform: z.enum(["google", "booking_com", "tripadvisor", "mmt", "other"]),
@@ -16,10 +16,8 @@ const CreateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
   const platform = searchParams.get("platform");
@@ -45,27 +43,21 @@ export async function GET(req: NextRequest) {
     prisma.reviewLog.aggregate({ _avg: { rating: true } }),
   ]);
 
-  return NextResponse.json({
-    success: true,
-    reviews,
-    kpi: {
+  return ok({ reviews, kpi: {
       total: totalCount,
       avgRating: avgRatingResult._avg.rating ?? 0,
       respondedPct: totalCount > 0 ? (respondedCount / totalCount) * 100 : 0,
-    },
-  });
+    } });
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const review = await prisma.reviewLog.create({
@@ -82,5 +74,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true, review });
+  return ok(review);
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type BookingDetail = {
   id: string;
@@ -74,23 +75,19 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
   const [cancelReason, setCancelReason] = useState("");
   const [showCancel, setShowCancel] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/admin/bookings/${id}`);
     const data = await res.json();
-    if (data.success) setBooking(data.booking);
+    if (data.success) setBooking(data.data);
     setLoading(false);
   }
 
   useEffect(() => { load(); }, [id]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3000);
-  }
 
   async function doAction(action: "checkin" | "checkout", label: string) {
     setActionLoading(action);
@@ -330,7 +327,7 @@ export default function BookingDetailPage() {
               <h2 className="font-medium text-gray-900 mb-3">Invoices</h2>
               {booking.invoices.map((inv) => (
                 <div key={inv.id} className="flex items-center justify-between text-sm">
-                  <span className="font-mono text-[#4A6741]">{inv.invoiceNumber}</span>
+                  <span className="font-mono text-primary">{inv.invoiceNumber}</span>
                   <StatusBadge status={inv.status} />
                 </div>
               ))}
@@ -340,11 +337,7 @@ export default function BookingDetailPage() {
       </div>
 
       {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
 
       {/* Cancel modal */}
       {showCancel && (

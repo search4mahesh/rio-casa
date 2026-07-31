@@ -1,14 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { NextRequest } from "next/server";
+import { requireAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  if (!token) {
-    return NextResponse.json({ success: false }, { status: 401 });
-  }
-  const staff = await verifyAdminToken(token);
-  if (!staff) {
-    return NextResponse.json({ success: false }, { status: 401 });
-  }
-  return NextResponse.json({ success: true, staff });
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
+
+  return ok(auth.staff);
 }

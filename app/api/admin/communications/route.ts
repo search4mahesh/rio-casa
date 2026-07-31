@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { ok, failValidation } from "@/lib/api-response";
 
 // ─── Audience resolver ────────────────────────────────────────────────────────
 
@@ -113,16 +113,14 @@ function substituteTags(template: string, r: Recipient): string {
 // ─── GET: list past communications ────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
 
   const logs = await prisma.communicationLog.findMany({
     orderBy: { createdAt: "desc" },
     take: 50,
   });
-  return NextResponse.json({ success: true, logs });
+  return ok(logs);
 }
 
 // ─── POST: send (with action=preview to dry-run) ──────────────────────────────
@@ -136,15 +134,14 @@ const SendSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "manager")) return forbidden("manager");
+  const auth = await requireRole(req, "manager");
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   const reqBody = await req.json();
   const parsed = SendSchema.safeParse(reqBody);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
+    return failValidation(parsed.error);
   }
 
   const { action, channel, filter, subject, body } = parsed.data;
@@ -166,16 +163,13 @@ export async function POST(req: NextRequest) {
           body: substituteTags(body, reachable[0]),
         }
       : null;
-    return NextResponse.json({
-      success: true,
-      preview: {
+    return ok({
         totalRecipients: recipients.length,
         reachableCount: reachable.length,
         skippedCount: recipients.length - reachable.length,
         recipients: reachable.slice(0, 10),
         sample,
-      },
-    });
+      });
   }
 
   // Live send
@@ -237,11 +231,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({
-    success: true,
-    sentCount,
-    skippedCount: recipients.length - sentCount,
-    errors,
-    whatsappLinks: channel === "whatsapp" ? whatsappLinks : undefined,
-  });
+  return ok({ sentCount, skippedCount: recipients.length - sentCount, errors, whatsappLinks: channel === "whatsapp" ? whatsappLinks : undefined });
 }

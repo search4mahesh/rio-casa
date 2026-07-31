@@ -59,7 +59,7 @@ describe("GET /api/admin/guests/[id]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.guest.id).toBe("g1");
+    expect(body.data.id).toBe("g1");
   });
 
   it("includes bookings and invoices in the prisma include", async () => {

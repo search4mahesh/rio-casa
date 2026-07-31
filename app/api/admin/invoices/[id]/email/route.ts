@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { okMessage } from "@/lib/api-response";
 
 // POST /api/admin/invoices/[id]/email — email invoice to the guest
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
+  const auth = await requireRole(req, "frontdesk");
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   const { id } = await params;
 
@@ -87,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    return NextResponse.json({ success: true, message: `Invoice emailed to ${toEmail}` });
+    return okMessage(`Invoice emailed to ${toEmail}`);
   } catch (err) {
     return NextResponse.json({ success: false, error: err instanceof Error ? err.message : "Email send failed" }, { status: 500 });
   }

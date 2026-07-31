@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { detectConflicts } from "@/lib/booking-service";
+import { ok } from "@/lib/api-response";
 
 // Vercel Cron: every hour (see vercel.json)
 export async function GET(req: NextRequest) {
@@ -9,10 +10,5 @@ export async function GET(req: NextRequest) {
   }
 
   const conflicts = await detectConflicts();
-  return NextResponse.json({
-    success: true,
-    conflicts: conflicts.length,
-    data: conflicts,
-    timestamp: new Date().toISOString(),
-  });
+  return ok({ conflicts: conflicts.length, data: conflicts, timestamp: new Date().toISOString() });
 }

@@ -76,7 +76,7 @@ describe("AdminSidebar", () => {
   it("highlights the active route (Today)", () => {
     render(<AdminSidebar staff={staff} />);
     const links = screen.getAllByRole("link", { name: /today/i });
-    const activeLink = links.find((l) => l.classList.contains("bg-[#3d5636]"));
+    const activeLink = links.find((l) => l.classList.contains("bg-primary-600"));
     expect(activeLink).toBeTruthy();
   });
 });

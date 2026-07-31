@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ROLE_LABEL } from "@/lib/labels";
+import { useToast, Toast } from "@/components/ui/Toast";
 
 type StaffMember = {
   id: string;
@@ -11,13 +13,6 @@ type StaffMember = {
   isActive: boolean;
   lastLogin?: string;
   createdAt: string;
-};
-
-const ROLE_LABEL: Record<string, string> = {
-  owner:        "Owner",
-  manager:      "Manager",
-  frontdesk:    "Front Desk",
-  housekeeping: "Housekeeping",
 };
 
 const ROLE_COLOR: Record<string, string> = {
@@ -31,14 +26,14 @@ export default function HotelSettingsPanel() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, showToast } = useToast();
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string>("");
 
   async function loadStaff() {
     const res = await fetch("/api/admin/staff");
     const data = await res.json();
-    if (data.success) setStaff(data.staff);
+    if (data.success) setStaff(data.data);
     setLoading(false);
   }
 
@@ -46,14 +41,10 @@ export default function HotelSettingsPanel() {
     loadStaff();
     fetch("/api/admin/auth/me")
       .then((r) => r.json())
-      .then((d) => { if (d.success) setMyRole(d.staff.role); })
+      .then((d) => { if (d.success) setMyRole(d.data.role); })
       .catch(() => {});
   }, []);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3000);
-  }
 
   async function toggleActive(member: StaffMember) {
     setTogglingId(member.id);
@@ -101,7 +92,7 @@ export default function HotelSettingsPanel() {
           {myRole === "owner" && (
             <button
               onClick={() => setShowAdd(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#4A6741] hover:bg-[#3d5636] text-white text-sm font-medium rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 btn-admin"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -166,11 +157,7 @@ export default function HotelSettingsPanel() {
         )}
       </section>
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
 
       {showAdd && <AddStaffModal onClose={() => { setShowAdd(false); loadStaff(); }} />}
     </div>
@@ -204,7 +191,7 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
         {...props}
         value={form[name]}
         onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
-        className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741]"
+        className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
       />
     </div>
   );
@@ -232,7 +219,7 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
               <select required value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4A6741] bg-white">
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="manager">Manager</option>
                 <option value="frontdesk">Front Desk</option>
                 <option value="housekeeping">Housekeeping</option>
@@ -247,7 +234,7 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
                 Cancel
               </button>
               <button type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-[#4A6741] hover:bg-[#3d5636] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                className="flex-1 py-2.5 btn-admin">
                 {loading ? "Creating…" : "Create Staff"}
               </button>
             </div>

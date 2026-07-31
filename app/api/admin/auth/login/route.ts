@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signAdminToken, ADMIN_COOKIE, cookieOptions } from "@/lib/admin-auth";
+import { ok } from "@/lib/api-response";
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -36,10 +37,7 @@ export async function POST(req: NextRequest) {
       role: staff.role,
     });
 
-    const res = NextResponse.json({
-      success: true,
-      staff: { name: staff.name, email: staff.email, role: staff.role },
-    });
+    const res = ok({ name: staff.name, email: staff.email, role: staff.role });
     res.cookies.set(ADMIN_COOKIE, token, cookieOptions);
     return res;
   } catch (err) {

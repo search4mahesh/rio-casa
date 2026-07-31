@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
-import { hasMinRole, forbidden } from "@/lib/rbac";
+import { requireRole } from "@/lib/api-auth";
+import { okMessage } from "@/lib/api-response";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) return NextResponse.json({ success: false }, { status: 401 });
-  if (!hasMinRole(staff.role, "frontdesk")) return forbidden("frontdesk");
+  const auth = await requireRole(req, "frontdesk");
+  if (!auth.ok) return auth.response;
+  const staff = auth.staff;
 
   const booking = await prisma.booking.findUnique({
     where: { id: params.id },
@@ -55,5 +54,5 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }),
   ]);
 
-  return NextResponse.json({ success: true, message: `${booking.guestName} checked in` });
+  return okMessage(`${booking.guestName} checked in`);
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { z } from "zod";
+import { ok } from "@/lib/api-response";
 
 const UpdateSchema = z.object({
   isActive: z.boolean().optional(),
@@ -26,5 +27,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     select: { id: true, name: true, email: true, role: true, isActive: true },
   });
 
-  return NextResponse.json({ success: true, staff: member });
+  return ok(member);
 }

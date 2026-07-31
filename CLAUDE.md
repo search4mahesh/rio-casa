@@ -60,18 +60,61 @@ font-deva        Noto Sans Devanagari (Hindi/Marathi)
 
 ## Component Classes (globals.css)
 ```
-.btn-primary          Green filled button
-.btn-outline          Green outline button
+.btn-primary          Green filled button (public site)
+.btn-outline          Green outline button (public site)
+.btn-admin            Admin action button — appearance only; keep your own
+                      layout utilities (flex-1, w-full, px-4 py-2) alongside it
 .section-heading      Serif h2/h3 style
 .section-subheading   Italic serif subtitle
 .container-resort     max-w-7xl centered with padding
 ```
+Use the design tokens above, never raw hex (`bg-primary`, not `bg-[#4A6741]`).
+Exceptions are third-party brand colours (WhatsApp green, Razorpay theme).
+
+## Shared UI (`components/ui/`)
+- `Toast` + `useToast` — transient admin confirmations. One implementation;
+  don't hand-roll toast state, timers, or markup in a panel.
+
+## Shared Data (`lib/labels.ts`)
+`ROLE_LABEL`, `ROOM_TYPE_LABEL`, `ROOM_TYPE_FILTER_LABEL` — display names for
+domain enums. Import them; defining a local copy in a panel is how
+`ROOM_TYPE_LABEL` previously drifted into two incompatible versions.
 
 ## API Conventions
 - All API routes live in `app/api/**`
 - Validate body with Zod before any DB call
-- Return `{ success: true, data: ... }` or `{ success: false, error: "..." }`
 - Razorpay webhook: verify `x-razorpay-signature` header before updating booking status
+
+### Auth — `lib/api-auth.ts`
+Never re-implement the cookie/JWT/role dance in a handler. Two lines:
+```ts
+const auth = await requireRole(req, "manager");  // or requireAuth(req)
+if (!auth.ok) return auth.response;              // 401 or 403, already shaped
+// auth.staff is AdminPayload from here
+```
+Server components use `cookies()` from `next/headers`, so they still call
+`verifyAdminToken` directly — `requireRole` is for route handlers only.
+
+### Responses — `lib/api-response.ts`
+Always return via a helper. Never hand-write `NextResponse.json({ success: ... })`
+— that is how the payload key drifted to `promos` / `plan` / `booking` / `kpi`,
+forcing every client to know a different key per endpoint.
+
+| Helper | Shape |
+|---|---|
+| `ok(payload, status?)` | `{ success: true, data: <payload> }` |
+| `okMessage(text, status?)` | `{ success: true, message: string }` — ack, no data |
+| `okEmpty(status?)` | `{ success: true }` — deletes and similar |
+| `fail(text, status?)` | `{ success: false, error: string }` |
+| `failValidation(zodError)` | `fail()` with the first issue message |
+
+**`error` is always a string.** Clients render it directly
+(`showToast(data.error ?? "…")`), so returning a Zod error object shows
+`[object Object]` to staff. Use `failValidation(parsed.error)`, never
+`parsed.error.flatten()`.
+
+Clients therefore always read `data.data` for payloads and `data.message`
+for acknowledgements.
 
 ## Booking Flow
 1. User picks dates + guests → `/api/booking/availability?roomId=&checkIn=&checkOut=`

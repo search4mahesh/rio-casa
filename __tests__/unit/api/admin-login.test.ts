@@ -44,7 +44,7 @@ describe("POST /api/admin/auth/login", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.staff.email).toBe("ravi@riocasa.in");
+    expect(body.data.email).toBe("ravi@riocasa.in");
     expect(res.headers.get("set-cookie")).toMatch(/admin_token/);
   });
 
