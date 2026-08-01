@@ -45,6 +45,12 @@ Output lands in `.screenshots/` (gitignored). The script prints the file
 path and any console errors. **Read the PNG afterwards** — a page can
 render its shell while every data fetch 500s.
 
+One command, one PNG — this is the fast path for "does the page still
+render". When you need to click through a flow, fill a form, or read the
+network panel to find out *why* something broke, use the
+[test-in-chrome](../test-in-chrome/SKILL.md) skill instead, which drives a
+live Chrome via the `chrome-devtools` MCP server.
+
 Default viewport is 1536x900, which is the width where layout bugs in the
 admin grids tend to show up (the sidebar takes 240px, leaving ~1248px).
 
