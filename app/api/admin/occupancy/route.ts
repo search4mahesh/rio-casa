@@ -2,14 +2,15 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { today as todayDate, addDays } from "@/lib/dates";
 
 export async function GET(req: NextRequest) {
   const auth = await requireRole(req, "frontdesk");
   if (!auth.ok) return auth.response;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const rangeEnd = new Date(today.getTime() + 14 * 86400000);
+  // Calendar days against DATE columns — see lib/dates.ts.
+  const today = todayDate();
+  const rangeEnd = addDays(today, 14);
 
   const [rooms, bookings] = await Promise.all([
     prisma.room.findMany({

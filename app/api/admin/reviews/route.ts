@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
+import { dateOnly } from "@/lib/dates";
 
 const CreateSchema = z.object({
   platform: z.enum(["google", "booking_com", "tripadvisor", "mmt", "other"]),
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
       rating: parsed.data.rating,
       reviewText: parsed.data.reviewText,
       reviewUrl: parsed.data.reviewUrl ?? null,
-      datePosted: new Date(parsed.data.datePosted + "T00:00:00"),
+      datePosted: dateOnly(parsed.data.datePosted),
       responded: parsed.data.responded ?? false,
       respondedAt: parsed.data.responded ? new Date() : null,
       notes: parsed.data.notes ?? null,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
+import { dateOnly } from "@/lib/dates";
 
 const SLOT = z.enum(["morning", "evening", "night"]);
 const STATION = z.enum(["frontdesk", "housekeeping", "kitchen"]);
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: "weekStart (YYYY-MM-DD) is required" }, { status: 400 });
   }
 
-  const weekStart = new Date(weekStartParam + "T00:00:00");
+  const weekStart = dateOnly(weekStartParam);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 7);
 
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
   if (!exists) return NextResponse.json({ success: false, error: "Staff member not found" }, { status: 400 });
   if (!exists.isActive) return NextResponse.json({ success: false, error: "Cannot assign inactive staff" }, { status: 400 });
 
-  const dateObj = new Date(date + "T00:00:00");
+  const dateObj = dateOnly(date);
 
   const assignment = await prisma.shiftAssignment.upsert({
     where: { date_slot_station: { date: dateObj, slot, station } },

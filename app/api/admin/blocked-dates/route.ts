@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
+import { dateOnly, today as todayDate, addDays } from "@/lib/dates";
 
 const CreateSchema = z.object({
   roomId: z.string().nullable().optional(),
@@ -16,11 +17,8 @@ export async function GET(req: NextRequest) {
   const auth = await requireRole(req, "frontdesk");
   if (!auth.ok) return auth.response;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const blocked = await prisma.blockedDate.findMany({
-    where: { blockDate: { gte: today } },
+    where: { blockDate: { gte: todayDate() } },
     include: { room: { select: { name: true, roomNumber: true, roomType: true } } },
     orderBy: [{ blockDate: "asc" }, { roomId: "asc" }],
     take: 500,
@@ -42,19 +40,20 @@ export async function POST(req: NextRequest) {
 
   const { roomId, startDate, endDate, reason } = parsed.data;
 
-  const start = new Date(startDate + "T00:00:00");
-  const end = new Date(endDate + "T00:00:00");
+  // Calendar days, not local instants — see lib/dates.ts. Parsing these as
+  // local midnight is what previously stored 19–20 Dec when staff asked for
+  // 20–21, so the closed day stayed bookable.
+  const start = dateOnly(startDate);
+  const end = dateOnly(endDate);
 
   if (end < start) {
     return NextResponse.json({ success: false, error: "End date must be on or after start date" }, { status: 400 });
   }
 
-  // Expand date range into individual day records
+  // Expand date range into individual day records (inclusive of both ends)
   const dates: Date[] = [];
-  const d = new Date(start);
-  while (d <= end) {
-    dates.push(new Date(d));
-    d.setDate(d.getDate() + 1);
+  for (let d = start; d <= end; d = addDays(d, 1)) {
+    dates.push(d);
   }
 
   if (dates.length > 90) {

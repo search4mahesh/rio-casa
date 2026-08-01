@@ -40,6 +40,8 @@ export default function BookingWizard({
   preselectedSlug?: string;
 }) {
   const t = useTranslations("booking");
+  // "perNight" lives in the rooms namespace, not booking.
+  const tRooms = useTranslations("rooms");
   const router = useRouter();
   const prefix = `/${locale}`;
 
@@ -91,8 +93,16 @@ export default function BookingWizard({
   const {
     register,
     handleSubmit,
+    trigger,
     formState: { errors },
   } = useForm<GuestForm>({ resolver: zodResolver(guestSchema) });
+
+  // Step 3 must validate before advancing. The error messages are rendered
+  // inside the step-3 markup, so letting invalid details through to step 4
+  // unmounts them — "Confirm Booking" then silently refuses with nothing shown.
+  async function continueFromDetails() {
+    if (await trigger()) setStep("payment");
+  }
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -114,8 +124,13 @@ export default function BookingWizard({
         }),
       });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Booking failed");
+      // An unhandled server error answers with an empty body, and res.json()
+      // would then surface a raw JS exception ("Unexpected end of JSON input")
+      // to the guest.
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Something went wrong. Please try again, or contact us to book.");
+      }
 
       if (paymentMethod === "razorpay") {
         const options = {
@@ -140,10 +155,18 @@ export default function BookingWizard({
                 razorpaySignature: response.razorpay_signature,
               }),
             });
-            const verifyData = await verifyRes.json();
-            if (verifyData.success) {
+            const verifyData = await verifyRes.json().catch(() => null);
+            if (verifyRes.ok && verifyData?.success) {
               router.push(`${prefix}/booking/confirmation?id=${verifyData.data.bookingId}`);
+              return;
             }
+            // The guest has already paid at this point — never leave them on a
+            // dead screen. Surface the booking number so support can trace it.
+            setLoading(false);
+            setError(
+              `Your payment went through, but we could not confirm the booking automatically. ` +
+                `Please contact us quoting reference ${data.data.bookingNumber} — do not pay again.`
+            );
           },
           prefill: {
             name: formData.guestName,
@@ -275,7 +298,7 @@ export default function BookingWizard({
                   </div>
                   <div className="text-right">
                     <p className="font-serif text-xl text-primary">₹{room.pricePerNight.toLocaleString("en-IN")}</p>
-                    <p className="font-sans text-xs text-earth-text/50">{t("perNight")}</p>
+                    <p className="font-sans text-xs text-earth-text/50">{tRooms("perNight")}</p>
                   </div>
                 </div>
               </button>
@@ -330,7 +353,7 @@ export default function BookingWizard({
           </div>
           <div className="flex gap-3">
             <button onClick={() => setStep("room")} className="btn-outline flex-1">← Back</button>
-            <button onClick={() => setStep("payment")} className="btn-primary flex-1">Continue →</button>
+            <button onClick={continueFromDetails} className="btn-primary flex-1">Continue →</button>
           </div>
         </div>
       )}

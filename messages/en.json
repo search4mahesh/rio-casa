@@ -49,6 +49,7 @@
     "payWithUPI": "Pay via UPI QR",
     "totalAmount": "Total Amount",
     "nights": "{count} nights",
+    "duration": "Duration",
     "confirm": "Confirm Booking",
     "success": "Booking Confirmed!",
     "confirmationSent": "A confirmation has been sent to your email."

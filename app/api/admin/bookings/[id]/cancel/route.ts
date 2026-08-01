@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { okMessage } from "@/lib/api-response";
+import { recalcGuestTotals } from "@/lib/booking-service";
 
 const CancelSchema = z.object({
   reason: z.string().optional(),
@@ -39,16 +40,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           refundAmount: refundAmount,
         },
       }),
-      // Free the room if it was occupied by this booking
-      ...(booking.status === "checked_in"
-        ? [
-            prisma.roomStatus.upsert({
-              where: { roomId: booking.roomId },
-              create: { roomId: booking.roomId, occupancy: "vacant", housekeeping: "dirty" },
-              update: { occupancy: "vacant", currentBookingId: null, currentGuestId: null },
-            }),
-          ]
-        : []),
+      // Free the room if it was holding this booking. Gating on `checked_in`
+      // missed the common case: a confirmed booking flagged due_checkin leaves
+      // the room pointing at a cancelled booking forever.
+      prisma.roomStatus.updateMany({
+        where: { currentBookingId: booking.id },
+        data: {
+          occupancy: "vacant",
+          ...(booking.status === "checked_in" ? { housekeeping: "dirty" } : {}),
+          currentBookingId: null,
+          currentGuestId: null,
+        },
+      }),
       prisma.auditLog.create({
         data: {
           userId: staff.staffId,
@@ -59,6 +62,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         },
       }),
     ]);
+
+    // A cancelled booking is no longer a stay, so the guest's lifetime totals
+    // have to come back down.
+    await recalcGuestTotals(prisma, booking.guestId);
 
     return okMessage(`Booking ${booking.bookingNumber} cancelled`);
   } catch (err) {

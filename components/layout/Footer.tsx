@@ -77,7 +77,8 @@ export default function Footer({ locale }: { locale: string }) {
               </li>
               <li className="flex items-center gap-2">
                 <Phone size={15} className="shrink-0 text-accent" />
-                <a href={`tel:${t("phone")}`} className="hover:text-accent transition-colors">
+                {/* Strip the display spacing — a tel: URI must be dialable. */}
+                <a href={`tel:${t("phone").replace(/[^\d+]/g, "")}`} className="hover:text-accent transition-colors">
                   {t("phone")}
                 </a>
               </li>

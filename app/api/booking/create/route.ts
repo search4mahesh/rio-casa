@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createOrder } from "@/lib/razorpay";
-import { createBooking } from "@/lib/booking-service";
+import { createBooking, recalcGuestTotals } from "@/lib/booking-service";
 import { ok, fail, failValidation } from "@/lib/api-response";
 
 const schema = z.object({
@@ -56,14 +56,57 @@ export async function POST(req: NextRequest) {
     return fail(result.error ?? "Booking could not be created", statusCode);
   }
 
-  // Create Razorpay order
-  const order = await createOrder(
-    Math.round(result.booking.totalAmount * 100),
-    result.booking.id
-  );
+  const { prisma } = await import("@/lib/prisma");
+
+  // The booking is already committed at this point, so a Razorpay failure must
+  // not leave it standing — a `confirmed` row with no order holds the room on
+  // the calendar for a guest who only ever saw an error. Void it and put the
+  // guest's lifetime stats back the way createBooking found them.
+  let order: Awaited<ReturnType<typeof createOrder>>;
+  try {
+    order = await createOrder(
+      Math.round(result.booking.totalAmount * 100),
+      result.booking.id
+    );
+  } catch (err) {
+    console.error("Razorpay order creation failed", err);
+
+    const { id: bookingId, totalAmount, bookingNumber } = result.booking;
+    // result.booking is a narrowed projection and carries no guestId.
+    const { guestId } = (await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { guestId: true },
+    })) ?? { guestId: null };
+
+    await prisma.$transaction([
+      // Availability queries skip cancelled/failed bookings, so this frees the room.
+      prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: "cancelled",
+          paymentStatus: "failed",
+          cancelledAt: new Date(),
+          cancellationReason: "Payment could not be initiated",
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId: "system",
+          action: "booking_voided_payment_init_failed",
+          entityType: "booking",
+          entityId: bookingId,
+          newValue: { bookingNumber, totalAmount },
+        },
+      }),
+    ]);
+
+    // The voided booking must stop counting toward the guest's lifetime totals.
+    await recalcGuestTotals(prisma, guestId);
+
+    return fail("We could not start the payment. No booking was made — please try again.", 502);
+  }
 
   // Store the Razorpay order ID on the booking
-  const { prisma } = await import("@/lib/prisma");
   await prisma.booking.update({
     where: { id: result.booking.id },
     data: { razorpayOrderId: order.id },

@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockFindMany, mockUpdateMany, mockAggregate, mockUpsert, mockAuditCreate } = vi.hoisted(() => ({
+const {
+  mockFindMany, mockUpdateMany, mockAggregate, mockUpsert, mockAuditCreate,
+  mockRoomStatusUpdateMany, mockGuestUpdate,
+} = vi.hoisted(() => ({
   mockFindMany: vi.fn().mockResolvedValue([]),
   mockUpdateMany: vi.fn().mockResolvedValue({ count: 0 }),
-  mockAggregate: vi.fn().mockResolvedValue({ _sum: { totalAmount: null } }),
+  mockAggregate: vi.fn().mockResolvedValue({ _sum: { totalAmount: null }, _count: { _all: 0 } }),
   mockUpsert: vi.fn().mockResolvedValue({}),
   mockAuditCreate: vi.fn().mockResolvedValue({}),
+  // The audit releases rooms held by no-shows and recomputes guest totals.
+  mockRoomStatusUpdateMany: vi.fn().mockResolvedValue({ count: 0 }),
+  mockGuestUpdate: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("@/lib/admin-auth", () => ({
@@ -17,7 +23,8 @@ vi.mock("@/lib/admin-auth", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     booking: { findMany: mockFindMany, updateMany: mockUpdateMany, aggregate: mockAggregate },
-    roomStatus: { upsert: mockUpsert },
+    roomStatus: { upsert: mockUpsert, updateMany: mockRoomStatusUpdateMany },
+    guest: { update: mockGuestUpdate },
     auditLog: { create: mockAuditCreate },
   },
 }));
@@ -39,7 +46,7 @@ const sampleBooking = {
 };
 
 describe("GET /api/admin/night-audit/summary", () => {
-  beforeEach(() => { mockFindMany.mockReset(); mockFindMany.mockResolvedValue([]); mockAggregate.mockReset(); mockAggregate.mockResolvedValue({ _sum: { totalAmount: null } }); });
+  beforeEach(() => { mockFindMany.mockReset(); mockFindMany.mockResolvedValue([]); mockAggregate.mockReset(); mockAggregate.mockResolvedValue({ _sum: { totalAmount: null }, _count: { _all: 0 } }); });
 
   it("returns 401 without auth", async () => {
     const { verifyAdminToken } = await import("@/lib/admin-auth");
@@ -107,6 +114,9 @@ describe("POST /api/admin/night-audit/run", () => {
   it("returns 200 with audit result counts", async () => {
     mockUpdateMany.mockResolvedValueOnce({ count: 2 }); // no-shows
     mockFindMany
+      // The route now reads the missed bookings first so it can release the
+      // rooms they were holding and correct their guests' totals.
+      .mockResolvedValueOnce([{ id: "bk0", guestId: "g0" }]) // missed arrivals
       .mockResolvedValueOnce([{ id: "bk1", roomId: "r1" }]) // today arrivals
       .mockResolvedValueOnce([{ id: "bk2", roomId: "r2" }]); // today departures
     const res = await POST(makeReq("POST"));
@@ -126,6 +136,7 @@ describe("POST /api/admin/night-audit/run", () => {
   });
 
   it("upserts room status for today's arrivals", async () => {
+    mockFindMany.mockResolvedValueOnce([]);                             // missed arrivals
     mockFindMany.mockResolvedValueOnce([{ id: "bk1", roomId: "r1" }]); // arrivals
     mockFindMany.mockResolvedValueOnce([]);                             // departures
     await POST(makeReq("POST"));

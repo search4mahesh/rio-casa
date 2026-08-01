@@ -3,16 +3,16 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { today as todayDate, addDays } from "@/lib/dates";
 
 // GET /api/admin/rooms/status — all rooms with current status + today's due check-ins
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Calendar days against DATE columns — see lib/dates.ts.
+  const today = todayDate();
+  const tomorrow = addDays(today, 1);
 
   const [rooms, dueCheckins] = await Promise.all([
     prisma.room.findMany({

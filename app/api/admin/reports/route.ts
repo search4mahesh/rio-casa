@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { dateOnly, today, addDays, addMonths, startOfMonth, daysBetween, toDayString } from "@/lib/dates";
 
 // GET /api/admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(req: NextRequest) {
@@ -12,32 +13,34 @@ export async function GET(req: NextRequest) {
   const rawFrom = searchParams.get("from");
   const rawTo = searchParams.get("to");
 
-  // Default: last 12 months
-  const defaultTo = new Date();
-  defaultTo.setHours(23, 59, 59, 999);
-  const defaultFrom = new Date(defaultTo);
-  defaultFrom.setMonth(defaultFrom.getMonth() - 12);
-  defaultFrom.setHours(0, 0, 0, 0);
-
-  const from = rawFrom ? new Date(rawFrom + "T00:00:00") : defaultFrom;
-  const to = rawTo ? new Date(rawTo + "T23:59:59") : defaultTo;
-
-  if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+  // Calendar days against DATE columns — see lib/dates.ts. Local-midnight
+  // bounds shifted the window a day earlier, so a report "from 1 Sep" quietly
+  // started on 31 Aug.
+  let from: Date;
+  let to: Date;
+  try {
+    // Default: last 12 months, ending today.
+    to = rawTo ? dateOnly(rawTo) : today();
+    from = rawFrom ? dateOnly(rawFrom) : addMonths(to, -12);
+  } catch {
     return NextResponse.json({ success: false, error: "Invalid date format. Use YYYY-MM-DD" }, { status: 400 });
   }
   if (to < from) {
     return NextResponse.json({ success: false, error: "End date must be after start date" }, { status: 400 });
   }
 
+  // `to` is an inclusive calendar day, so the exclusive bound is the next day.
+  const toExclusive = addDays(to, 1);
+
   // Total available room-nights = active rooms × days in range
   const activeRoomCount = await prisma.room.count({ where: { isActive: true } });
-  const daysInRange = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  const daysInRange = Math.max(1, daysBetween(from, toExclusive));
   const totalAvailableNights = activeRoomCount * daysInRange;
 
   // All bookings that fall within range (overlapping)
   const bookings = await prisma.booking.findMany({
     where: {
-      checkIn: { lt: to },
+      checkIn: { lt: toExclusive },
       checkOut: { gt: from },
       status: { notIn: ["cancelled", "no_show"] },
     },
@@ -60,28 +63,26 @@ export async function GET(req: NextRequest) {
   const roomTypeRevenue: Record<string, number> = {};
   const roomTypeBookings: Record<string, number> = {};
 
-  // Monthly occupancy + revenue series
-  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  // Monthly occupancy + revenue series. Keyed in UTC to match the DATE values.
+  const monthKey = (d: Date) => toDayString(d).slice(0, 7);
   const monthlyOccupied: Record<string, number> = {};
   const monthlyRevenue: Record<string, number> = {};
   const monthlyBookings: Record<string, number> = {};
 
   // Build month buckets
   const months: string[] = [];
-  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
-  while (cursor <= to) {
+  for (let cursor = startOfMonth(from); cursor <= to; cursor = addMonths(cursor, 1)) {
     const key = monthKey(cursor);
     months.push(key);
     monthlyOccupied[key] = 0;
     monthlyRevenue[key] = 0;
     monthlyBookings[key] = 0;
-    cursor.setMonth(cursor.getMonth() + 1);
   }
 
   for (const b of bookings) {
     const inDate = b.checkIn > from ? b.checkIn : from;
-    const outDate = b.checkOut < to ? b.checkOut : to;
-    const overlapNights = Math.max(0, Math.ceil((outDate.getTime() - inDate.getTime()) / 86400000));
+    const outDate = b.checkOut < toExclusive ? b.checkOut : toExclusive;
+    const overlapNights = Math.max(0, daysBetween(inDate, outDate));
     occupiedNights += overlapNights;
     totalRevenue += Number(b.totalAmount);
     totalGuests += b.adults + b.children;

@@ -4,13 +4,17 @@ import Link from "next/link";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { hasMinRole } from "@/lib/rbac-utils";
 import { prisma } from "@/lib/prisma";
+import { today, addDays, startOfMonth, addMonths } from "@/lib/dates";
 import RoomBoard from "@/components/admin/RoomBoard";
 
 async function getTodayData() {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayEnd = new Date(todayStart.getTime() + 86400000);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Calendar days against DATE columns — see lib/dates.ts. Local-midnight
+  // bounds here used to select *yesterday*, so arrivals and departures were
+  // both reporting the wrong day.
+  const todayStart = today();
+  const todayEnd = addDays(todayStart, 1);
+  const monthStart = startOfMonth(todayStart);
+  const nextMonthStart = addMonths(monthStart, 1);
 
   const [
     todayCheckins,
@@ -27,10 +31,25 @@ async function getTodayData() {
     prisma.booking.count({
       where: { checkOut: { gte: todayStart, lt: todayEnd }, status: { in: ["checked_in", "checked_out"] } },
     }),
-    prisma.booking.count({ where: { status: "checked_in" } }),
+    // Occupancy is who is in-house *tonight*, so the stay has to span today.
+    // Counting every `checked_in` row regardless of date reported 89% on a day
+    // with two guests, because stays from months ago were never checked out.
+    prisma.booking.count({
+      where: {
+        status: "checked_in",
+        checkIn: { lte: todayStart },
+        checkOut: { gt: todayStart },
+      },
+    }),
     prisma.room.count({ where: { isActive: true } }),
+    // Revenue for stays *during* this month. Keying off createdAt reported ₹0
+    // on the 1st of every month and disagreed with the reconciliation screen.
     prisma.booking.aggregate({
-      where: { createdAt: { gte: monthStart }, status: { notIn: ["cancelled", "no_show"] } },
+      where: {
+        checkIn: { lt: nextMonthStart },
+        checkOut: { gt: monthStart },
+        status: { notIn: ["cancelled", "no_show"] },
+      },
       _sum: { totalAmount: true },
     }),
     // Arriving today

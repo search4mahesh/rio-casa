@@ -1,41 +1,10 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { ArrowRight } from "lucide-react";
+import { BLOG_POSTS } from "@/lib/blog-posts";
 
-const posts = [
-  {
-    slug: "best-things-to-do-mahabaleshwar",
-    title: "10 Best Things To Do in Mahabaleshwar",
-    excerpt: "From Venna Lake boating to strawberry picking — your complete guide to experiencing Mahabaleshwar like a local.",
-    date: "May 10, 2025",
-    readTime: "6 min read",
-    category: "Travel Guide",
-  },
-  {
-    slug: "mahabaleshwar-monsoon-guide",
-    title: "Why Monsoon is the Best Time to Visit Mahabaleshwar",
-    excerpt: "Everything turns lush green, the waterfalls roar, and the mist clings to the hills — discover why July–September is magical.",
-    date: "April 22, 2025",
-    readTime: "5 min read",
-    category: "Season Guide",
-  },
-  {
-    slug: "romantic-weekend-getaway-pune",
-    title: "The Perfect Romantic Weekend Getaway from Pune",
-    excerpt: "3-hour drive, mountain air, strawberry breakfast, candlelit dinners. Here's the Rio Casa weekend itinerary couples love.",
-    date: "March 15, 2025",
-    readTime: "4 min read",
-    category: "Packages",
-  },
-  {
-    slug: "mahabaleshwar-strawberry-season",
-    title: "Mahabaleshwar Strawberry Season: When & Where",
-    excerpt: "Mahabaleshwar produces over 85% of India's strawberries. Here's everything you need to know about the season.",
-    date: "February 28, 2025",
-    readTime: "5 min read",
-    category: "Local Guide",
-  },
-];
+// Shared with the article route so the two cannot disagree — see lib/blog-posts.ts
+const posts = BLOG_POSTS;
 
 export default function BlogPage({ params }: { params: { locale: string } }) {
   const t = useTranslations("blog");

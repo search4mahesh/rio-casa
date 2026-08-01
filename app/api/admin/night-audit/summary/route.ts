@@ -2,18 +2,17 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { today as todayDate, addDays } from "@/lib/dates";
 
 // GET /api/admin/night-audit/summary — today's operational snapshot
 export async function GET(req: NextRequest) {
   const auth = await requireRole(req, "manager");
   if (!auth.ok) return auth.response;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  // Calendar days against DATE columns — see lib/dates.ts.
+  const today = todayDate();
+  const tomorrow = addDays(today, 1);
+  const yesterday = addDays(today, -1);
 
   const bookingSelect = {
     id: true, bookingNumber: true, guestName: true, guestPhone: true,

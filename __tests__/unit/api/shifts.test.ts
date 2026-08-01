@@ -73,9 +73,11 @@ describe("GET /api/admin/shifts", () => {
     await GET(makeReq("GET", undefined, "?weekStart=2026-06-15"));
     const call = mockShiftFindMany.mock.calls[0][0];
     const range = call.where.date;
-    expect(range.gte).toEqual(new Date("2026-06-15T00:00:00"));
-    const end = new Date("2026-06-15T00:00:00"); end.setDate(end.getDate() + 7);
-    expect(range.lt).toEqual(end);
+    // `Shift.date` is a DATE column, so the bounds must be UTC midnight. This
+    // previously asserted local midnight, which in IST is 18:30 the day before
+    // — Postgres truncated that back to the 14th and the week was off by one.
+    expect(range.gte).toEqual(new Date("2026-06-15T00:00:00.000Z"));
+    expect(range.lt).toEqual(new Date("2026-06-22T00:00:00.000Z"));
   });
 
   it("returns only active staff", async () => {

@@ -4,6 +4,7 @@ import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
+import { dateOnly, today as todayDate } from "@/lib/dates";
 
 // ─── Audience resolver ────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ async function resolveRecipients(filter: Filter): Promise<Recipient[]> {
     }));
   }
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = todayDate();
 
   if (filter.type === "upcoming-arrivals") {
     const days = filter.days ?? 1;
@@ -82,7 +83,7 @@ async function resolveRecipients(filter: Filter): Promise<Recipient[]> {
   }
 
   // past-guests
-  const fromDate = filter.fromDate ? new Date(filter.fromDate + "T00:00:00") : new Date(today.getTime() - 365 * 86400000);
+  const fromDate = filter.fromDate ? dateOnly(filter.fromDate) : new Date(today.getTime() - 365 * 86400000);
   const toDate = filter.toDate ? new Date(filter.toDate + "T23:59:59") : new Date(today.getTime() - 30 * 86400000);
   const rows = await prisma.booking.findMany({
     where: { checkOut: { gte: fromDate, lte: toDate }, status: "checked_out" },
