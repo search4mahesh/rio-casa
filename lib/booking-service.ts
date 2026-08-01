@@ -2,7 +2,7 @@
 // lib/booking-service.ts
 // 5-layer double booking protection + GST pricing + OTA sync stubs
 //
-// Layer 1: PostgreSQL exclusion constraint (see prisma/add_exclusion_constraint.sql)
+// Layer 1: PostgreSQL exclusion constraint (prisma/migrations/1_double_booking_guard)
 // Layer 2: Application-level availability check (fast pre-flight)
 // Layer 3: Row-level locking inside serializable transaction (race condition guard)
 // Layer 4: Channel manager sync — push to eZee Centrix after booking
@@ -10,7 +10,8 @@
 // ─────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { today as todayDate, addDays } from "@/lib/dates";
+import { Prisma } from "@/lib/generated/prisma/client";
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -70,9 +71,7 @@ export async function checkAvailability(
 ): Promise<AvailabilityResult> {
   if (checkIn >= checkOut) return { available: false };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (checkIn < today) return { available: false };
+  if (checkIn < todayDate()) return { available: false };
 
   // Check blocked dates
   const blocked = await prisma.blockedDate.findFirst({
@@ -144,19 +143,55 @@ export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests
 // this makes double booking impossible.
 // ─────────────────────────────────────────────
 
+/**
+ * Postgres SERIALIZABLE expects clients to retry: two transactions that touch
+ * the same rows can be aborted with a serialization failure (P2034) even when
+ * one of them would have succeeded on its own. That is not an error condition,
+ * it is the isolation level working — but without a retry it surfaced to the
+ * guest as "Something went wrong."
+ *
+ * Only genuinely transient outcomes are retried. `ROOM_NOT_AVAILABLE` and
+ * `BLOCKED_DATE` are deterministic answers and must fail fast; retrying them
+ * would just burn the guest's time to reach the same conclusion.
+ */
+const TRANSIENT_TX_CODES = new Set([
+  "P2034", // write conflict / deadlock — retry is the documented response
+  "P2028", // transaction API error, incl. "unable to start in the given time"
+]);
+
+async function withSerializableRetry<T>(run: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      const message = (err as Error).message ?? "";
+      if (message === "ROOM_NOT_AVAILABLE" || message === "BLOCKED_DATE") throw err;
+      if (!code || !TRANSIENT_TX_CODES.has(code)) throw err;
+
+      lastError = err;
+      if (attempt === attempts) break;
+      // Full jitter — without it, contending writers retry in lockstep and
+      // collide again on the same boundary.
+      const backoff = Math.random() * 100 * 2 ** (attempt - 1);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+  throw lastError;
+}
+
 export async function createBooking(input: BookingInput): Promise<BookingResult> {
   if (input.checkIn >= input.checkOut) {
     return { success: false, error: "Check-out must be after check-in", errorCode: "INVALID_DATES" };
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (input.checkIn < today) {
+  if (input.checkIn < todayDate()) {
     return { success: false, error: "Check-in date cannot be in the past", errorCode: "INVALID_DATES" };
   }
 
   try {
-    const booking = await prisma.$transaction(
+    const booking = await withSerializableRetry(() => prisma.$transaction(
       async (tx) => {
         // ── Step 1: Lock the room row ──────────────────────────────────
         // Any other transaction for this room blocks here until we commit.
@@ -303,13 +338,9 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         });
 
         // ── Step 9: Update guest stats ─────────────────────────────────
-        await tx.guest.update({
-          where: { id: guest.id },
-          data: {
-            totalStays: { increment: 1 },
-            totalRevenue: { increment: totalAmount },
-          },
-        });
+        // Recompute rather than increment, so the totals stay right no matter
+        // how the guest's other bookings were created or ended.
+        await recalcGuestTotals(tx, guest.id);
 
         // ── Step 10: Audit log ─────────────────────────────────────────
         await tx.auditLog.create({
@@ -326,10 +357,15 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         // Lock released on commit
       },
       {
-        timeout: 10000,
+        // Bookings for the same room serialise behind the FOR UPDATE lock, so
+        // a waiter legitimately needs longer than one transaction's worth of
+        // time. `maxWait` covers acquiring the connection and opening the
+        // transaction; `timeout` covers the work inside it.
+        maxWait: 15000,
+        timeout: 20000,
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       }
-    );
+    ));
 
     return {
       success: true,
@@ -373,6 +409,18 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
       return {
         success: false,
         error: "This room was just booked by someone else. Please choose another room.",
+        errorCode: "ROOM_NOT_AVAILABLE",
+      };
+    }
+
+    // Contention that survived every retry. The booking definitively did not
+    // happen, so say so plainly rather than leaving the guest unsure whether
+    // they have a room — and never imply they should pay again.
+    if (error.code && TRANSIENT_TX_CODES.has(error.code)) {
+      console.error("[booking-service] createBooking exhausted retries:", error.code, error.message);
+      return {
+        success: false,
+        error: "We are handling a lot of bookings right now and could not complete yours. Nothing was charged — please try again in a moment.",
         errorCode: "ROOM_NOT_AVAILABLE",
       };
     }
@@ -541,23 +589,83 @@ export async function detectConflicts(): Promise<Array<Record<string, unknown>>>
   return conflicts;
 }
 
+/**
+ * Recompute a guest's `totalStays` / `totalRevenue` from their actual bookings.
+ *
+ * These columns exist so the guest list can sort on them, but they used to be
+ * maintained by a lone `increment` at booking creation: nothing decremented on
+ * cancellation, and any booking that arrived another way (seed, OTA import,
+ * walk-in) never touched them. The guest page ended up showing "Total Stays 2"
+ * directly beside "Bookings 23".
+ *
+ * Recomputing is cheap at this scale and self-heals whatever drifted. Cancelled
+ * and no-show bookings are excluded — they are not stays and never earned money.
+ */
+export async function recalcGuestTotals(
+  db: Prisma.TransactionClient | typeof prisma,
+  guestId: string | null | undefined
+): Promise<void> {
+  if (!guestId) return;
+  const agg = await db.booking.aggregate({
+    where: { guestId, status: { notIn: ["cancelled", "no_show"] } },
+    _count: { _all: true },
+    _sum: { totalAmount: true },
+  });
+  await db.guest.update({
+    where: { id: guestId },
+    data: {
+      totalStays: agg._count._all,
+      totalRevenue: agg._sum.totalAmount ?? 0,
+    },
+  });
+}
+
+/**
+ * Clear any room still pointing at one of these bookings.
+ *
+ * `roomStatus.currentBookingId` is only ever cleared on check-out, so a booking
+ * that ends any other way — no-show, cancellation — leaves the room holding a
+ * dead reference. The room board then keeps rendering that guest's name and
+ * check-out date, and the room sits on `due_checkin` indefinitely.
+ */
+export async function releaseRoomsHolding(bookingIds: string[]): Promise<number> {
+  if (bookingIds.length === 0) return 0;
+  const { count } = await prisma.roomStatus.updateMany({
+    where: { currentBookingId: { in: bookingIds } },
+    data: {
+      occupancy: "vacant",
+      currentBookingId: null,
+      currentGuestId: null,
+    },
+  });
+  return count;
+}
+
 // ─────────────────────────────────────────────
 // NIGHT AUDIT (run at midnight daily via cron)
 // Marks no-shows, flags due check-outs and arrivals.
 // ─────────────────────────────────────────────
 
 export async function runNightAudit() {
-  const today = new Date(new Date().toDateString());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Calendar days against DATE columns — see lib/dates.ts. Getting this wrong
+  // no-shows the wrong day's arrivals, which is not recoverable from the UI.
+  const today = todayDate();
+  const yesterday = addDays(today, -1);
 
   // Mark no-shows: confirmed bookings where check-in was yesterday and never checked in
-  const noShows = await prisma.booking.updateMany({
+  const missed = await prisma.booking.findMany({
     where: { checkIn: yesterday, status: "confirmed", actualCheckin: null },
+    select: { id: true, guestId: true },
+  });
+  const noShows = await prisma.booking.updateMany({
+    where: { id: { in: missed.map((b) => b.id) } },
     data: { status: "no_show" },
   });
+  await releaseRoomsHolding(missed.map((b) => b.id));
+  // A no-show is not a stay, so the guest's totals have to come back down.
+  for (const guestId of new Set(missed.map((b) => b.guestId))) {
+    await recalcGuestTotals(prisma, guestId);
+  }
 
   // Flag due check-outs
   const dueCheckouts = await prisma.booking.findMany({

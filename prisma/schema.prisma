@@ -1,10 +1,16 @@
+// Prisma 7's Rust-free client. `prisma-client-js` is deprecated and `output`
+// is mandatory — the client is no longer generated into node_modules, so it is
+// imported from the path below rather than from "@prisma/client".
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
 }
 
+// The connection URL lives in prisma.config.ts (for the CLI) and is passed to
+// PrismaClient via a driver adapter (for the runtime). Prisma 7 no longer
+// accepts `url` here.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ─────────────────────────────────────────────
@@ -81,10 +87,11 @@ model Guest {
 
 // ─────────────────────────────────────────────
 // BOOKINGS
-// NOTE: After `prisma migrate dev --name init`, also run:
-//   psql $DATABASE_URL -f prisma/add_exclusion_constraint.sql
-// This adds a PostgreSQL exclusion constraint that makes double
-// booking physically impossible at the DB level.
+// A PostgreSQL exclusion constraint makes double booking physically
+// impossible at the DB level. It cannot be expressed here, so it lives in
+// prisma/migrations/1_double_booking_guard — applied by `prisma migrate
+// deploy` like any other migration. It used to be a loose .sql file applied
+// by hand, which meant it was missing from the database entirely.
 // ─────────────────────────────────────────────
 
 model Booking {
