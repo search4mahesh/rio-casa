@@ -1,10 +1,10 @@
-import { PrismaClient } from "@prisma/client";
+import { makeScriptClient } from "./script-client";
 // Rooms come from the canonical inventory so the demo seed can never
 // reintroduce duplicate room numbers — defining a second list here is
 // exactly what produced the extra 101 / 201 / 202.
 import { ROOMS } from "./seed-rooms";
 
-const prisma = new PrismaClient();
+const prisma = makeScriptClient();
 
 const GUESTS = [
   { firstName: "Rahul",  lastName: "Sharma",   phone: "9823456701", email: "rahul.sharma@gmail.com",  city: "Pune",       state: "Maharashtra" },

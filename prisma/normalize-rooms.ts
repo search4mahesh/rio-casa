@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { makeScriptClient } from "./script-client";
 import { ROOMS } from "./seed-rooms";
 
 // ─────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ import { ROOMS } from "./seed-rooms";
 //   npx tsx prisma/normalize-rooms.ts --apply
 // ─────────────────────────────────────────────────────────────
 
-const prisma = new PrismaClient();
+const prisma = makeScriptClient();
 const APPLY = process.argv.includes("--apply");
 
 type Plan = { action: string; detail: string };

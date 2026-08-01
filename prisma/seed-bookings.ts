@@ -1,4 +1,5 @@
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "../lib/generated/prisma/client";
+import { makeScriptClient } from "./script-client";
 
 // ─────────────────────────────────────────────────────────────
 // Generate realistic bookings around today so the calendar and
@@ -16,7 +17,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 //   npx tsx prisma/seed-bookings.ts --days 120 # widen the window
 // ─────────────────────────────────────────────────────────────
 
-const prisma = new PrismaClient();
+const prisma = makeScriptClient();
 
 const RESET = process.argv.includes("--reset");
 const argValue = (name: string, fallback: number) => {

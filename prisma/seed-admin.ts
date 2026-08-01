@@ -1,7 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import { makeScriptClient } from "./script-client";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+const prisma = makeScriptClient();
 
 const ACCOUNTS = [
   {

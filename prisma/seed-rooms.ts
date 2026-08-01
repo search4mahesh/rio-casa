@@ -1,6 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { makeScriptClient } from "./script-client";
 
-const prisma = new PrismaClient();
+const prisma = makeScriptClient();
 
 // ─────────────────────────────────────────────────────────────
 // Canonical inventory: 9 rooms, one per room number.

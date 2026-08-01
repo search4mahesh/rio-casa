@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { makeScriptClient } from "./script-client";
 
 // ─────────────────────────────────────────────────────────────
 // The linen catalogue — the item types that go to the laundryman.
@@ -13,7 +13,7 @@ import { PrismaClient } from "@prisma/client";
 // without resetting rates you have edited in the admin panel.
 // ─────────────────────────────────────────────────────────────
 
-const prisma = new PrismaClient();
+const prisma = makeScriptClient();
 
 const LINEN = [
   // ── Towels ───────────────────────────────────────────────────

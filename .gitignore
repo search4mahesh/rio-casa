@@ -41,3 +41,6 @@ photosriocasa/
 
 # Playwright screenshots from scripts/shot.mjs
 .screenshots/
+
+# Prisma 7 generates the client into the repo; it is built by `prisma generate`
+lib/generated/
