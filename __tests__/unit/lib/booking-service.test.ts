@@ -26,13 +26,14 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { checkAvailability, getAvailableRooms } from "@/lib/booking-service";
+import { applyGst, checkAvailability, getAvailableRooms, quoteStay } from "@/lib/booking-service";
 import { prisma } from "@/lib/prisma";
 
 const mockPrisma = prisma as unknown as {
   blockedDate: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
   booking: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
   room: { findMany: ReturnType<typeof vi.fn> };
+  ratePlan: { findFirst: ReturnType<typeof vi.fn> };
 };
 
 const today = new Date();
@@ -87,6 +88,99 @@ describe("checkAvailability", () => {
     mockPrisma.blockedDate.findFirst.mockResolvedValue({ id: "block_1" });
     const result = await checkAvailability("room_1", tomorrow, nextWeek);
     expect(result.available).toBe(false);
+  });
+});
+
+describe("quoteStay", () => {
+  // 9 Oct 2026 is a Friday, so 9→11 Oct is a Fri + Sat stay and 12→13 Oct
+  // (Monday) is a weekday one.
+  const FRI = new Date("2026-10-09T00:00:00.000Z");
+  const SUN = new Date("2026-10-11T00:00:00.000Z");
+  const MON = new Date("2026-10-12T00:00:00.000Z");
+  const TUE = new Date("2026-10-13T00:00:00.000Z");
+
+  const room = { roomType: "deluxe", pricePerNight: 5500 };
+  const plan = {
+    id: "rp1", baseRate: 6000, extraBedRate: 800, weekendMarkup: 20,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(null);
+  });
+
+  it("falls back to the room's displayed price when no rate plan applies", async () => {
+    const q = await quoteStay({ room, checkIn: MON, checkOut: TUE });
+    expect(q.nightlyRate).toBe(5500);
+    expect(q.subtotal).toBe(5500);
+    expect(q.ratePlanId).toBeNull();
+  });
+
+  it("prices from the rate plan when one applies", async () => {
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(plan);
+    const q = await quoteStay({ room, checkIn: MON, checkOut: TUE });
+    expect(q.nightlyRate).toBe(6000);
+    expect(q.subtotal).toBe(6000);
+    expect(q.ratePlanId).toBe("rp1");
+  });
+
+  it("applies the weekend markup to Friday and Saturday nights", async () => {
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(plan);
+    const q = await quoteStay({ room, checkIn: FRI, checkOut: SUN });
+    expect(q.nights).toBe(2);
+    expect(q.subtotal).toBe(6000 * 1.2 * 2);
+  });
+
+  it("charges the extra bed only when a rate plan defines one", async () => {
+    const without = await quoteStay({ room, checkIn: MON, checkOut: TUE, extraBed: true });
+    expect(without.extraBedRate).toBe(0);
+
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(plan);
+    const withPlan = await quoteStay({ room, checkIn: MON, checkOut: TUE, extraBed: true });
+    expect(withPlan.extraBedRate).toBe(800);
+    expect(withPlan.subtotal).toBe(6800);
+  });
+
+  it("uses a negotiated rate flat, ignoring the rate plan and the weekend", async () => {
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(plan);
+    const q = await quoteStay({ room, checkIn: FRI, checkOut: SUN, extraBed: true, rateOverride: 4000 });
+    expect(q.overridden).toBe(true);
+    expect(q.subtotal).toBe(8000); // 4000 × 2, no markup, no extra bed
+    expect(mockPrisma.ratePlan.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("prices the website and the front desk identically for the same stay", async () => {
+    // The bug this guards: the walk-in route used to price off room.baseRate
+    // with no rate plan, no weekend markup and no extra bed, so the first rate
+    // plan anyone created made walk-ins quietly cheaper than the same room
+    // booked online. Both paths now call this one function.
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(plan);
+    const web = await quoteStay({ room, checkIn: FRI, checkOut: SUN, extraBed: true });
+    mockPrisma.ratePlan.findFirst.mockResolvedValue(plan);
+    const desk = await quoteStay({ room, checkIn: FRI, checkOut: SUN, extraBed: true });
+    expect(desk.subtotal).toBe(web.subtotal);
+  });
+});
+
+describe("applyGst", () => {
+  it("charges 12% at or below ₹7,500 a night", () => {
+    const t = applyGst(7500, 0, 1);
+    expect(t.cgstAmount).toBe(450);
+    expect(t.sgstAmount).toBe(450);
+    expect(t.totalAmount).toBe(8400);
+  });
+
+  it("charges 18% above ₹7,500 a night", () => {
+    const t = applyGst(8000, 0, 1);
+    expect(t.cgstAmount).toBe(720);
+    expect(t.totalAmount).toBe(9440);
+  });
+
+  it("applies the slab to the discounted amount, not the gross", () => {
+    // ₹8,000 gross is an 18% room, but ₹1,000 off drops it to the 12% slab.
+    const t = applyGst(8000, 1000, 1);
+    expect(t.taxableAmount).toBe(7000);
+    expect(t.cgstAmount).toBe(420);
   });
 });
 

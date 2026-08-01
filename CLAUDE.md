@@ -226,8 +226,10 @@ Idempotent and safe to re-run.
 7. Redirect to `/booking/confirmation?id=...` + Resend email
 
 **The booking is committed before the Razorpay order exists.** `createBooking()`
-commits the booking, the guest's `totalStays`/`totalRevenue`, and an audit row
-in one transaction; `createOrder()` only runs afterwards. If it throws, the
+commits the booking row, then updates the guest's `totalStays`/`totalRevenue`
+and writes an audit row just after the commit — outside the transaction, so
+neither can extend the room lock or fail the booking. `createOrder()` only runs
+afterwards. If it throws, the
 route must void the booking (`cancelled` + `paymentStatus: "failed"`) and
 decrement the guest stats — otherwise a `confirmed` row with no order holds the
 room on the calendar for a guest who only ever saw an error. Availability
@@ -237,6 +239,34 @@ Clients must not assume an error response has a JSON body: an unhandled route
 error returns an empty 500, and a bare `res.json()` shows the guest
 `"Unexpected end of JSON input"`. Parse with `.catch(() => null)` and fall back
 to your own message.
+
+## Pricing — `quoteStay` / `applyGst` (`lib/booking-service.ts`)
+**Every booking path prices through these two.** There were two implementations:
+the walk-in route priced off `room.baseRate` with no rate plan, no weekend
+markup and no extra bed, while the website used the rate plan for all three.
+They agreed only because no rate plan existed — the first one a manager created
+from `/admin/setup` would have made walk-ins quietly cheaper than the same room
+booked online, with no error anywhere.
+
+Split in two because the promo claim sits between the halves: the discount a
+code buys depends on the subtotal, so `quoteStay` → `claimPromo` → `applyGst`.
+
+- **The no-rate-plan fallback is `room.pricePerNight`, not `room.baseRate`.**
+  The public site displays `pricePerNight`; pricing off the other column could
+  charge a guest more than the page quoted them. `baseRate` is still stored and
+  editable in the admin panel but no longer feeds pricing.
+- **Without a rate plan an extra bed is free**, on both paths — `extraBedRate`
+  lives only on the rate plan. That is inherited behaviour, not a decision. The
+  walk-in form collects `extraBed` and bills ₹0 for it today.
+- **The GST slab follows the discounted amount**, so a promo can move a stay
+  from 18% to 12%.
+
+`rateOverride` is the front desk negotiating a nightly rate. It replaces the
+whole tariff: no rate plan, no weekend markup, no extra bed on top — the desk
+quoted a number and that is what the guest pays. Overrides are recorded in the
+audit log (`rateOverridden`, `nightlyRate`) because they are the one figure a
+manager may need to question later. Any `frontdesk` user can set one; there is
+no approval step.
 
 ## Strings (`messages/en.json`)
 **This site is English-only. Do not add Hindi, Marathi, or any other locale.**
@@ -296,11 +326,74 @@ that from surfacing as noise:
   legitimately needs longer than one transaction's worth of time.
 
 `ROOM_NOT_AVAILABLE` and `BLOCKED_DATE` are deterministic and never retried.
+A serialization failure raised by a **raw** query is not `P2034` — Prisma
+reports it as `P2010` with SQLSTATE `40001` in `meta.code`. Both the room lock
+and the availability re-check are raw, so `isTransientTxError` matches on the
+SQLSTATE as well; matching only on `P2034` means every loser of a race reaches
+the guest as "Something went wrong."
+
+#### Keep the critical section short
+Bookings for one room run strictly one at a time, so the Nth guest in the queue
+waits for everyone ahead of them. **The length of the critical section, not the
+length of the request, is what sets the tail latency.** Twelve concurrent
+bookings for one room took ~22s when the transaction did all of its work under
+the lock; the same test now runs ~12s with every loser cleanly rejected.
+
+**Every path that writes a booking goes through `guardRoomAvailability(tx, …)`**
+— it takes the `FOR UPDATE` and re-checks conflicts *and* blocked dates in one
+round trip. It is a shared function because the admin walk-in route used to
+hand-roll its own check: no lock, no blocked-date test, and a conflict predicate
+that disagreed with this one about failed payments, so a room the calendar
+showed as free could not be booked at the front desk. New booking routes call
+it; they do not write their own availability query.
+
+Only three things run with the room locked: the `FOR UPDATE`, the availability
+re-check, and the insert. When adding to a booking path, put the new work in
+whichever of these is true:
+
+| Where | For work that… | Examples |
+|---|---|---|
+| Before the transaction | cannot be invalidated by a competing booking | rate plan, pricing, GST, promo claim, booking number |
+| Inside the tx, before `FOR UPDATE` | needs the isolation but not the room | the guest lookup/create |
+| Under the lock | decides whether the room is free | the re-check, the insert |
+| After the commit | is bookkeeping | guest totals, audit log |
+
+Post-commit bookkeeping is deliberately non-fatal: a booking that exists must
+not be lost because an audit row failed. That is why guest totals are repairable
+(`prisma/repair-data.ts`) rather than transactional.
+
+Do **not** fan the pre-transaction reads out with `Promise.all` — two pool
+connections per in-flight request is how contention turned into `P2028`.
 
 Verify with `npx tsx prisma/verify-booking-race.ts [n]` — fires n simultaneous
-bookings at one room and asserts exactly one wins. Run it after touching the
-transaction, the isolation level, the pool, or the Prisma version. Unit tests
-mock the database and cannot catch any of this.
+bookings at one room, asserts exactly one wins, and reports the latency spread.
+Run it after touching the transaction, the isolation level, the pool, or the
+Prisma version. Unit tests mock the database and cannot catch any of this.
+Pipe it to `tail`, never `head`: SIGPIPE kills the script before its cleanup and
+leaves a booking behind that fails every later run.
+
+#### Booking numbers — `nextBookingNumber(day)`
+`BK-YYYYMMDD-NNN`, allocated by a one-row upsert on `booking_counters`. Both the
+website and the admin walk-in route go through it, so the two cannot collide.
+
+It replaced a `COUNT(*)` that was broken and slow at once: the prefix came from
+the check-in day while the count window came from `created_at`, so **every
+advance booking for the same date computed `-001`** and the second one died on
+the unique index — reported to the guest as "this room was just booked". A COUNT
+over a predicate also takes a predicate lock, letting bookings for unrelated
+rooms abort each other.
+
+Allocation sits outside the transaction, so a failed booking burns a number.
+Gaps are expected; duplicates are not.
+
+#### Promo codes
+`claimPromo` reserves a use with a single guarded `UPDATE … WHERE (usage_limit
+IS NULL OR used_count < usage_limit)`, so the cap is enforced by the statement
+itself and needs no surrounding transaction. Claiming happens *before* the
+booking transaction — a shared counter row touched under SERIALIZABLE is
+contention between bookings that have nothing to do with each other. Because
+the claim precedes the availability decision, `createBooking` must hand it back
+via `releasePromoClaim` on any failure, or losing a race burns a redemption.
 
 ### Migrations
 The schema is under migration control as of `0_init`, which was **baselined**
@@ -311,6 +404,7 @@ applied, not replayed. Two migrations exist:
 |---|---|
 | `0_init` | Every table, index and FK in `schema.prisma` |
 | `1_double_booking_guard` | `btree_gist`, the `no_overlapping_bookings` exclusion constraint, and the five hand-written indexes |
+| `2_booking_counter` | `booking_counters`, backfilled from the highest `BK-` suffix already issued per date |
 
 `1_double_booking_guard` holds objects Prisma cannot express in the schema. It
 was previously a loose `prisma/add_exclusion_constraint.sql` that had to be run

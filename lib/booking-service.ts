@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
-import { today as todayDate, addDays } from "@/lib/dates";
+import { today as todayDate, addDays, toDayString } from "@/lib/dates";
 import { Prisma } from "@/lib/generated/prisma/client";
 
 // ─────────────────────────────────────────────
@@ -141,6 +141,19 @@ export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests
 // SELECT FOR UPDATE on the room row serialises concurrent requests
 // for the same room. Combined with the DB exclusion constraint (Layer 1),
 // this makes double booking impossible.
+//
+// Bookings for one room run strictly one at a time, so the wait for the Nth
+// guest in the queue is N × however long the lock is held. That makes the
+// length of the critical section — not the length of the request — the number
+// worth optimising. It used to be ten round trips: rate plan, promo, GST,
+// guest upsert, a COUNT for the booking number, the insert, a guest-totals
+// recalculation and an audit row, all with the room locked. Twelve concurrent
+// bookings for one room took ~22s.
+//
+// Only three things actually need the lock: taking it, re-checking
+// availability under it, and inserting the row. Everything else now happens
+// either before the transaction, before the FOR UPDATE, or after the commit —
+// see the comments at each step for which and why.
 // ─────────────────────────────────────────────
 
 /**
@@ -159,16 +172,58 @@ const TRANSIENT_TX_CODES = new Set([
   "P2028", // transaction API error, incl. "unable to start in the given time"
 ]);
 
-async function withSerializableRetry<T>(run: () => Promise<T>, attempts = 4): Promise<T> {
+/** Postgres SQLSTATEs that mean "this transaction lost a race, run it again". */
+const TRANSIENT_SQLSTATES = new Set([
+  "40001", // serialization_failure
+  "40P01", // deadlock_detected
+]);
+
+/**
+ * One serialization failure reaches us in three different shapes, depending on
+ * which call inside the transaction lost the race:
+ *
+ *   - a Prisma model call  → `PrismaClientKnownRequestError` code `P2034`
+ *   - a `$queryRaw`        → `P2010`, SQLSTATE in `meta.code`
+ *   - the driver adapter   → `DriverAdapterError`, SQLSTATE in
+ *                            `cause.originalCode`, no `code` at all
+ *
+ * All three are the same event and all three must be retried, so this walks the
+ * cause chain rather than trusting any single field. Matching only `P2034` is
+ * how losers of a race reached guests as "Something went wrong": the room lock
+ * and the availability re-check are raw, and the guest upsert throws the third
+ * shape. Deterministic outcomes are filtered out by the caller before this runs.
+ */
+function isTransientTxError(err: unknown): boolean {
+  type ErrLike = {
+    code?: unknown; kind?: unknown; originalCode?: unknown;
+    meta?: { code?: unknown }; message?: unknown; cause?: unknown;
+  };
+
+  for (let e = err as ErrLike | undefined, depth = 0; e && depth < 5; e = e.cause as ErrLike, depth++) {
+    if (typeof e.code === "string" && TRANSIENT_TX_CODES.has(e.code)) return true;
+    if (typeof e.meta?.code === "string" && TRANSIENT_SQLSTATES.has(e.meta.code)) return true;
+    if (typeof e.originalCode === "string" && TRANSIENT_SQLSTATES.has(e.originalCode)) return true;
+    if (e.kind === "TransactionWriteConflict") return true;
+    if (
+      typeof e.message === "string" &&
+      (e.message.includes("could not serialize access") ||
+        e.message.includes("write conflict or a deadlock"))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function withSerializableRetry<T>(run: () => Promise<T>, attempts = 4): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await run();
     } catch (err) {
-      const code = (err as { code?: string }).code;
       const message = (err as Error).message ?? "";
       if (message === "ROOM_NOT_AVAILABLE" || message === "BLOCKED_DATE") throw err;
-      if (!code || !TRANSIENT_TX_CODES.has(code)) throw err;
+      if (!isTransientTxError(err)) throw err;
 
       lastError = err;
       if (attempt === attempts) break;
@@ -181,6 +236,309 @@ async function withSerializableRetry<T>(run: () => Promise<T>, attempts = 4): Pr
   throw lastError;
 }
 
+// ─────────────────────────────────────────────
+// PRICING
+//
+// One implementation, used by the website and by the front desk. There were
+// two: the walk-in route priced off `room.baseRate` with no rate plan, no
+// weekend markup and no extra bed, while the website used the rate plan for all
+// three. They agreed only because no rate plan existed — the first one a
+// manager created from /admin/setup would have made walk-ins quietly cheaper
+// than the same room booked online.
+//
+// Split in two because the promo claim sits between the halves: the discount a
+// code buys depends on the subtotal, and claiming it is a write that must not
+// happen until the subtotal is known.
+// ─────────────────────────────────────────────
+
+/** The room fields pricing actually reads. */
+export type PricedRoom = { roomType: string; pricePerNight: number };
+
+export interface StayQuote {
+  nights: number;
+  /** Nightly rate before weekend markup and before the extra bed. */
+  nightlyRate: number;
+  extraBedRate: number;
+  /** Rate plan applied, or null for the room's own price / an overridden rate. */
+  ratePlanId: string | null;
+  /** Whether a negotiated rate replaced the tariff. */
+  overridden: boolean;
+  /** Weekend markup and extra bed included; before any discount or tax. */
+  subtotal: number;
+}
+
+export interface StayTotals {
+  taxableAmount: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  totalAmount: number;
+}
+
+/**
+ * Price a stay: nightly rate × nights, plus weekend markup and extra bed.
+ *
+ * `rateOverride` is the front desk negotiating. An overridden rate is the whole
+ * nightly price — no rate plan is consulted, no weekend markup is added, and no
+ * extra bed is charged on top. The desk quoted a number and that is what the
+ * guest pays; anything else surprises the person who typed it.
+ *
+ * Without an override the fallback is `room.pricePerNight`, deliberately **not**
+ * `room.baseRate`: the public site displays `pricePerNight`, so pricing off the
+ * other column could charge a guest more than the page quoted them.
+ */
+export async function quoteStay(args: {
+  room: PricedRoom;
+  checkIn: Date;
+  checkOut: Date;
+  extraBed?: boolean;
+  rateOverride?: number | null;
+}): Promise<StayQuote> {
+  const { room, checkIn, checkOut, extraBed = false, rateOverride = null } = args;
+
+  const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (rateOverride != null) {
+    return {
+      nights,
+      nightlyRate: rateOverride,
+      extraBedRate: 0,
+      ratePlanId: null,
+      overridden: true,
+      subtotal: rateOverride * nights,
+    };
+  }
+
+  const ratePlan = await prisma.ratePlan.findFirst({
+    where: {
+      roomType: room.roomType,
+      isActive: true,
+      validFrom: { lte: checkIn },
+      validTo: { gte: checkOut },
+    },
+    orderBy: { priority: "desc" },
+  });
+
+  const nightlyRate = ratePlan ? Number(ratePlan.baseRate) : room.pricePerNight;
+  // NOTE: without a rate plan an extra bed is free, on both paths. That is
+  // existing behaviour carried over, not a decision made here — see the pricing
+  // notes in CLAUDE.md before changing what a bed costs.
+  const extraBedRate = extraBed && ratePlan ? Number(ratePlan.extraBedRate) : 0;
+
+  // Weekend markup (Fri + Sat). Walk the stay in UTC — these are calendar days,
+  // and `setDate`/`getDay` would ask the server's timezone which day it is.
+  // See lib/dates.ts.
+  let subtotal = 0;
+  for (let i = 0; i < nights; i++) {
+    const night = addDays(checkIn, i).getUTCDay();
+    let rate = nightlyRate + extraBedRate;
+    if (ratePlan && (night === 5 || night === 6)) {
+      rate *= 1 + Number(ratePlan.weekendMarkup) / 100;
+    }
+    subtotal += rate;
+  }
+
+  return {
+    nights, nightlyRate, extraBedRate,
+    ratePlanId: ratePlan?.id ?? null, overridden: false, subtotal,
+  };
+}
+
+/**
+ * GST on accommodation, applied to the discounted amount.
+ *
+ * 12% (CGST 6% + SGST 6%) if the average nightly rate is ≤ ₹7,500,
+ * 18% (CGST 9% + SGST 9%) above it.
+ */
+export function applyGst(subtotal: number, discount: number, nights: number): StayTotals {
+  const taxableAmount = subtotal - discount;
+  const avgNightly = taxableAmount / nights;
+  const gstRate = avgNightly <= 7500 ? 6 : 9; // each component (CGST + SGST)
+  const cgstAmount = Math.round(taxableAmount * gstRate) / 100;
+  const sgstAmount = Math.round(taxableAmount * gstRate) / 100;
+  return {
+    taxableAmount, cgstAmount, sgstAmount,
+    totalAmount: taxableAmount + cgstAmount + sgstAmount,
+  };
+}
+
+/**
+ * Allocate the next `BK-YYYYMMDD-NNN` for a check-in day.
+ *
+ * One statement, atomic, and deliberately outside the booking transaction. It
+ * replaces a `COUNT(*)` that was both wrong and expensive: the prefix came from
+ * the check-in day while the count window came from `created_at`, so every
+ * advance booking for a date computed `-001`, and the second one died on the
+ * unique index — reported to the guest as "this room was just booked". A COUNT
+ * over a predicate also takes a predicate lock under SERIALIZABLE, which let
+ * bookings for unrelated rooms abort one another.
+ *
+ * A booking that then fails burns its number. Gaps are fine; duplicates are not.
+ */
+export async function nextBookingNumber(day: Date): Promise<string> {
+  const dayStr = toDayString(day);
+  const [row] = await prisma.$queryRaw<Array<{ last_seq: number }>>`
+    INSERT INTO booking_counters (day, last_seq)
+    VALUES (${dayStr}::date, 1)
+    ON CONFLICT (day) DO UPDATE SET last_seq = booking_counters.last_seq + 1
+    RETURNING last_seq
+  `;
+  return `BK-${dayStr.replace(/-/g, "")}-${String(row.last_seq).padStart(3, "0")}`;
+}
+
+/**
+ * Reserve one use of a promo code and return the discount it buys.
+ *
+ * The usage cap lives in the UPDATE's own WHERE clause, so checking it and
+ * consuming it are one indivisible statement — no promo can be redeemed past
+ * its limit even without an enclosing transaction. That matters because this
+ * deliberately runs outside the booking transaction: a shared counter row
+ * touched under SERIALIZABLE is contention between bookings that otherwise have
+ * nothing to do with each other, including bookings for different rooms.
+ *
+ * A claim that is never spent is handed back by `releasePromoClaim`.
+ */
+async function claimPromo(
+  code: string,
+  checkIn: Date,
+  nights: number,
+  subtotal: number
+): Promise<{ id: string; discount: number } | null> {
+  const day = toDayString(checkIn);
+  const rows = await prisma.$queryRaw<
+    Array<{ id: string; discount_type: string; discount_value: string; max_discount: string | null }>
+  >`
+    UPDATE promotions
+       SET used_count = used_count + 1
+     WHERE code       = ${code}
+       AND is_active  = true
+       AND valid_from <= ${day}::date
+       AND valid_to   >= ${day}::date
+       AND min_nights <= ${nights}
+       AND (usage_limit IS NULL OR used_count < usage_limit)
+    RETURNING id, discount_type, discount_value, max_discount
+  `;
+
+  const promo = rows[0];
+  if (!promo) return null;
+
+  const value = Number(promo.discount_value);
+  // `Number(null)` is 0, which would wipe out every percentage discount that
+  // has no cap set.
+  const cap = promo.max_discount === null ? Infinity : Number(promo.max_discount);
+  const discount =
+    promo.discount_type === "percentage" ? Math.min(subtotal * (value / 100), cap) : value;
+
+  return { id: promo.id, discount };
+}
+
+/** Hand a promo use back after a booking that claimed it did not commit. */
+async function releasePromoClaim(id: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE promotions SET used_count = used_count - 1 WHERE id = ${id} AND used_count > 0
+  `;
+}
+
+/** The parts of a booking that identify the person staying. */
+export type GuestIdentity = Pick<BookingInput, "guestName" | "guestEmail" | "guestPhone">;
+
+/**
+ * Find the guest behind this booking, creating a directory entry if new.
+ *
+ * Must run inside the booking transaction: SERIALIZABLE is what stops two
+ * simultaneous bookings from one phone number creating two directory rows.
+ * Run it *before* the room lock — it needs the isolation, not the room.
+ */
+export async function resolveGuest(
+  tx: Prisma.TransactionClient,
+  who: GuestIdentity
+): Promise<string> {
+  const nameParts = who.guestName.trim().split(/\s+/);
+  const firstName = nameParts[0];
+  const lastName = nameParts.slice(1).join(" ") || "-";
+
+  let guest = await tx.guest.findFirst({ where: { phone: who.guestPhone }, select: { id: true } });
+  if (!guest && who.guestEmail) {
+    guest = await tx.guest.findFirst({ where: { email: who.guestEmail }, select: { id: true } });
+  }
+  if (!guest) {
+    guest = await tx.guest.create({
+      data: { firstName, lastName, email: who.guestEmail, phone: who.guestPhone },
+      select: { id: true },
+    });
+  }
+  return guest.id;
+}
+
+/** Thrown by `guardRoomAvailability`; carries the booking already holding the room. */
+export class RoomNotAvailableError extends Error {
+  constructor(readonly conflictingBooking: string) {
+    // The message is the sentinel the retry filter and the error mapping match
+    // on — a serialization retry must not fire for a deterministic answer.
+    super("ROOM_NOT_AVAILABLE");
+    this.name = "RoomNotAvailableError";
+  }
+}
+
+/** Options every booking transaction shares. See the retry notes above. */
+export const BOOKING_TX_OPTIONS = {
+  // Bookings for the same room serialise behind the FOR UPDATE lock, so a
+  // waiter legitimately needs longer than one transaction's worth of time.
+  // `maxWait` covers acquiring the connection and opening the transaction;
+  // `timeout` covers the work inside it.
+  maxWait: 15000,
+  timeout: 20000,
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+} as const;
+
+/**
+ * Take the room lock and confirm the stay is still bookable under it.
+ *
+ * **This is the critical section.** Every booking path must go through it, and
+ * whatever the caller does after it should be short — see "Keep the critical
+ * section short" in CLAUDE.md. It exists as one function because the walk-in
+ * route used to hand-roll its own check: no lock, no blocked-date test, and a
+ * conflict predicate that disagreed with this one about failed payments, so a
+ * room the calendar showed as free could not be booked at the front desk.
+ *
+ * Throws `RoomNotAvailableError` or `Error("BLOCKED_DATE")`. Both are
+ * deterministic and must never be retried.
+ */
+export async function guardRoomAvailability(
+  tx: Prisma.TransactionClient,
+  roomId: string,
+  checkIn: Date,
+  checkOut: Date
+): Promise<void> {
+  // Any other booking for this room blocks here until we commit.
+  await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${roomId} FOR UPDATE`;
+
+  // One round trip for both halves. The predicate mirrors the
+  // `no_overlapping_bookings` exclusion constraint in
+  // prisma/migrations/1_double_booking_guard. Bounds are bound as YYYY-MM-DD
+  // and cast to `date` so the comparison cannot be shifted by the server's
+  // timezone — these are DATE columns.
+  const checkInDay = toDayString(checkIn);
+  const checkOutDay = toDayString(checkOut);
+  const [guard] = await tx.$queryRaw<Array<{ conflict: string | null; blocked: boolean }>>`
+    SELECT
+      (SELECT b.booking_number
+         FROM bookings b
+        WHERE b.room_id        = ${roomId}
+          AND b.status         NOT IN ('cancelled', 'no_show')
+          AND b.payment_status <> 'failed'
+          AND b.check_in       < ${checkOutDay}::date
+          AND b.check_out      > ${checkInDay}::date
+        LIMIT 1) AS conflict,
+      EXISTS (SELECT 1
+                FROM blocked_dates d
+               WHERE (d.room_id = ${roomId} OR d.room_id IS NULL)
+                 AND d.block_date >= ${checkInDay}::date
+                 AND d.block_date <  ${checkOutDay}::date) AS blocked
+  `;
+  if (guard.conflict) throw new RoomNotAvailableError(guard.conflict);
+  if (guard.blocked) throw new Error("BLOCKED_DATE");
+}
+
 export async function createBooking(input: BookingInput): Promise<BookingResult> {
   if (input.checkIn >= input.checkOut) {
     return { success: false, error: "Check-out must be after check-in", errorCode: "INVALID_DATES" };
@@ -190,129 +548,56 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     return { success: false, error: "Check-in date cannot be in the past", errorCode: "INVALID_DATES" };
   }
 
+  // Released again if the booking does not commit — see the catch below.
+  let unspentPromoClaim: string | null = null;
+
   try {
+    // ══ Before the transaction ════════════════════════════════════════
+    // Pricing is a pure function of the room, the rate plan and the dates.
+    // None of it can be invalidated by a competing booking, so none of it
+    // needs the room lock. Kept sequential on purpose: fanning these out with
+    // Promise.all would take two pool connections per in-flight request, and
+    // starving the pool is what made contention surface as P2028 in the first
+    // place.
+
+    const room = await prisma.room.findUniqueOrThrow({ where: { id: input.roomId } });
+
+    const { nights, subtotal } = await quoteStay({
+      room,
+      checkIn: input.checkIn,
+      checkOut: input.checkOut,
+      extraBed: input.extraBed,
+    });
+
+    // Promo code — claimed up front, because the claim is what enforces the
+    // usage cap and it must not be repeated if the transaction below retries.
+    const claim = input.promoCode
+      ? await claimPromo(input.promoCode, input.checkIn, nights, subtotal)
+      : null;
+    const discount = claim?.discount ?? 0;
+    unspentPromoClaim = claim?.id ?? null;
+
+    const { cgstAmount, sgstAmount, totalAmount } = applyGst(subtotal, discount, nights);
+
+    const bookingNumber = await nextBookingNumber(input.checkIn);
+
     const booking = await withSerializableRetry(() => prisma.$transaction(
       async (tx) => {
-        // ── Step 1: Lock the room row ──────────────────────────────────
-        // Any other transaction for this room blocks here until we commit.
-        await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${input.roomId} FOR UPDATE`;
+        // ── Inside the transaction, before the lock ────────────────────
+        // The guest lookup needs the transaction's isolation — two
+        // simultaneous bookings from one phone number must not each create a
+        // directory entry, and SERIALIZABLE is what stops that — but it does
+        // not need the *room*, so it runs before the lock is taken. Time spent
+        // here is not time the next guest for this room spends waiting.
+        const guestId = await resolveGuest(tx, input);
 
-        // ── Step 2: Re-check availability while locked ─────────────────
-        const conflict = await tx.booking.findFirst({
-          where: {
-            roomId: input.roomId,
-            status: { notIn: ["cancelled", "no_show"] },
-            paymentStatus: { notIn: ["failed"] },
-            checkIn: { lt: input.checkOut },
-            checkOut: { gt: input.checkIn },
-          },
-        });
-        if (conflict) throw new Error("ROOM_NOT_AVAILABLE");
+        // ══ Critical section begins ═══════════════════════════════════
+        await guardRoomAvailability(tx, input.roomId, input.checkIn, input.checkOut);
 
-        // Check blocked dates
-        const blocked = await tx.blockedDate.findFirst({
-          where: {
-            OR: [{ roomId: input.roomId }, { roomId: null }],
-            blockDate: { gte: input.checkIn, lt: input.checkOut },
-          },
-        });
-        if (blocked) throw new Error("BLOCKED_DATE");
-
-        // ── Step 3: Load room + apply rate plan ────────────────────────
-        const room = await tx.room.findUniqueOrThrow({ where: { id: input.roomId } });
-
-        const nights = Math.ceil(
-          (input.checkOut.getTime() - input.checkIn.getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        // Look for an active rate plan; fall back to room.pricePerNight
-        const ratePlan = await tx.ratePlan.findFirst({
-          where: {
-            roomType: room.roomType,
-            isActive: true,
-            validFrom: { lte: input.checkIn },
-            validTo: { gte: input.checkOut },
-          },
-          orderBy: { priority: "desc" },
-        });
-
-        const nightlyRate = ratePlan ? Number(ratePlan.baseRate) : room.pricePerNight;
-        const extraBedRate = input.extraBed && ratePlan ? Number(ratePlan.extraBedRate) : 0;
-
-        // Weekend markup (Fri + Sat)
-        let subtotal = 0;
-        const cur = new Date(input.checkIn);
-        for (let i = 0; i < nights; i++) {
-          let rate = nightlyRate + extraBedRate;
-          if (ratePlan && (cur.getDay() === 5 || cur.getDay() === 6)) {
-            rate *= 1 + Number(ratePlan.weekendMarkup) / 100;
-          }
-          subtotal += rate;
-          cur.setDate(cur.getDate() + 1);
-        }
-
-        // ── Step 4: Promo code ─────────────────────────────────────────
-        let discount = 0;
-        if (input.promoCode) {
-          const promo = await tx.promotion.findFirst({
-            where: {
-              code: input.promoCode,
-              isActive: true,
-              validFrom: { lte: input.checkIn },
-              validTo: { gte: input.checkIn },
-              minNights: { lte: nights },
-            },
-          });
-          if (promo && (!promo.usageLimit || promo.usedCount < promo.usageLimit)) {
-            discount =
-              promo.discountType === "percentage"
-                ? Math.min(subtotal * (Number(promo.discountValue) / 100), Number(promo.maxDiscount ?? Infinity))
-                : Number(promo.discountValue);
-            await tx.promotion.update({
-              where: { id: promo.id },
-              data: { usedCount: { increment: 1 } },
-            });
-          }
-        }
-
-        // ── Step 5: GST calculation ────────────────────────────────────
-        // GST on accommodation: 12% (CGST 6% + SGST 6%) if avg nightly ≤ ₹7,500
-        //                       18% (CGST 9% + SGST 9%) if avg nightly > ₹7,500
-        const taxableAmount = subtotal - discount;
-        const avgNightly = taxableAmount / nights;
-        const gstRate = avgNightly <= 7500 ? 6 : 9; // each component (CGST + SGST)
-        const cgstAmount = Math.round(taxableAmount * gstRate) / 100;
-        const sgstAmount = Math.round(taxableAmount * gstRate) / 100;
-        const totalAmount = taxableAmount + cgstAmount + sgstAmount;
-
-        // ── Step 6: Find or create Guest record ────────────────────────
-        const nameParts = input.guestName.trim().split(/\s+/);
-        const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(" ") || "-";
-
-        let guest = await tx.guest.findFirst({ where: { phone: input.guestPhone } });
-        if (!guest && input.guestEmail) {
-          guest = await tx.guest.findFirst({ where: { email: input.guestEmail } });
-        }
-        if (!guest) {
-          guest = await tx.guest.create({
-            data: { firstName, lastName, email: input.guestEmail, phone: input.guestPhone },
-          });
-        }
-
-        // ── Step 7: Generate booking number ────────────────────────────
-        const dateStr = input.checkIn.toISOString().slice(0, 10).replace(/-/g, "");
-        const dayStart = new Date(input.checkIn.toDateString());
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
-        const todayCount = await tx.booking.count({ where: { createdAt: { gte: dayStart, lt: dayEnd } } });
-        const bookingNumber = `BK-${dateStr}-${String(todayCount + 1).padStart(3, "0")}`;
-
-        // ── Step 8: Create booking ─────────────────────────────────────
-        const booking = await tx.booking.create({
+        return await tx.booking.create({
           data: {
             bookingNumber,
-            guestId: guest.id,
+            guestId,
             guestName: input.guestName,
             guestEmail: input.guestEmail,
             guestPhone: input.guestPhone,
@@ -336,36 +621,34 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
           },
           include: { room: true },
         });
-
-        // ── Step 9: Update guest stats ─────────────────────────────────
-        // Recompute rather than increment, so the totals stay right no matter
-        // how the guest's other bookings were created or ended.
-        await recalcGuestTotals(tx, guest.id);
-
-        // ── Step 10: Audit log ─────────────────────────────────────────
-        await tx.auditLog.create({
-          data: {
-            userId: "system",
-            action: "booking_created",
-            entityType: "booking",
-            entityId: booking.id,
-            newValue: { bookingNumber, roomId: input.roomId, totalAmount, source: input.source ?? "website" },
-          },
-        });
-
-        return booking;
-        // Lock released on commit
+        // ══ Critical section ends — lock released on commit ═══════════
       },
-      {
-        // Bookings for the same room serialise behind the FOR UPDATE lock, so
-        // a waiter legitimately needs longer than one transaction's worth of
-        // time. `maxWait` covers acquiring the connection and opening the
-        // transaction; `timeout` covers the work inside it.
-        maxWait: 15000,
-        timeout: 20000,
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      }
+      BOOKING_TX_OPTIONS
     ));
+
+    // The promo was spent on a booking that exists. Nothing to hand back.
+    unspentPromoClaim = null;
+
+    // ══ After the commit ══════════════════════════════════════════════
+    // Bookkeeping, not booking. Neither of these can change whether the room
+    // is held, and both used to run with the lock still down. If one fails the
+    // booking still stands, which is the right trade: guest totals are derived
+    // state that `prisma/repair-data.ts` reports and repairs, and no audit row
+    // is worth voiding a stay the guest is about to pay for.
+    try {
+      await recalcGuestTotals(prisma, booking.guestId);
+      await prisma.auditLog.create({
+        data: {
+          userId: "system",
+          action: "booking_created",
+          entityType: "booking",
+          entityId: booking.id,
+          newValue: { bookingNumber, roomId: input.roomId, totalAmount, source: input.source ?? "website" },
+        },
+      });
+    } catch (err) {
+      console.error(`[booking-service] post-commit bookkeeping failed for ${bookingNumber}:`, err);
+    }
 
     return {
       success: true,
@@ -389,6 +672,15 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     };
   } catch (err: unknown) {
     const error = err as Error & { code?: string; message?: string };
+
+    // The promo was consumed before we knew the room was still free, so a
+    // booking that never committed has to give the use back — otherwise a code
+    // capped at 50 redemptions is burnt down by guests who lost a race.
+    if (unspentPromoClaim) {
+      await releasePromoClaim(unspentPromoClaim).catch((e) =>
+        console.error("[booking-service] could not release promo claim:", e)
+      );
+    }
 
     if (error.message === "ROOM_NOT_AVAILABLE") {
       return {
@@ -416,7 +708,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     // Contention that survived every retry. The booking definitively did not
     // happen, so say so plainly rather than leaving the guest unsure whether
     // they have a room — and never imply they should pay again.
-    if (error.code && TRANSIENT_TX_CODES.has(error.code)) {
+    if (isTransientTxError(error)) {
       console.error("[booking-service] createBooking exhausted retries:", error.code, error.message);
       return {
         success: false,

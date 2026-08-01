@@ -33,20 +33,33 @@ async function main() {
   const room = await db.room.findFirstOrThrow({ select: { id: true, roomNumber: true } });
   console.log(`racing ${CONCURRENCY} concurrent bookings — room #${room.roomNumber}, 10–13 Sep 2028\n`);
 
+  // Bookings for one room run one at a time, so the last guest in the queue
+  // waits for every booking ahead of it. That makes the slowest request, not
+  // the average, the number that says whether contention is under control.
+  const latencies: number[] = [];
+  const startedAll = Date.now();
+
   const results = await Promise.allSettled(
-    Array.from({ length: CONCURRENCY }, (_, i) =>
-      createBooking({
-        roomId: room.id,
-        checkIn: CHECK_IN,
-        checkOut: CHECK_OUT,
-        adults: 2,
-        guestName: `Race ${i}`,
-        guestEmail: TAG,
-        guestPhone: `90000000${i}`,
-        source: "website",
-      })
-    )
+    Array.from({ length: CONCURRENCY }, async (_, i) => {
+      const started = Date.now();
+      try {
+        return await createBooking({
+          roomId: room.id,
+          checkIn: CHECK_IN,
+          checkOut: CHECK_OUT,
+          adults: 2,
+          guestName: `Race ${i}`,
+          guestEmail: TAG,
+          guestPhone: `90000000${i}`,
+          source: "website",
+        });
+      } finally {
+        latencies.push(Date.now() - started);
+      }
+    })
   );
+
+  const wallClock = Date.now() - startedAll;
 
   let won = 0;
   let rejected = 0;
@@ -64,6 +77,13 @@ async function main() {
 
   console.log(`\nwon: ${won}   cleanly rejected: ${rejected}   unknown failures: ${unknown}`);
   console.log(`bookings persisted for that room + range: ${persisted}`);
+
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+  console.log(
+    `latency: fastest ${secs(sorted[0])}   median ${secs(sorted[sorted.length >> 1])}   ` +
+      `slowest ${secs(sorted[sorted.length - 1])}   all done in ${secs(wallClock)}`
+  );
 
   const del = await db.booking.deleteMany({ where: { guestEmail: TAG } });
   await db.guest.deleteMany({ where: { email: TAG } });
