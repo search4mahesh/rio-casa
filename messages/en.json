@@ -52,7 +52,12 @@
     "duration": "Duration",
     "confirm": "Confirm Booking",
     "success": "Booking Confirmed!",
-    "confirmationSent": "A confirmation has been sent to your email."
+    "confirmationSent": "A confirmation has been sent to your email.",
+    "roomCharges": "Room charges",
+    "taxes": "GST",
+    "priceLoading": "Calculating price…",
+    "priceUnavailable": "We could not calculate the price for these dates. Please go back and try again.",
+    "taxNote": "Includes all taxes."
   },
   "packages": {
     "title": "Packages & Offers",

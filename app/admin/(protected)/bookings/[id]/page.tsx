@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useId } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast, Toast } from "@/components/ui/Toast";
@@ -70,6 +70,7 @@ function fmtCurrency(n: unknown) {
 }
 
 export default function BookingDetailPage() {
+  const fieldId = useId();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
@@ -347,8 +348,8 @@ export default function BookingDetailPage() {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
               <h2 className="font-semibold text-gray-900 mb-1">Cancel Booking</h2>
               <p className="text-sm text-gray-500 mb-4">This action cannot be undone.</p>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-              <textarea
+              <label htmlFor={`${fieldId}-reason-optional`} className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+              <textarea id={`${fieldId}-reason-optional`}
                 rows={3}
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}

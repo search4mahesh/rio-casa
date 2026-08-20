@@ -60,13 +60,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Cannot block more than 90 days at once" }, { status: 400 });
   }
 
-  await prisma.blockedDate.createMany({
+  // `skipDuplicates` against the partial unique indexes in
+  // prisma/migrations/3_blocked_dates_unique. Blocking a range that overlaps
+  // one already blocked used to insert a second row per shared day; unblocking
+  // then deleted the visible row and left the room blocked by its twin, which
+  // reads as the unblock having failed.
+  //
+  // Re-blocking is now idempotent, so the count returned is what was actually
+  // added, not what was asked for.
+  const { count } = await prisma.blockedDate.createMany({
     data: dates.map((date) => ({
       roomId: roomId ?? null,
       blockDate: date,
       reason: reason ?? null,
     })),
+    skipDuplicates: true,
   });
 
-  return ok(dates.length);
+  return ok(count);
 }

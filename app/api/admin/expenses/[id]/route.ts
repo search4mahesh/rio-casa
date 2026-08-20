@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { ok, okEmpty, failValidation } from "@/lib/api-response";
+import { dateOnly } from "@/lib/dates";
 
 const UpdateSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -33,7 +34,9 @@ export async function PATCH(
     where: { id: params.id },
     data: {
       ...rest,
-      ...(date ? { date: new Date(date) } : {}),
+      // `dateOnly`, not `new Date` — a DATE column wants a calendar day. Both
+      // happen to agree for a bare YYYY-MM-DD, but only one says so.
+      ...(date ? { date: dateOnly(date) } : {}),
     },
   });
 

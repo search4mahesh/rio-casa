@@ -26,9 +26,11 @@ vi.mock("@/lib/prisma", () => ({
       ),
       update: vi.fn(async () => db.linenItems[0]),
     },
+    // Batch numbers come from the shared `daily_counters` allocator, not from a
+    // COUNT of same-day batches — see nextDailyNumber in lib/booking-service.
+    $queryRaw: vi.fn(async () => [{ last_seq: 1 }]),
     laundryBatch: {
       findMany: vi.fn(async () => []),
-      count: vi.fn(async () => 0),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ ...data, id: "b1", totalCost: data.totalCost })),
       findUnique: vi.fn(async () => db.batch),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({

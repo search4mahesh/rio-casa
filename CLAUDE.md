@@ -4,6 +4,18 @@
 Full-featured resort website for **Rio Casa**, Mahabaleshwar, Maharashtra.
 Goals: direct bookings, brand presence, event/package promotion.
 
+## Known bugs — `BUGS.md`
+Defects live in `BUGS.md`, with stable ids (`B-04`) you can cite in commit
+messages. Nothing is open today; the Fixed table is the useful part. **Read it
+before starting on anything money-, date- or promo-shaped** — it records what
+each bug actually did, so you can tell a deliberate decision from a regression
+you are about to reintroduce.
+
+Maintain it as you go: log what you find but do not fix, move entries to the
+Fixed table when you do, and delete ones that turn out to be wrong. Every entry
+names a concrete failure — input, wrong output. Code-quality observations with
+no failure attached belong in a `/simplify` pass, not there.
+
 ## Tech Stack
 - **Next.js 14** — App Router, TypeScript, `app/` directory
 - **Tailwind CSS v3** — design tokens in `tailwind.config.js`
@@ -77,6 +89,22 @@ Exceptions are third-party brand colours (WhatsApp green, Razorpay theme).
 ## Shared UI (`components/ui/`)
 - `Toast` + `useToast` — transient admin confirmations. One implementation;
   don't hand-roll toast state, timers, or markup in a panel.
+- `Field` — a labelled form control. **Never write a bare `<label>` beside an
+  input.** A label with no `htmlFor` names nothing: a screen reader announces an
+  unlabelled box, and clicking the label does not focus the control. `Field`
+  hands its child the id via a render prop, so the association cannot be
+  forgotten:
+
+  ```tsx
+  <Field label="Phone *">{(id) => <input id={id} value={phone} onChange={…} />}</Field>
+  ```
+
+  Ids come from `useId()`, not the label text, so a form rendered twice on one
+  page cannot collide. For a *group* of controls — radio sets, rows of buttons —
+  a `<label>` is wrong entirely; use a `<span id>` plus
+  `role="radiogroup"`/`"group"` and `aria-labelledby` on the container.
+  `__tests__/unit/components/field-labels.test.tsx` fails the build if a bare
+  label reappears anywhere under `components/admin` or `app/admin`.
 
 ## Shared Data (`lib/labels.ts`)
 `ROLE_LABEL`, `ROOM_TYPE_LABEL`, `ROOM_TYPE_FILTER_LABEL` — display names for
@@ -150,6 +178,7 @@ npx tsx prisma/repair-data.ts         # report drifted derived state (--apply to
 | Path | Schedule (UTC) | Purpose |
 |---|---|---|
 | `/api/cron/night-audit` | `15 0 * * *` (05:45 IST) | Mark no-shows, flag arrivals/departures |
+| `/api/cron/expire-holds` | `30 0 * * *` (06:00 IST) | Release rooms held by unpaid bookings |
 | `/api/cron/detect-conflicts` | `45 0 * * *` (06:15 IST) | Double-booking safety net |
 
 Constraints worth knowing before editing the schedule:
@@ -158,6 +187,11 @@ Constraints worth knowing before editing the schedule:
   to midnight IST (18:30 UTC) would audit a day that is still in progress.
 - **Sub-daily schedules require a Pro plan** and fail at deploy time on Hobby.
   Hourly conflict detection would be better; on Pro use `"0 * * * *"`.
+  **`expire-holds` wants hourly most of all** — daily means a room can show as
+  unavailable for up to 24 hours after its hold went stale. The sweep is
+  idempotent and bounded per run, so raising the frequency needs no other
+  change. `createBooking` sweeps the room it is booking, which covers a guest
+  looking straight at a held room; the cron is what keeps the *listing* honest.
 - **`/api/cron/pull-ota` is deliberately unscheduled** — it targets eZee
   Centrix, which this property does not use. See `CHANNEL-MANAGER-PLAN.md`.
 
@@ -214,7 +248,7 @@ Idempotent and safe to re-run.
 
 ## Booking Flow
 1. User picks dates + guests → `/api/booking/availability?roomId=&checkIn=&checkOut=`
-2. User selects room → clicks "Book Now"
+2. User selects room → clicks "Book Now" → `GET /api/booking/quote` prices it
 3. Fill guest details form (React Hook Form + Zod) — the step-3 "Continue"
    button must `trigger()` validation before advancing. Errors render inside
    the step-3 markup, so advancing with invalid input unmounts them and step 4
@@ -222,8 +256,18 @@ Idempotent and safe to re-run.
 4. POST `/api/booking/create` → creates Prisma Booking
    (`status: "confirmed"`, `paymentStatus: "pending"`) + Razorpay order
 5. Razorpay checkout opens in browser (razorpay.js)
-6. On success → POST `/api/payment/verify` → verify signature → update status to "paid"
+6. On success → POST `/api/payment/verify` → verify signature **and that the
+   order belongs to the booking** → update status to "paid"
 7. Redirect to `/booking/confirmation?id=...` + Resend email
+
+**No total is ever computed in the browser.** Step 2 and step 4 both render
+figures from `/api/booking/quote`, and the "Confirm Booking" button is disabled
+until one arrives. The wizard used to show `pricePerNight × nights` as the
+"Total Amount" while the server charged `quoteStay` → `applyGst` — GST plus any
+weekend markup, roughly 18% more on a weekend. The guest approved one number and
+Razorpay opened for another. The quote endpoint is read-only and deliberately
+takes no promo code: `claimPromo` consumes a redemption, and a price preview
+must not spend anything.
 
 **The booking is committed before the Razorpay order exists.** `createBooking()`
 commits the booking row, then updates the guest's `totalStays`/`totalRevenue`
@@ -239,6 +283,48 @@ Clients must not assume an error response has a JSON body: an unhandled route
 error returns an empty 500, and a bare `res.json()` shows the guest
 `"Unexpected end of JSON input"`. Parse with `.catch(() => null)` and fall back
 to your own message.
+
+### Payment verification binds the order to the booking
+`verifySignature` only proves Razorpay authorised a given **(order, payment)**
+pair. It says nothing about *whose* booking that is. `/api/payment/verify` must
+therefore also check `booking.razorpayOrderId === razorpayOrderId` before
+marking anything paid — the column exists on the row for exactly this.
+
+Without that check the signature alone was enough to mark any booking paid:
+book the cheapest room, pay for it, keep the triple the checkout handler
+receives, then replay it against someone else's `bookingId`. Replaying a triple
+against *its own* booking is answered idempotently — no second `Payment` row, or
+the stay is double-counted in every revenue report.
+
+There is no Razorpay webhook. This route is the only path to `paid`, so nothing
+downstream compensates for a weak check here.
+
+### Unpaid holds expire — `expireStalePaymentHolds()`
+A booking committed at step 4 holds the room until the guest pays. Nothing used
+to release it: availability skips only `cancelled`/`no_show`/`failed`, the night
+audit ignores a booking until its check-in day, and no cron swept. A December
+stay abandoned in August was off the calendar for four months.
+
+Holds older than `BOOKING_HOLD_MINUTES` (default 60) are voided by
+`expireStalePaymentHolds()`, which runs from three places: `createBooking`
+(scoped to the one room being booked, so a guest is never blocked by a dead
+hold), `/api/cron/expire-holds`, and `runNightAudit` as a backstop.
+
+Two rules it must keep:
+- **Only `source: "website"`.** A walk-in sits at `pending` when the desk takes
+  payment on departure, and an OTA import is `pending` because the guest paid
+  the channel. Cancelling either deletes a real stay.
+- **Ask Razorpay before cancelling.** A booking that hit "you have paid but we
+  could not confirm it" looks identical in our database to an abandoned one —
+  both `pending` with no `razorpayPaymentId`, because the failure was in the
+  verify step that would have written one. Only `"unpaid"` is cancelled;
+  `"paid"` and `"unknown"` (API unreachable) keep the room and log for staff.
+  The cancelling write is a compare-and-swap on `status`/`paymentStatus` so a
+  payment landing mid-sweep cannot be undone.
+
+A UPI booking is left `pending` on purpose while staff confirm a transfer
+manually, and **will** be swept after the hold window — 60 minutes against the
+15 the confirmation screen promises.
 
 ## Pricing — `quoteStay` / `applyGst` (`lib/booking-service.ts`)
 **Every booking path prices through these two.** There were two implementations:
@@ -372,19 +458,35 @@ Prisma version. Unit tests mock the database and cannot catch any of this.
 Pipe it to `tail`, never `head`: SIGPIPE kills the script before its cleanup and
 leaves a booking behind that fails every later run.
 
-#### Booking numbers — `nextBookingNumber(day)`
-`BK-YYYYMMDD-NNN`, allocated by a one-row upsert on `booking_counters`. Both the
-website and the admin walk-in route go through it, so the two cannot collide.
+#### Daily document numbers — `nextDailyNumber(scope, prefix, day, pad)`
+`<PREFIX>-YYYYMMDD-NNN`, allocated by a one-row upsert on `daily_counters`.
+One row per `(scope, day)`, so each document type has its own sequence:
 
-It replaced a `COUNT(*)` that was broken and slow at once: the prefix came from
-the check-in day while the count window came from `created_at`, so **every
-advance booking for the same date computed `-001`** and the second one died on
-the unique index — reported to the guest as "this room was just booked". A COUNT
-over a predicate also takes a predicate lock, letting bookings for unrelated
-rooms abort each other.
+| Caller | Scope | Shape |
+|---|---|---|
+| `nextBookingNumber(day)` — website **and** admin walk-in | `booking` | `BK-20260901-001` |
+| `POST /api/admin/laundry` | `laundry` | `LB-20260727-01` |
 
-Allocation sits outside the transaction, so a failed booking burns a number.
-Gaps are expected; duplicates are not.
+**Never derive one of these with `COUNT(*)`.** Both callers used to, and both
+were broken the same way: two writers on the same day read the same count,
+compute the same suffix, and the second insert dies on a unique index —
+reported to a guest as "this room was just booked" and to housekeeping as
+"Server error", with the linen already handed over. For bookings it was worse
+still: the prefix came from the check-in day while the count window came from
+`created_at`, so **every advance booking for the same date computed `-001`**,
+and a COUNT over a predicate takes a predicate lock that let bookings for
+unrelated rooms abort each other.
+
+One table and one function on purpose. A second allocator for laundry would
+have been less code to write and is exactly how the two booking paths drifted
+apart before.
+
+Allocation sits outside the surrounding transaction, so a failed write burns a
+number. Gaps are expected; duplicates are not.
+
+**Backfill before you point a new scope at this.** Starting a sequence at zero
+for a day that already has numbers in circulation re-issues one and fails on the
+unique index — see `4_daily_counters` for the pattern.
 
 #### Promo codes
 `claimPromo` reserves a use with a single guarded `UPDATE … WHERE (usage_limit
@@ -398,13 +500,23 @@ via `releasePromoClaim` on any failure, or losing a race burns a redemption.
 ### Migrations
 The schema is under migration control as of `0_init`, which was **baselined**
 from the existing database — it was generated with `migrate diff` and marked
-applied, not replayed. Two migrations exist:
+applied, not replayed. The migrations are:
 
 | Migration | Contents |
 |---|---|
 | `0_init` | Every table, index and FK in `schema.prisma` |
 | `1_double_booking_guard` | `btree_gist`, the `no_overlapping_bookings` exclusion constraint, and the five hand-written indexes |
 | `2_booking_counter` | `booking_counters`, backfilled from the highest `BK-` suffix already issued per date |
+| `3_blocked_dates_unique` | Two **partial** unique indexes on `blocked_dates` — `room_id` is nullable and means "every room", and a plain `UNIQUE` treats NULLs as distinct |
+| `4_daily_counters` | `daily_counters` (`scope`, `day`), replacing `booking_counters`; laundry sequences backfilled |
+
+**`\d` does not work in this database's regex operator.** `'LB-20260727-01' ~
+'^LB-\d{8}-\d+$'` evaluates *false* on Neon while the `[0-9]` form is true, so
+use bracket classes in migration SQL. A backfill whose predicate matches
+nothing fails silently and then hands out a number that already exists —
+`2_booking_counter` has the `\d` form and is logged as B-22 in `BUGS.md`
+(`4_daily_counters` re-runs that backfill correctly, so it is closed in
+practice).
 
 `1_double_booking_guard` holds objects Prisma cannot express in the schema. It
 was previously a loose `prisma/add_exclusion_constraint.sql` that had to be run
@@ -436,3 +548,10 @@ See `.env` — copy to `.env.local` and fill in real values:
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` — from Razorpay dashboard
 - `RESEND_API_KEY` — from resend.com
 - `NEXT_PUBLIC_WHATSAPP_NUMBER` — resort WhatsApp number (with country code, no +)
+- `JWT_SECRET` — signs admin sessions. **Required in production**: without it
+  every login 500s and every session 401s, on purpose. The committed
+  development fallback is public, so reaching it in production would let anyone
+  who can read this repository mint an `owner` token. Fails shut, like
+  `CRON_SECRET`.
+- `BOOKING_HOLD_MINUTES` — optional, default 60. How long an unpaid website
+  booking keeps its room before `expireStalePaymentHolds()` voids it.

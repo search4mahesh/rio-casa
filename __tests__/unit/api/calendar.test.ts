@@ -133,8 +133,14 @@ describe("GET /api/admin/calendar", () => {
     await GET(makeReq({ from: "2026-08-08", days: "90" }));
     const where = mockBookingFindMany.mock.calls.at(-1)?.[0].where;
     // 8 Aug + 90 days = 6 Nov — the window must span past August.
-    expect((where.checkIn.lt as Date).getTime()).toBe(new Date(2026, 10, 6).getTime());
-    expect((where.checkOut.gt as Date).getTime()).toBe(new Date(2026, 7, 8).getTime());
+    //
+    // Bounds are UTC midnight, because `checkIn`/`checkOut` are DATE columns.
+    // These assertions used to read `new Date(2026, 10, 6)` — local midnight,
+    // which on this IST dev box is 18:30 UTC on 5 Nov. Postgres casts that
+    // back to the 5th, so the window silently started and ended a day early.
+    // Asserting in local time is what let that ship. See lib/dates.ts.
+    expect((where.checkIn.lt as Date).toISOString()).toBe("2026-11-06T00:00:00.000Z");
+    expect((where.checkOut.gt as Date).toISOString()).toBe("2026-08-08T00:00:00.000Z");
   });
 
   it("clamps an oversized days value", async () => {

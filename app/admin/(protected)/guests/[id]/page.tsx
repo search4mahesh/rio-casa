@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import Link from "next/link";
 import { useToast, Toast } from "@/components/ui/Toast";
 
@@ -57,6 +57,7 @@ function Field({ label, value, mono = false }: { label: string; value: string | 
 }
 
 export default function GuestProfilePage({ params }: { params: { id: string } }) {
+  const fieldId = useId();
   const { id } = params;
 
   const [guest, setGuest] = useState<Guest | null>(null);
@@ -205,69 +206,69 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">First Name *</label>
-                    <input value={form.firstName ?? ""} onChange={f("firstName")} required
+                    <label htmlFor={`${fieldId}-first-name`} className="block text-xs text-gray-500 mb-1">First Name *</label>
+                    <input id={`${fieldId}-first-name`} value={form.firstName ?? ""} onChange={f("firstName")} required
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Last Name *</label>
-                    <input value={form.lastName ?? ""} onChange={f("lastName")} required
+                    <label htmlFor={`${fieldId}-last-name`} className="block text-xs text-gray-500 mb-1">Last Name *</label>
+                    <input id={`${fieldId}-last-name`} value={form.lastName ?? ""} onChange={f("lastName")} required
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Phone *</label>
-                  <input value={form.phone ?? ""} onChange={f("phone")} required
+                  <label htmlFor={`${fieldId}-phone`} className="block text-xs text-gray-500 mb-1">Phone *</label>
+                  <input id={`${fieldId}-phone`} value={form.phone ?? ""} onChange={f("phone")} required
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Alt Phone</label>
-                  <input value={form.altPhone ?? ""} onChange={f("altPhone")}
+                  <label htmlFor={`${fieldId}-alt-phone`} className="block text-xs text-gray-500 mb-1">Alt Phone</label>
+                  <input id={`${fieldId}-alt-phone`} value={form.altPhone ?? ""} onChange={f("altPhone")}
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Email</label>
-                  <input type="email" value={form.email ?? ""} onChange={f("email")}
+                  <label htmlFor={`${fieldId}-email`} className="block text-xs text-gray-500 mb-1">Email</label>
+                  <input id={`${fieldId}-email`} type="email" value={form.email ?? ""} onChange={f("email")}
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Address</label>
-                  <input value={form.address ?? ""} onChange={f("address")}
+                  <label htmlFor={`${fieldId}-address`} className="block text-xs text-gray-500 mb-1">Address</label>
+                  <input id={`${fieldId}-address`} value={form.address ?? ""} onChange={f("address")}
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">City</label>
-                    <input value={form.city ?? ""} onChange={f("city")}
+                    <label htmlFor={`${fieldId}-city`} className="block text-xs text-gray-500 mb-1">City</label>
+                    <input id={`${fieldId}-city`} value={form.city ?? ""} onChange={f("city")}
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">State</label>
-                    <input value={form.state ?? ""} onChange={f("state")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Pincode</label>
-                    <input value={form.pincode ?? ""} onChange={f("pincode")}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Country</label>
-                    <input value={form.country ?? ""} onChange={f("country")}
+                    <label htmlFor={`${fieldId}-state`} className="block text-xs text-gray-500 mb-1">State</label>
+                    <input id={`${fieldId}-state`} value={form.state ?? ""} onChange={f("state")}
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">GSTIN</label>
-                    <input value={form.gstin ?? ""} onChange={f("gstin")}
+                    <label htmlFor={`${fieldId}-pincode`} className="block text-xs text-gray-500 mb-1">Pincode</label>
+                    <input id={`${fieldId}-pincode`} value={form.pincode ?? ""} onChange={f("pincode")}
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Company Name</label>
-                    <input value={form.companyName ?? ""} onChange={f("companyName")}
+                    <label htmlFor={`${fieldId}-country`} className="block text-xs text-gray-500 mb-1">Country</label>
+                    <input id={`${fieldId}-country`} value={form.country ?? ""} onChange={f("country")}
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor={`${fieldId}-gstin`} className="block text-xs text-gray-500 mb-1">GSTIN</label>
+                    <input id={`${fieldId}-gstin`} value={form.gstin ?? ""} onChange={f("gstin")}
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                  <div>
+                    <label htmlFor={`${fieldId}-company-name`} className="block text-xs text-gray-500 mb-1">Company Name</label>
+                    <input id={`${fieldId}-company-name`} value={form.companyName ?? ""} onChange={f("companyName")}
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>

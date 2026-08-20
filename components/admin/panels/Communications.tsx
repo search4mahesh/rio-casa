@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type Recipient = { guestName: string; phone: string | null; email: string | null; bookingNumber?: string; checkIn?: string; roomName?: string };
@@ -35,6 +35,7 @@ const TEMPLATES = {
 };
 
 export default function CommunicationsPanel() {
+  const fieldId = useId();
   const [tab, setTab] = useState<"compose" | "log">("compose");
 
   // Compose state
@@ -132,8 +133,8 @@ export default function CommunicationsPanel() {
           <div className="lg:col-span-2 space-y-4">
             {/* Channel */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Channel</label>
-              <div className="flex gap-2">
+              <span id={`${fieldId}-channel-label`} className="block text-sm font-semibold text-gray-700 mb-2">Channel</span>
+              <div role="group" aria-labelledby={`${fieldId}-channel-label`} className="flex gap-2">
                 {(["email", "whatsapp"] as const).map((c) => (
                   <button key={c} onClick={() => setChannel(c)}
                     className={`flex-1 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
@@ -147,16 +148,16 @@ export default function CommunicationsPanel() {
 
             {/* Audience */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <label className="block text-sm font-semibold text-gray-700">Audience</label>
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+              <label htmlFor={`${fieldId}-audience`} className="block text-sm font-semibold text-gray-700">Audience</label>
+              <select id={`${fieldId}-audience`} value={filterType} onChange={(e) => setFilterType(e.target.value as typeof filterType)}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 {Object.entries(FILTER_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
 
               {filterType === "upcoming-arrivals" && (
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Within next N days</label>
-                  <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Number(e.target.value))}
+                  <label htmlFor={`${fieldId}-within-next-n-days`} className="block text-xs text-gray-500 mb-1">Within next N days</label>
+                  <input id={`${fieldId}-within-next-n-days`} type="number" min={1} max={30} value={days} onChange={(e) => setDays(Number(e.target.value))}
                     className="w-32 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
               )}
@@ -164,13 +165,13 @@ export default function CommunicationsPanel() {
               {filterType === "past-guests" && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">From</label>
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                    <label htmlFor={`${fieldId}-from`} className="block text-xs text-gray-500 mb-1">From</label>
+                    <input id={`${fieldId}-from`} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">To</label>
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                    <label htmlFor={`${fieldId}-to`} className="block text-xs text-gray-500 mb-1">To</label>
+                    <input id={`${fieldId}-to`} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
                       className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg" />
                   </div>
                 </div>
@@ -178,8 +179,8 @@ export default function CommunicationsPanel() {
 
               {filterType === "manual" && (
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">One per line: <span className="font-mono">Name, contact</span></label>
-                  <textarea value={manualRaw} onChange={(e) => setManualRaw(e.target.value)} rows={4}
+                  <label htmlFor={`${fieldId}-one-per-line-name-contact`} className="block text-xs text-gray-500 mb-1">One per line: <span className="font-mono">Name, contact</span></label>
+                  <textarea id={`${fieldId}-one-per-line-name-contact`} value={manualRaw} onChange={(e) => setManualRaw(e.target.value)} rows={4}
                     placeholder="Ravi Kumar, ravi@example.com&#10;Priya Sharma, 9876543210"
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg font-mono resize-none" />
                 </div>
@@ -189,7 +190,7 @@ export default function CommunicationsPanel() {
             {/* Message */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-semibold text-gray-700">Message</label>
+                <span className="text-sm font-semibold text-gray-700">Message</span>
                 <div className="flex gap-1">
                   <button onClick={() => { setSubject("Check-in reminder — Rio Casa"); setBody(TEMPLATES.arrival); }}
                     className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50">Arrival</button>
@@ -202,15 +203,15 @@ export default function CommunicationsPanel() {
 
               {channel === "email" && (
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Subject *</label>
-                  <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200}
+                  <label htmlFor={`${fieldId}-subject`} className="block text-xs text-gray-500 mb-1">Subject *</label>
+                  <input id={`${fieldId}-subject`} value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200}
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
               )}
 
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Body *</label>
-                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} maxLength={4000}
+                <label htmlFor={`${fieldId}-body`} className="block text-xs text-gray-500 mb-1">Body *</label>
+                <textarea id={`${fieldId}-body`} value={body} onChange={(e) => setBody(e.target.value)} rows={8} maxLength={4000}
                   placeholder="Hi {{guestName}}, ..."
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
                 <div className="text-xs text-gray-400 mt-1">

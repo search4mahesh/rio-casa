@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type RoomStatus = {
@@ -60,6 +60,7 @@ function HkBadge({ status }: { status: string }) {
  * every room and can update cleaning status, which its own API allows.
  */
 export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
+  const fieldId = useId();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Room | null>(null);
@@ -227,8 +228,8 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
 
             <div className="flex-1 overflow-auto p-5 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Occupancy Status</label>
-                <div className="grid grid-cols-1 gap-1.5">
+                <span id={`${fieldId}-occupancy-label`} className="block text-sm font-medium text-gray-700 mb-2">Occupancy Status</span>
+                <div role="radiogroup" aria-labelledby={`${fieldId}-occupancy-label`} className="grid grid-cols-1 gap-1.5">
                   {Object.entries(OCCUPANCY_CONFIG).map(([val, cfg]) => (
                     <label key={val} className="flex items-center gap-2.5 cursor-pointer">
                       <input type="radio" name="occupancy" value={val}
@@ -242,8 +243,8 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Housekeeping Status</label>
-                <div className="grid grid-cols-1 gap-1.5">
+                <span id={`${fieldId}-housekeeping-label`} className="block text-sm font-medium text-gray-700 mb-2">Housekeeping Status</span>
+                <div role="radiogroup" aria-labelledby={`${fieldId}-housekeeping-label`} className="grid grid-cols-1 gap-1.5">
                   {Object.entries(HK_CONFIG).map(([val, cfg]) => (
                     <label key={val} className="flex items-center gap-2.5 cursor-pointer">
                       <input type="radio" name="housekeeping" value={val}
@@ -257,8 +258,8 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea rows={3} value={form.notes ?? ""}
+                <label htmlFor={`${fieldId}-notes`} className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea id={`${fieldId}-notes`} rows={3} value={form.notes ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                   className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                   placeholder="Maintenance note, guest request…" />

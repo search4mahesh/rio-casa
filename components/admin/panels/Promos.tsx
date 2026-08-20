@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type Promo = {
@@ -180,6 +180,7 @@ export default function PromosPanel() {
 // ─── Promo Modal ──────────────────────────────────────────────────────────────
 
 function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => void }) {
+  const fieldId = useId();
   const [form, setForm] = useState({
     code: promo?.code ?? "",
     name: promo?.name ?? "",
@@ -242,72 +243,72 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Code *</label>
-                <input required value={form.code} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
+                <label htmlFor={`${fieldId}-code`} className="block text-sm font-medium text-gray-700 mb-1">Code *</label>
+                <input id={`${fieldId}-code`} required value={form.code} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
                   disabled={!!promo} placeholder="SUMMER20"
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-mono disabled:bg-gray-50"
                   pattern="[A-Z0-9_-]+" title="Uppercase letters, numbers, _ and - only" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Internal Name</label>
-                <input value={form.name} onChange={f("name")} placeholder="e.g. Summer promo 2026"
+                <label htmlFor={`${fieldId}-internal-name`} className="block text-sm font-medium text-gray-700 mb-1">Internal Name</label>
+                <input id={`${fieldId}-internal-name`} value={form.name} onChange={f("name")} placeholder="e.g. Summer promo 2026"
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type *</label>
-                <select required value={form.discountType} onChange={f("discountType")}
+                <label htmlFor={`${fieldId}-discount-type`} className="block text-sm font-medium text-gray-700 mb-1">Discount Type *</label>
+                <select id={`${fieldId}-discount-type`} required value={form.discountType} onChange={f("discountType")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                   <option value="percentage">Percentage (%)</option>
                   <option value="flat">Flat Amount (₹)</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor={`${fieldId}-discount-value`} className="block text-sm font-medium text-gray-700 mb-1">
                   {form.discountType === "percentage" ? "Discount (%)" : "Discount (₹)"} *
                 </label>
-                <input required type="number" min="0.01" step="0.01" value={form.discountValue} onChange={f("discountValue")}
+                <input id={`${fieldId}-discount-value`} required type="number" min="0.01" step="0.01" value={form.discountValue} onChange={f("discountValue")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
             {form.discountType === "percentage" && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Max Discount Cap (₹)</label>
-                <input type="number" min="0" step="0.01" value={form.maxDiscount} onChange={f("maxDiscount")} placeholder="Leave blank for no cap"
+                <label htmlFor={`${fieldId}-max-discount-cap`} className="block text-sm font-medium text-gray-700 mb-1">Max Discount Cap (₹)</label>
+                <input id={`${fieldId}-max-discount-cap`} type="number" min="0" step="0.01" value={form.maxDiscount} onChange={f("maxDiscount")} placeholder="Leave blank for no cap"
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Valid From *</label>
-                <input required type="date" value={form.validFrom} onChange={f("validFrom")}
+                <label htmlFor={`${fieldId}-valid-from`} className="block text-sm font-medium text-gray-700 mb-1">Valid From *</label>
+                <input id={`${fieldId}-valid-from`} required type="date" value={form.validFrom} onChange={f("validFrom")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Valid To *</label>
-                <input required type="date" min={form.validFrom} value={form.validTo} onChange={f("validTo")}
+                <label htmlFor={`${fieldId}-valid-to`} className="block text-sm font-medium text-gray-700 mb-1">Valid To *</label>
+                <input id={`${fieldId}-valid-to`} required type="date" min={form.validFrom} value={form.validTo} onChange={f("validTo")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Min Nights</label>
-                <input type="number" min="1" value={form.minNights} onChange={f("minNights")}
+                <label htmlFor={`${fieldId}-min-nights`} className="block text-sm font-medium text-gray-700 mb-1">Min Nights</label>
+                <input id={`${fieldId}-min-nights`} type="number" min="1" value={form.minNights} onChange={f("minNights")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Min Amount (₹)</label>
-                <input type="number" min="0" value={form.minAmount} onChange={f("minAmount")}
+                <label htmlFor={`${fieldId}-min-amount`} className="block text-sm font-medium text-gray-700 mb-1">Min Amount (₹)</label>
+                <input id={`${fieldId}-min-amount`} type="number" min="0" value={form.minAmount} onChange={f("minAmount")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Usage Limit</label>
-                <input type="number" min="1" value={form.usageLimit} onChange={f("usageLimit")} placeholder="Unlimited"
+                <label htmlFor={`${fieldId}-usage-limit`} className="block text-sm font-medium text-gray-700 mb-1">Usage Limit</label>
+                <input id={`${fieldId}-usage-limit`} type="number" min="1" value={form.usageLimit} onChange={f("usageLimit")} placeholder="Unlimited"
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>

@@ -11,6 +11,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { today as todayDate, addDays, toDayString } from "@/lib/dates";
+import { fetchOrderPaymentState } from "@/lib/razorpay";
 import { Prisma } from "@/lib/generated/prisma/client";
 
 // ─────────────────────────────────────────────
@@ -350,7 +351,12 @@ export async function quoteStay(args: {
  * 18% (CGST 9% + SGST 9%) above it.
  */
 export function applyGst(subtotal: number, discount: number, nights: number): StayTotals {
-  const taxableAmount = subtotal - discount;
+  // Floored, so a discount worth more than the stay zeroes the bill rather than
+  // inverting it. `claimPromo` already clamps what it hands back, but this is
+  // the function every booking path funnels through and the one whose output
+  // becomes a Razorpay order amount — it should not be able to return a
+  // negative total no matter who calls it.
+  const taxableAmount = Math.max(0, subtotal - discount);
   const avgNightly = taxableAmount / nights;
   const gstRate = avgNightly <= 7500 ? 6 : 9; // each component (CGST + SGST)
   const cgstAmount = Math.round(taxableAmount * gstRate) / 100;
@@ -375,14 +381,39 @@ export function applyGst(subtotal: number, discount: number, nights: number): St
  * A booking that then fails burns its number. Gaps are fine; duplicates are not.
  */
 export async function nextBookingNumber(day: Date): Promise<string> {
+  return nextDailyNumber("booking", "BK", day, 3);
+}
+
+/**
+ * Allocate the next `<PREFIX>-YYYYMMDD-NNN` for a day, atomically.
+ *
+ * One statement against `daily_counters`, which is the whole point: checking
+ * what the last number was and claiming the next one cannot be separated, so
+ * two writers on the same day cannot compute the same suffix. The alternative
+ * — `COUNT(*)` over rows whose number starts with the prefix — loses that race
+ * and the loser dies on a unique index, which is what both the booking route
+ * and the laundry dispatch route used to do.
+ *
+ * `scope` keeps each document type's sequence independent, so a laundry batch
+ * never consumes a booking number.
+ *
+ * @param pad digits in the suffix — bookings use 3 (`-001`), laundry 2 (`-01`),
+ *            matching the numbers each already had in circulation.
+ */
+export async function nextDailyNumber(
+  scope: string,
+  prefix: string,
+  day: Date,
+  pad = 3
+): Promise<string> {
   const dayStr = toDayString(day);
   const [row] = await prisma.$queryRaw<Array<{ last_seq: number }>>`
-    INSERT INTO booking_counters (day, last_seq)
-    VALUES (${dayStr}::date, 1)
-    ON CONFLICT (day) DO UPDATE SET last_seq = booking_counters.last_seq + 1
+    INSERT INTO daily_counters (scope, day, last_seq)
+    VALUES (${scope}, ${dayStr}::date, 1)
+    ON CONFLICT (scope, day) DO UPDATE SET last_seq = daily_counters.last_seq + 1
     RETURNING last_seq
   `;
-  return `BK-${dayStr.replace(/-/g, "")}-${String(row.last_seq).padStart(3, "0")}`;
+  return `${prefix}-${dayStr.replace(/-/g, "")}-${String(row.last_seq).padStart(pad, "0")}`;
 }
 
 /**
@@ -414,6 +445,7 @@ async function claimPromo(
        AND valid_from <= ${day}::date
        AND valid_to   >= ${day}::date
        AND min_nights <= ${nights}
+       AND min_amount <= ${subtotal}
        AND (usage_limit IS NULL OR used_count < usage_limit)
     RETURNING id, discount_type, discount_value, max_discount
   `;
@@ -425,8 +457,15 @@ async function claimPromo(
   // `Number(null)` is 0, which would wipe out every percentage discount that
   // has no cap set.
   const cap = promo.max_discount === null ? Infinity : Number(promo.max_discount);
-  const discount =
+  const raw =
     promo.discount_type === "percentage" ? Math.min(subtotal * (value / 100), cap) : value;
+
+  // A flat code can be worth more than the stay it is applied to — FLAT2000
+  // against a ₹1,800 subtotal. Uncapped, that made `taxableAmount` negative in
+  // `applyGst`, which then picked the 12% slab off a negative average and
+  // returned a negative total straight to Razorpay. A discount can zero a
+  // booking out; it cannot pay the guest.
+  const discount = Math.min(raw, subtotal);
 
   return { id: promo.id, discount };
 }
@@ -559,6 +598,15 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     // Promise.all would take two pool connections per in-flight request, and
     // starving the pool is what made contention surface as P2028 in the first
     // place.
+
+    // Release any abandoned checkout still holding *this* room before deciding
+    // whether it is free. Scoped to one room because that is the only hold that
+    // can affect this booking, and the sweep costs a Razorpay round trip per
+    // candidate — usually there are none. Non-fatal: a sweep that fails leaves
+    // the room held, which is the status quo, not a reason to refuse a booking.
+    await expireStalePaymentHolds({ roomId: input.roomId }).catch((err) =>
+      console.error("[booking-service] stale-hold sweep failed:", err)
+    );
 
     const room = await prisma.room.findUniqueOrThrow({ where: { id: input.roomId } });
 
@@ -934,6 +982,140 @@ export async function releaseRoomsHolding(bookingIds: string[]): Promise<number>
 }
 
 // ─────────────────────────────────────────────
+// STALE PAYMENT HOLDS
+//
+// `createBooking` commits the booking before the Razorpay order exists, so
+// between the commit and the guest paying there is a `confirmed` / `pending`
+// row holding the room. That is intentional — it is what stops two guests
+// paying for the same night — but nothing ever released it again. A guest who
+// closed the checkout window took the room off the calendar until the stay was
+// over: availability skips only `cancelled` / `no_show` / `failed`, the night
+// audit does not look at a booking until its check-in day has arrived, and no
+// cron swept for it. A December stay abandoned in August was gone for four
+// months.
+// ─────────────────────────────────────────────
+
+/**
+ * How long an unpaid website booking keeps its room.
+ *
+ * Sixty minutes covers a slow card flow with room to spare, and is longer than
+ * the fifteen minutes the UPI confirmation screen promises staff will take to
+ * confirm a transfer manually.
+ */
+export const BOOKING_HOLD_MINUTES = Number(process.env.BOOKING_HOLD_MINUTES ?? 60);
+
+/** Cap per sweep, so one run cannot turn into an unbounded pile of API calls. */
+const HOLD_SWEEP_LIMIT = 50;
+
+export interface HoldSweepResult {
+  /** Holds voided; their rooms are free again. */
+  expired: number;
+  /** Holds left alone — money was found, or Razorpay could not be reached. */
+  retained: number;
+}
+
+/**
+ * Void website bookings that were never paid for and release their rooms.
+ *
+ * Scoped to `source: "website"` on purpose. A walk-in sits at `pending` when
+ * the desk takes payment on departure, and an OTA import is `pending` because
+ * the guest paid the channel — neither is an abandoned checkout, and cancelling
+ * either would delete a real stay.
+ *
+ * **Every candidate is checked against Razorpay before it is cancelled.** The
+ * booking that reached "you have paid but we could not confirm it" is
+ * indistinguishable, in our own database, from one the guest walked away from:
+ * both are `pending` with no `razorpayPaymentId`, because the failure was in
+ * the verify step that would have written one. Only the payment provider knows
+ * the difference. Anything other than a definite "unpaid" keeps its room.
+ *
+ * @param roomId Restrict to one room — the on-demand path, where the only hold
+ *               worth spending a round trip on is the one blocking this guest.
+ */
+export async function expireStalePaymentHolds(
+  opts: { roomId?: string; now?: Date } = {}
+): Promise<HoldSweepResult> {
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - BOOKING_HOLD_MINUTES * 60_000);
+
+  const candidates = await prisma.booking.findMany({
+    where: {
+      ...(opts.roomId ? { roomId: opts.roomId } : {}),
+      status: "confirmed",
+      paymentStatus: "pending",
+      source: "website",
+      razorpayPaymentId: null,
+      createdAt: { lt: cutoff },
+    },
+    select: { id: true, bookingNumber: true, guestId: true, razorpayOrderId: true },
+    take: HOLD_SWEEP_LIMIT,
+  });
+
+  const voided: string[] = [];
+  const guestIds = new Set<string>();
+  let retained = 0;
+
+  for (const booking of candidates) {
+    // No order was ever created — /api/booking/create failed between the commit
+    // and `createOrder`, and its own catch could not run. There is nothing for
+    // the guest to have paid.
+    if (booking.razorpayOrderId) {
+      const state = await fetchOrderPaymentState(booking.razorpayOrderId);
+      if (state !== "unpaid") {
+        retained++;
+        console.error(
+          `[hold-sweep] ${booking.bookingNumber} is unpaid in our records but Razorpay says "${state}" ` +
+            `for order ${booking.razorpayOrderId} — keeping the room and leaving it for staff to reconcile`
+        );
+        continue;
+      }
+    }
+
+    // Compare-and-swap. The guest may have paid in the moments since the read
+    // above, in which case /api/payment/verify has already moved the row off
+    // `pending` and this matches nothing.
+    const { count } = await prisma.booking.updateMany({
+      where: { id: booking.id, status: "confirmed", paymentStatus: "pending" },
+      data: {
+        status: "cancelled",
+        paymentStatus: "failed",
+        cancelledAt: now,
+        cancellationReason: `Payment not completed within ${BOOKING_HOLD_MINUTES} minutes`,
+      },
+    });
+    if (count === 0) {
+      retained++;
+      continue;
+    }
+
+    voided.push(booking.id);
+    if (booking.guestId) guestIds.add(booking.guestId);
+
+    await prisma.auditLog.create({
+      data: {
+        userId: "system",
+        action: "booking_hold_expired",
+        entityType: "booking",
+        entityId: booking.id,
+        newValue: {
+          bookingNumber: booking.bookingNumber,
+          razorpayOrderId: booking.razorpayOrderId,
+          heldForMinutes: BOOKING_HOLD_MINUTES,
+        },
+      },
+    }).catch((err) => console.error("[hold-sweep] audit write failed:", err));
+  }
+
+  // A cancelled booking is not a stay, and its room is no longer spoken for.
+  await releaseRoomsHolding(voided);
+  for (const guestId of guestIds) {
+    await recalcGuestTotals(prisma, guestId);
+  }
+
+  return { expired: voided.length, retained };
+}
+
+// ─────────────────────────────────────────────
 // NIGHT AUDIT (run at midnight daily via cron)
 // Marks no-shows, flags due check-outs and arrivals.
 // ─────────────────────────────────────────────
@@ -942,11 +1124,29 @@ export async function runNightAudit() {
   // Calendar days against DATE columns — see lib/dates.ts. Getting this wrong
   // no-shows the wrong day's arrivals, which is not recoverable from the UI.
   const today = todayDate();
-  const yesterday = addDays(today, -1);
 
-  // Mark no-shows: confirmed bookings where check-in was yesterday and never checked in
+  // Backstop for abandoned checkouts. The on-demand sweep in `createBooking`
+  // only covers rooms someone is actively trying to book; this catches the
+  // rest, so a hold cannot outlive the night it was taken by more than a day.
+  const holds = await expireStalePaymentHolds().catch((err) => {
+    console.error("[night-audit] stale-hold sweep failed:", err);
+    return { expired: 0, retained: 0 };
+  });
+
+  // Mark no-shows: confirmed bookings whose check-in day has passed without an
+  // arrival.
+  //
+  // `checkIn: { lt: today }`, not `checkIn: yesterday`. Matching only yesterday
+  // meant a single missed run was permanent: one deploy window, or a 503 from
+  // `denyIfNotCron` because CRON_SECRET was unset, and that day's missed
+  // arrivals stayed `confirmed` forever — holding rooms on the calendar and
+  // counting toward guest totals — because tomorrow's run only ever looks at
+  // tomorrow's yesterday. This is also what /api/admin/night-audit/run has
+  // always done, and the two must not disagree about what a no-show is.
+  //
+  // Re-running is safe: `status: "confirmed"` excludes anything already marked.
   const missed = await prisma.booking.findMany({
-    where: { checkIn: yesterday, status: "confirmed", actualCheckin: null },
+    where: { checkIn: { lt: today }, status: "confirmed", actualCheckin: null },
     select: { id: true, guestId: true },
   });
   const noShows = await prisma.booking.updateMany({
@@ -984,5 +1184,11 @@ export async function runNightAudit() {
     });
   }
 
-  return { noShows: noShows.count, dueCheckouts: dueCheckouts.length, arrivals: arrivals.length };
+  return {
+    noShows: noShows.count,
+    dueCheckouts: dueCheckouts.length,
+    arrivals: arrivals.length,
+    holdsExpired: holds.expired,
+    holdsRetained: holds.retained,
+  };
 }

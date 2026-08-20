@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useId } from "react";
 import { ROLE_LABEL } from "@/lib/labels";
 import { useToast, Toast } from "@/components/ui/Toast";
 
@@ -165,6 +165,7 @@ export default function HotelSettingsPanel() {
 }
 
 function AddStaffModal({ onClose }: { onClose: () => void }) {
+  const fieldId = useId();
   const [form, setForm] = useState({ name: "", email: "", phone: "", role: "frontdesk", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -186,8 +187,8 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
 
   const inp = (label: string, name: keyof typeof form, props?: React.InputHTMLAttributes<HTMLInputElement>) => (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input
+      <label htmlFor={`${fieldId}-field`} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input id={`${fieldId}-field`}
         {...props}
         value={form[name]}
         onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
@@ -217,8 +218,8 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
             {inp("Phone", "phone", { type: "tel", placeholder: "9876543210" })}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-              <select required value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+              <label htmlFor={`${fieldId}-role`} className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+              <select id={`${fieldId}-role`} required value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="manager">Manager</option>
                 <option value="frontdesk">Front Desk</option>

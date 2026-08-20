@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { Field } from "@/components/ui/Field";
 
 type LinenItem = { id: string; name: string; category: string; ratePerPiece: number };
 
@@ -90,11 +91,13 @@ export default function LaundryPanel() {
   useEffect(() => { load(); }, [load]);
 
   async function deleteBatch(id: string, batchNumber: string) {
-    if (!confirm(`Delete ${batchNumber}? This cannot be undone.`)) return;
+    // The batch is kept and marked cancelled, not removed — the record of what
+    // went to the laundryman survives either way.
+    if (!confirm(`Cancel ${batchNumber}? It stays on record, marked cancelled.`)) return;
     const res = await fetch(`/api/admin/laundry/${id}`, { method: "DELETE" });
     const data = await res.json();
-    if (data.success) { showToast("Batch deleted"); load(); }
-    else showToast(data.error ?? "Delete failed");
+    if (data.success) { showToast("Batch cancelled"); load(); }
+    else showToast(data.error ?? "Could not cancel batch");
   }
 
   return (
@@ -232,15 +235,20 @@ export default function LaundryPanel() {
                     </table>
                     {b.notes && <p className="text-xs text-gray-500 mt-3 italic">{b.notes}</p>}
                     <div className="flex items-center gap-2 mt-4">
-                      {b.status !== "returned" && (
+                      {b.status !== "returned" && b.status !== "cancelled" && (
                         <button onClick={() => setReturning(b)} className="px-3 py-1.5 text-xs btn-admin">
                           Record Return
                         </button>
                       )}
-                      <button onClick={() => deleteBatch(b.id, b.batchNumber)}
-                        className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                        Delete
-                      </button>
+                      {/* Cancelling is only for a batch entered by mistake. Once
+                          pieces have come back it is a real event, and the API
+                          rejects it — so don't offer the button. */}
+                      {b.status === "sent" && (
+                        <button onClick={() => deleteBatch(b.id, b.batchNumber)}
+                          className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                          Cancel Batch
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -317,11 +325,11 @@ function DispatchModal({
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date sent *">
-            <input required type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} className={inputCls} />
+            {(id) => <input id={id} required type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} className={inputCls} />}
           </Field>
           <Field label="Laundryman">
-            <input type="text" value={vendorName} onChange={(e) => setVendorName(e.target.value)}
-              placeholder="e.g. Suresh Laundry" className={inputCls} />
+            {(id) => <input id={id} type="text" value={vendorName} onChange={(e) => setVendorName(e.target.value)}
+              placeholder="e.g. Suresh Laundry" className={inputCls} />}
           </Field>
         </div>
 
@@ -348,8 +356,8 @@ function DispatchModal({
         </div>
 
         <Field label="Notes">
-          <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Optional" className={inputCls} />
+          {(id) => <input id={id} type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder="Optional" className={inputCls} />}
         </Field>
 
         <div className="flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg text-sm">
@@ -427,7 +435,7 @@ function ReturnModal({
     <Modal title={`Return — ${batch.batchNumber}`} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Date returned *">
-          <input required type="date" value={returnedDate} onChange={(e) => setReturnedDate(e.target.value)} className={inputCls} />
+          {(id) => <input id={id} required type="date" value={returnedDate} onChange={(e) => setReturnedDate(e.target.value)} className={inputCls} />}
         </Field>
 
         <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -482,15 +490,6 @@ function ReturnModal({
 
 const inputCls =
   "w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      {children}
-    </div>
-  );
-}
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (

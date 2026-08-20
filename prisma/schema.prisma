@@ -161,22 +161,27 @@ model Booking {
   @@map("bookings")
 }
 
-// Allocates the `-NNN` suffix of a booking number, one counter per check-in day.
+// Allocates the trailing `-NNN` of any document numbered per day —
+// `BK-YYYYMMDD-NNN` for bookings, `LB-YYYYMMDD-NN` for laundry batches. One
+// row per (scope, day); `scope` keeps the sequences independent.
 //
-// This used to be `COUNT(*) FROM bookings` evaluated inside the booking
-// transaction, which was wrong twice over: the count window was the *creation*
-// day while the prefix was the *check-in* day, so every advance booking for a
-// given date computed `-001` and collided on `booking_number`; and a COUNT over
-// a predicate is a phantom-read magnet that made unrelated bookings abort each
-// other under SERIALIZABLE. A single-row upsert has neither problem.
+// Both used to be `COUNT(*)` over rows matching the prefix, which is wrong
+// twice over. Two writers on the same day read the same count, compute the
+// same suffix, and the second insert dies on the unique index — reported to a
+// guest as "this room was just booked" and to housekeeping as "Server error".
+// And for bookings specifically, a COUNT over a predicate is a phantom-read
+// magnet that made unrelated bookings abort each other under SERIALIZABLE.
+// A single-row upsert has neither problem.
 //
-// Allocation is deliberately outside the booking transaction, so a booking that
-// fails leaves a gap in the sequence. Gaps are fine; duplicates are not.
-model BookingCounter {
-  day     DateTime @id @db.Date
+// Allocation is deliberately outside the surrounding transaction, so a write
+// that fails leaves a gap in the sequence. Gaps are fine; duplicates are not.
+model DailyCounter {
+  scope   String
+  day     DateTime @db.Date
   lastSeq Int      @default(0) @map("last_seq")
 
-  @@map("booking_counters")
+  @@id([scope, day])
+  @@map("daily_counters")
 }
 
 // ─────────────────────────────────────────────

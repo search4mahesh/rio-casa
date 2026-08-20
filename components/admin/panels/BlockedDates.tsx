@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type BlockedDate = {
@@ -161,6 +161,7 @@ export default function BlockedDatesPanel() {
 // ─── Block Dates Modal ────────────────────────────────────────────────────────
 
 function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }) {
+  const fieldId = useId();
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({ roomId: "", startDate: today, endDate: today, reason: "" });
   const [loading, setLoading] = useState(false);
@@ -210,8 +211,8 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Room</label>
-              <select
+              <label htmlFor={`${fieldId}-room`} className="block text-sm font-medium text-gray-700 mb-1">Room</label>
+              <select id={`${fieldId}-room`}
                 value={form.roomId}
                 onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white"
@@ -227,8 +228,8 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
-                <input
+                <label htmlFor={`${fieldId}-start-date`} className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+                <input id={`${fieldId}-start-date`}
                   type="date"
                   required
                   min={today}
@@ -238,8 +239,8 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
-                <input
+                <label htmlFor={`${fieldId}-end-date`} className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
+                <input id={`${fieldId}-end-date`}
                   type="date"
                   required
                   min={form.startDate || today}
@@ -258,8 +259,8 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-              <input
+              <label htmlFor={`${fieldId}-reason`} className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+              <input id={`${fieldId}-reason`}
                 type="text"
                 value={form.reason}
                 onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}

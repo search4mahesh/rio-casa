@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail, failValidation } from "@/lib/api-response";
+import { dateOnly, addMonths, toDayString } from "@/lib/dates";
+import { nextDailyNumber } from "@/lib/booking-service";
 
 const CreateSchema = z.object({
   sentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
@@ -32,8 +34,13 @@ export async function GET(req: NextRequest) {
     where.status = status === "outstanding" ? { in: ["sent", "partial"] } : status;
   }
   if (month) {
-    const [y, m] = month.split("-").map(Number);
-    where.sentDate = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
+    // `sentDate` is a DATE column — see lib/dates.ts. Local-midnight bounds
+    // put a batch dispatched on the 1st into the previous month's list.
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return fail("Use YYYY-MM for month", 400);
+    }
+    const from = dateOnly(`${month}-01`);
+    where.sentDate = { gte: from, lt: addMonths(from, 1) };
   }
 
   const batches = await prisma.laundryBatch.findMany({
@@ -62,8 +69,8 @@ export async function GET(req: NextRequest) {
   return ok({
     batches: batches.map((b) => ({
       ...b,
-      sentDate: b.sentDate.toISOString().slice(0, 10),
-      returnedDate: b.returnedDate ? b.returnedDate.toISOString().slice(0, 10) : null,
+      sentDate: toDayString(b.sentDate),
+      returnedDate: b.returnedDate ? toDayString(b.returnedDate) : null,
       totalCost: Number(b.totalCost),
       items: b.items.map((it) => ({
         ...it,
@@ -75,7 +82,12 @@ export async function GET(req: NextRequest) {
     summary: {
       openBatches: openBatches.length,
       piecesOut: Object.values(outstanding).reduce((s, r) => s + r.qty, 0),
-      totalCost: batches.reduce((s, b) => s + Number(b.totalCost), 0),
+      // Cancelled batches never went out, so they never cost anything. They
+      // stay in `batches` so staff can see what was voided, but billing a
+      // batch that was entered by mistake would defeat cancelling it.
+      totalCost: batches
+        .filter((b) => b.status !== "cancelled")
+        .reduce((s, b) => s + Number(b.totalCost), 0),
     },
   });
 }
@@ -103,15 +115,18 @@ export async function POST(req: NextRequest) {
   const totalPieces = items.reduce((s, i) => s + i.qtySent, 0);
   const totalCost = items.reduce((s, i) => s + i.qtySent * (rateOf.get(i.linenItemId) ?? 0), 0);
 
-  const day = sentDate.replace(/-/g, "");
-  const sameDay = await prisma.laundryBatch.count({
-    where: { batchNumber: { startsWith: `LB-${day}` } },
-  });
+  // Atomic, via the same allocator booking numbers use. This was a `COUNT(*)`
+  // of batches whose number starts with `LB-<day>`: two staff dispatching on
+  // the same day read the same count, computed the same suffix, and the second
+  // insert died on the unique index on `batch_number` — reaching housekeeping
+  // as "Server error" with the linen already handed over. Exactly the race
+  // 2_booking_counter was written to kill for bookings.
+  const batchNumber = await nextDailyNumber("laundry", "LB", dateOnly(sentDate), 2);
 
   const batch = await prisma.laundryBatch.create({
     data: {
-      batchNumber: `LB-${day}-${String(sameDay + 1).padStart(2, "0")}`,
-      sentDate: new Date(sentDate),
+      batchNumber,
+      sentDate: dateOnly(sentDate),
       vendorName: vendorName || null,
       notes: notes || null,
       sentBy: staff.name,

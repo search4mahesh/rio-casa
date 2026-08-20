@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type Review = {
@@ -184,6 +184,7 @@ export default function ReviewsPanel() {
 // ─── Add Review Modal ─────────────────────────────────────────────────────────
 
 function AddReviewModal({ onClose }: { onClose: () => void }) {
+  const fieldId = useId();
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({
     platform: "google",
@@ -234,23 +235,23 @@ function AddReviewModal({ onClose }: { onClose: () => void }) {
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Platform *</label>
-              <select value={form.platform} onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))}
+              <label htmlFor={`${fieldId}-platform`} className="block text-sm font-medium text-gray-700 mb-1">Platform *</label>
+              <select id={`${fieldId}-platform`} value={form.platform} onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white">
                 {Object.entries(PLATFORM_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Guest Name *</label>
-              <input required value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
+              <label htmlFor={`${fieldId}-guest-name`} className="block text-sm font-medium text-gray-700 mb-1">Guest Name *</label>
+              <input id={`${fieldId}-guest-name`} required value={form.guestName} onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
                 maxLength={100}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rating *</label>
-              <div className="flex gap-1.5">
+              <span id={`${fieldId}-rating-label`} className="block text-sm font-medium text-gray-700 mb-1">Rating *</span>
+              <div role="group" aria-labelledby={`${fieldId}-rating-label`} className="flex gap-1.5">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button type="button" key={n} onClick={() => setForm((f) => ({ ...f, rating: n }))}
                     className={`text-3xl ${n <= form.rating ? "text-amber-400" : "text-gray-300"} hover:scale-110 transition-transform`}>
@@ -262,30 +263,30 @@ function AddReviewModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Review Text *</label>
-              <textarea required rows={4} value={form.reviewText} onChange={(e) => setForm((f) => ({ ...f, reviewText: e.target.value }))}
+              <label htmlFor={`${fieldId}-review-text`} className="block text-sm font-medium text-gray-700 mb-1">Review Text *</label>
+              <textarea id={`${fieldId}-review-text`} required rows={4} value={form.reviewText} onChange={(e) => setForm((f) => ({ ...f, reviewText: e.target.value }))}
                 maxLength={5000}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg resize-none" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date Posted *</label>
-                <input type="date" required value={form.datePosted} max={today}
+                <label htmlFor={`${fieldId}-date-posted`} className="block text-sm font-medium text-gray-700 mb-1">Date Posted *</label>
+                <input id={`${fieldId}-date-posted`} type="date" required value={form.datePosted} max={today}
                   onChange={(e) => setForm((f) => ({ ...f, datePosted: e.target.value }))}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Review URL</label>
-                <input type="url" value={form.reviewUrl} onChange={(e) => setForm((f) => ({ ...f, reviewUrl: e.target.value }))}
+                <label htmlFor={`${fieldId}-review-url`} className="block text-sm font-medium text-gray-700 mb-1">Review URL</label>
+                <input id={`${fieldId}-review-url`} type="url" value={form.reviewUrl} onChange={(e) => setForm((f) => ({ ...f, reviewUrl: e.target.value }))}
                   placeholder="https://..."
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg" />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
-              <textarea rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              <label htmlFor={`${fieldId}-internal-notes`} className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
+              <textarea id={`${fieldId}-internal-notes`} rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 maxLength={2000}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg resize-none" />
             </div>

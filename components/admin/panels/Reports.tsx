@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { ROOM_TYPE_LABEL } from "@/lib/labels";
 
 type Report = {
@@ -103,6 +103,7 @@ function KPICard({ label, value, sub, accent }: { label: string; value: string; 
 }
 
 export default function ReportsPanel() {
+  const fieldId = useId();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(() => {
@@ -153,13 +154,13 @@ export default function ReportsPanel() {
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">From</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} max={to}
+            <label htmlFor={`${fieldId}-from`} className="block text-xs text-gray-500 mb-1">From</label>
+            <input id={`${fieldId}-from`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} max={to}
               className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">To</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} min={from}
+            <label htmlFor={`${fieldId}-to`} className="block text-xs text-gray-500 mb-1">To</label>
+            <input id={`${fieldId}-to`} type="date" value={to} onChange={(e) => setTo(e.target.value)} min={from}
               className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <div className="flex gap-1 ml-auto">

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
-import { ok, failValidation } from "@/lib/api-response";
+import { ok, fail, failValidation } from "@/lib/api-response";
+import { dateOnly, addMonths } from "@/lib/dates";
 
 const CreateSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
@@ -26,10 +27,16 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
 
   if (month) {
-    const [year, mon] = month.split("-").map(Number);
-    const from = new Date(year, mon - 1, 1);
-    const to = new Date(year, mon, 1);
-    where.date = { gte: from, lt: to };
+    // Calendar days against a DATE column — see lib/dates.ts. Local midnight
+    // is `…T18:30:00Z` the previous day in IST, which Postgres truncates back
+    // to that day: the August filter was showing a 31 July expense and hiding
+    // a 31 August one. Writes already store UTC midnight, so the read bounds
+    // were the half that disagreed.
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return fail("Use YYYY-MM for month", 400);
+    }
+    const from = dateOnly(`${month}-01`);
+    where.date = { gte: from, lt: addMonths(from, 1) };
   }
 
   if (category && category !== "all") where.category = category;
@@ -58,7 +65,7 @@ export async function POST(req: NextRequest) {
   const expense = await prisma.expense.create({
     data: {
       ...rest,
-      date: new Date(date),
+      date: dateOnly(date),
       amount,
     },
   });

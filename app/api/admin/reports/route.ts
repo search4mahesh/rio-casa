@@ -79,37 +79,58 @@ export async function GET(req: NextRequest) {
     monthlyBookings[key] = 0;
   }
 
+  // Revenue is earned per night, and every figure below is measured over the
+  // nights that fall inside the report window.
+  //
+  // It used to add each booking's whole `totalAmount` while occupied nights
+  // were clamped to the window. Two things came out wrong. The monthly bars
+  // dropped revenue entirely for any stay that checked in before the range —
+  // its check-in month had no bucket — while the KPI still counted it. And ADR,
+  // which divides revenue by occupied nights, mixed a whole-stay numerator with
+  // a clipped denominator: a 30-night ₹30,000 stay clipped to 5 nights reported
+  // ₹6,000 a night instead of ₹1,000.
+  //
+  // A range covering whole months is unaffected — nothing is clipped, so every
+  // stay contributes its full amount exactly as before.
   for (const b of bookings) {
     const inDate = b.checkIn > from ? b.checkIn : from;
     const outDate = b.checkOut < toExclusive ? b.checkOut : toExclusive;
     const overlapNights = Math.max(0, daysBetween(inDate, outDate));
+    if (overlapNights === 0) continue;
+
+    // Derived from the dates rather than the stored `nights` column, which is
+    // maintained separately and can drift.
+    const stayNights = Math.max(1, daysBetween(b.checkIn, b.checkOut));
+    const perNight = Number(b.totalAmount) / stayNights;
+    const revenueInWindow = perNight * overlapNights;
+
     occupiedNights += overlapNights;
-    totalRevenue += Number(b.totalAmount);
+    totalRevenue += revenueInWindow;
     totalGuests += b.adults + b.children;
 
     const src = b.source || "website";
     sourceCount[src] = (sourceCount[src] ?? 0) + 1;
-    sourceRevenue[src] = (sourceRevenue[src] ?? 0) + Number(b.totalAmount);
+    sourceRevenue[src] = (sourceRevenue[src] ?? 0) + revenueInWindow;
 
     const rt = b.room.roomType || "other";
-    roomTypeRevenue[rt] = (roomTypeRevenue[rt] ?? 0) + Number(b.totalAmount);
+    roomTypeRevenue[rt] = (roomTypeRevenue[rt] ?? 0) + revenueInWindow;
     roomTypeBookings[rt] = (roomTypeBookings[rt] ?? 0) + 1;
 
-    // Allocate to month buckets — book by check-in month for revenue/bookings,
-    // distribute occupied nights across actual months
-    const inMonth = monthKey(b.checkIn);
-    if (monthlyRevenue[inMonth] !== undefined) {
-      monthlyRevenue[inMonth] += Number(b.totalAmount);
-      monthlyBookings[inMonth] += 1;
-    }
+    // A booking counts toward the month it first occupies *within the window*,
+    // not the month it checked in. Bucketing by raw check-in dropped bookings
+    // that started before the range from the series while `totalBookings` still
+    // counted them; clamping means every booking lands in exactly one bucket
+    // and the bars sum to the headline.
+    monthlyBookings[monthKey(inDate)] += 1;
 
-    // Walk each night of the stay and bucket by month
-    const nightCursor = new Date(b.checkIn);
-    const stayEnd = new Date(b.checkOut);
-    while (nightCursor < stayEnd) {
-      const nk = monthKey(nightCursor);
-      if (monthlyOccupied[nk] !== undefined) monthlyOccupied[nk] += 1;
-      nightCursor.setDate(nightCursor.getDate() + 1);
+    // Walk the in-window nights, bucketing occupancy and revenue together so
+    // the two can never diverge. Every clamped night's month has a bucket,
+    // because the buckets span startOfMonth(from) → to.
+    for (let night = inDate; night < outDate; night = addDays(night, 1)) {
+      const nk = monthKey(night);
+      if (monthlyOccupied[nk] === undefined) continue;
+      monthlyOccupied[nk] += 1;
+      monthlyRevenue[nk] += perNight;
     }
   }
 
@@ -120,20 +141,30 @@ export async function GET(req: NextRequest) {
   const avgLOS = totalBookings > 0 ? bookings.reduce((s, b) => s + b.nights, 0) / totalBookings : 0;
 
   // Monthly series — convert to arrays with occupancy %
-  const daysInMonthFor = (key: string) => {
-    const [y, m] = key.split("-").map(Number);
-    return new Date(y, m, 0).getDate();
+  //
+  // The denominator is the days of the month that fall *inside the report
+  // window*, not the whole month. Now that occupied nights are clamped, using
+  // the full month would report the first and last months of any partial range
+  // as near-empty: 5 occupied nights measured against 30 days of capacity that
+  // was never on offer.
+  const daysInRangeFor = (key: string) => {
+    const monthStart = dateOnly(`${key}-01`);
+    const monthEnd = addMonths(monthStart, 1);
+    const start = monthStart > from ? monthStart : from;
+    const end = monthEnd < toExclusive ? monthEnd : toExclusive;
+    return Math.max(0, daysBetween(start, end));
   };
 
-  const monthlySeries = months.map((key) => ({
-    month: key,
-    revenue: Math.round(monthlyRevenue[key]),
-    bookings: monthlyBookings[key],
-    occupied: monthlyOccupied[key],
-    occupancyPct: activeRoomCount > 0
-      ? (monthlyOccupied[key] / (activeRoomCount * daysInMonthFor(key))) * 100
-      : 0,
-  }));
+  const monthlySeries = months.map((key) => {
+    const capacity = activeRoomCount * daysInRangeFor(key);
+    return {
+      month: key,
+      revenue: Math.round(monthlyRevenue[key]),
+      bookings: monthlyBookings[key],
+      occupied: monthlyOccupied[key],
+      occupancyPct: capacity > 0 ? (monthlyOccupied[key] / capacity) * 100 : 0,
+    };
+  });
 
   const sourceBreakdown = Object.entries(sourceCount).map(([source, count]) => ({
     source,

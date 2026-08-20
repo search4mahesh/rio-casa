@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type Task = {
@@ -334,6 +334,7 @@ export default function RoomTasksPanel() {
 }
 
 function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }) {
+  const fieldId = useId();
   const [form, setForm] = useState({ roomId: "", taskType: "cleaning", assignedTo: "", notes: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -370,8 +371,8 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Room *</label>
-              <select required value={form.roomId} onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
+              <label htmlFor={`${fieldId}-room`} className="block text-sm font-medium text-gray-700 mb-1">Room *</label>
+              <select id={`${fieldId}-room`} required value={form.roomId} onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="">Select room</option>
                 {rooms.map((r) => (
@@ -381,8 +382,8 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Task Type *</label>
-              <select value={form.taskType} onChange={(e) => setForm((f) => ({ ...f, taskType: e.target.value }))}
+              <label htmlFor={`${fieldId}-task-type`} className="block text-sm font-medium text-gray-700 mb-1">Task Type *</label>
+              <select id={`${fieldId}-task-type`} value={form.taskType} onChange={(e) => setForm((f) => ({ ...f, taskType: e.target.value }))}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="cleaning">Cleaning</option>
                 <option value="inspection">Inspection</option>
@@ -393,15 +394,15 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
-              <input type="text" value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
+              <label htmlFor={`${fieldId}-assigned-to`} className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
+              <input id={`${fieldId}-assigned-to`} type="text" value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
                 placeholder="Staff name (optional)"
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              <label htmlFor={`${fieldId}-notes`} className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea id={`${fieldId}-notes`} rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 placeholder="Any specific instructions…"
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
             </div>

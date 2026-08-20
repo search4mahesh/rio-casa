@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -12,6 +12,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function AdminLoginPage() {
+  const fieldId = useId();
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,8 +65,8 @@ export default function AdminLoginPage() {
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
-              <input
+              <label htmlFor={`${fieldId}-email-address`} className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+              <input id={`${fieldId}-email-address`}
                 type="email"
                 autoComplete="email"
                 {...register("email")}
@@ -76,8 +77,8 @@ export default function AdminLoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input
+              <label htmlFor={`${fieldId}-password`} className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input id={`${fieldId}-password`}
                 type="password"
                 autoComplete="current-password"
                 {...register("password")}

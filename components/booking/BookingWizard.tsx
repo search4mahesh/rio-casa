@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -32,6 +32,24 @@ interface AvailableRoom {
 const STEPS = ["dates", "room", "details", "payment"] as const;
 type Step = (typeof STEPS)[number];
 
+/**
+ * What the stay costs, priced by the server.
+ *
+ * This screen used to compute `pricePerNight × nights` and label it "Total
+ * Amount". The server prices through `quoteStay` → `applyGst`, which adds GST
+ * and any weekend markup on the rate plan, so the guest approved one number and
+ * Razorpay charged another. The only number allowed to appear as a total is one
+ * that came back from /api/booking/quote.
+ */
+interface Quote {
+  nights: number;
+  subtotal: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+}
+
 export default function BookingWizard({
   locale,
   preselectedSlug,
@@ -58,8 +76,45 @@ export default function BookingWizard({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
   const nights = differenceInCalendarDays(new Date(checkOut), new Date(checkIn));
-  const totalAmount = selectedRoom ? selectedRoom.pricePerNight * nights : 0;
+
+  // Re-price whenever the room or the dates change. Clearing the old quote
+  // first matters: a stale total from the previously selected room is worse
+  // than no total, because it still reads as authoritative.
+  useEffect(() => {
+    if (!selectedRoom || nights <= 0) {
+      setQuote(null);
+      return;
+    }
+
+    let cancelled = false;
+    setQuote(null);
+    setQuoteLoading(true);
+
+    const params = new URLSearchParams({ roomId: selectedRoom.id, checkIn, checkOut });
+    fetch(`/api/booking/quote?${params}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (res.ok && data?.success) setQuote(data.data as Quote);
+        else setQuote(null);
+      })
+      .catch(() => {
+        if (!cancelled) setQuote(null);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
+      });
+
+    // A slow response for a room the guest has already moved on from must not
+    // land on top of the current one.
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRoom, checkIn, checkOut, nights]);
 
   async function fetchAvailableRooms() {
     setRoomsLoading(true);
@@ -135,7 +190,11 @@ export default function BookingWizard({
       if (paymentMethod === "razorpay") {
         const options = {
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-          amount: data.data.amount * 100,
+          // Paise, and Razorpay wants an integer. `11800.5 * 100` is
+          // 1180050.0000000002 in floating point — the server already rounds
+          // before creating the order, so round here too rather than sending
+          // a fractional paisa that disagrees with it.
+          amount: Math.round(data.data.amount * 100),
           currency: "INR",
           name: "Rio Casa",
           description: `${data.data.roomName} — ${data.data.nights} nights`,
@@ -306,8 +365,15 @@ export default function BookingWizard({
           </div>
           {selectedRoom && (
             <div className="bg-primary-50 rounded-sm px-4 py-3 mb-4 font-sans text-sm text-primary">
-              {nights} nights × ₹{selectedRoom.pricePerNight.toLocaleString("en-IN")} ={" "}
-              <strong>₹{totalAmount.toLocaleString("en-IN")}</strong>
+              {quoteLoading && t("priceLoading")}
+              {!quoteLoading && quote && (
+                <>
+                  {nights} {nights === 1 ? "night" : "nights"} ·{" "}
+                  <strong>₹{quote.totalAmount.toLocaleString("en-IN")}</strong>{" "}
+                  <span className="text-primary/70">{t("taxNote")}</span>
+                </>
+              )}
+              {!quoteLoading && !quote && t("priceUnavailable")}
             </div>
           )}
           <div className="flex gap-3">
@@ -373,10 +439,30 @@ export default function BookingWizard({
               <div className="flex justify-between"><span className="text-earth-text/60">Check-in</span><span>{format(new Date(checkIn), "dd MMM yyyy")}</span></div>
               <div className="flex justify-between"><span className="text-earth-text/60">Check-out</span><span>{format(new Date(checkOut), "dd MMM yyyy")}</span></div>
               <div className="flex justify-between"><span className="text-earth-text/60">Guests</span><span>{guests}</span></div>
-              <div className="border-t border-primary-200 pt-2 mt-2 flex justify-between font-semibold text-primary text-base">
-                <span>{t("totalAmount")}</span>
-                <span>₹{totalAmount.toLocaleString("en-IN")}</span>
-              </div>
+
+              {/* Room charges and GST are itemised so the total is checkable
+                  against what Razorpay opens for, rather than a bare number
+                  the guest has to take on trust. */}
+              {quote ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-earth-text/60">{t("roomCharges")}</span>
+                    <span>₹{quote.subtotal.toLocaleString("en-IN")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-earth-text/60">{t("taxes")}</span>
+                    <span>₹{quote.taxAmount.toLocaleString("en-IN")}</span>
+                  </div>
+                  <div className="border-t border-primary-200 pt-2 mt-2 flex justify-between font-semibold text-primary text-base">
+                    <span>{t("totalAmount")}</span>
+                    <span>₹{quote.totalAmount.toLocaleString("en-IN")}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="border-t border-primary-200 pt-2 mt-2 text-earth-text/60">
+                  {quoteLoading ? t("priceLoading") : t("priceUnavailable")}
+                </div>
+              )}
             </div>
 
             {/* Payment method */}
@@ -409,7 +495,13 @@ export default function BookingWizard({
 
             <div className="flex gap-3">
               <button type="button" onClick={() => setStep("details")} className="btn-outline flex-1">← Back</button>
-              <button type="submit" disabled={loading} className="btn-primary flex-1 disabled:opacity-50">
+              {/* No quote, no payment. Sending a guest to checkout without
+                  having shown them a price is the bug this screen had. */}
+              <button
+                type="submit"
+                disabled={loading || !quote}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
                 {loading ? "Processing..." : t("confirm")}
               </button>
             </div>

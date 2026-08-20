@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
+import { dateOnly, addMonths, propertyDayString, toDayString } from "@/lib/dates";
 
 const SOURCE_LABEL: Record<string, string> = {
   website: "Website",
@@ -29,14 +30,21 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const { searchParams } = req.nextUrl;
-  // Default: current month
-  const today = new Date();
-  const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const month = searchParams.get("month") || defaultMonth;
+  // Default: the current month *at the property*. `new Date().getMonth()` asks
+  // the server, which is UTC on Vercel — on the 1st of a month before 05:30 IST
+  // that is still last month, and the desk would open the reconciliation to
+  // the wrong period.
+  const month = searchParams.get("month") || propertyDayString().slice(0, 7);
 
-  const [year, mon] = month.split("-").map(Number);
-  const from = new Date(year, mon - 1, 1);
-  const to = new Date(year, mon, 1);
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return fail("Use YYYY-MM for month", 400);
+  }
+
+  // Calendar days against DATE columns — see lib/dates.ts. Local-midnight
+  // bounds shifted the whole window a day earlier in IST, pulling the previous
+  // month's last day into the report and dropping this month's.
+  const from = dateOnly(`${month}-01`);
+  const to = addMonths(from, 1);
 
   // ── Revenue (money in) ────────────────────────────────────────
   const paidBookings = await prisma.booking.findMany({
@@ -94,12 +102,12 @@ export async function GET(req: NextRequest) {
   // ── Daily breakdown ───────────────────────────────────────────
   const dayRevenueMap = new Map<string, number>();
   for (const b of paidBookings) {
-    const day = b.checkIn.toISOString().slice(0, 10);
+    const day = toDayString(b.checkIn);
     dayRevenueMap.set(day, (dayRevenueMap.get(day) ?? 0) + b.totalAmount);
   }
   const dayExpenseMap = new Map<string, number>();
   for (const e of expenses) {
-    const day = e.date.toISOString().slice(0, 10);
+    const day = toDayString(e.date);
     dayExpenseMap.set(day, (dayExpenseMap.get(day) ?? 0) + Number(e.amount));
   }
   const allDays = new Set([...dayRevenueMap.keys(), ...dayExpenseMap.keys()]);
@@ -118,7 +126,7 @@ export async function GET(req: NextRequest) {
           bookingNumber: b.bookingNumber,
           guestName: b.guestName,
           room: b.room.name + (b.room.roomNumber ? ` (${b.room.roomNumber})` : ""),
-          checkIn: b.checkIn.toISOString().slice(0, 10),
+          checkIn: toDayString(b.checkIn),
           amount: b.totalAmount,
           source: SOURCE_LABEL[b.source] ?? b.source,
         })),
@@ -128,7 +136,7 @@ export async function GET(req: NextRequest) {
         byCategory: expenseByCategory,
         items: expenses.map((e) => ({
           id: e.id,
-          date: e.date.toISOString().slice(0, 10),
+          date: toDayString(e.date),
           category: e.category,
           categoryLabel: CATEGORY_LABEL[e.category] ?? e.category,
           description: e.description,

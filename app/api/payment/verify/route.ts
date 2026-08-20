@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifySignature } from "@/lib/razorpay";
 import { syncWithChannelManager } from "@/lib/booking-service";
 import { Resend } from "resend";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 
 const schema = z.object({
   bookingId: z.string(),
@@ -16,17 +16,52 @@ const schema = z.object({
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: "Invalid payload" }, { status: 400 });
+    return fail("Invalid payload", 400);
   }
 
   const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = parsed.data;
 
+  // The signature proves Razorpay authorised *this order and payment pair*.
+  // It says nothing about which booking they belong to.
   if (!verifySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
-    return NextResponse.json({ success: false, error: "Payment verification failed" }, { status: 400 });
+    return fail("Payment verification failed", 400);
+  }
+
+  const existing = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: {
+      id: true,
+      bookingNumber: true,
+      razorpayOrderId: true,
+      razorpayPaymentId: true,
+      paymentStatus: true,
+    },
+  });
+  if (!existing) return fail("Booking not found", 404);
+
+  // ── The check this route was missing ──────────────────────────────────
+  // Without it the signature alone was enough to mark ANY booking paid: pay
+  // ₹2,000 for the cheapest room, keep the {order, payment, signature} triple
+  // the checkout handler receives, then replay it against someone else's
+  // bookingId. Both halves have to belong together, and `razorpayOrderId` was
+  // already stored on the row by /api/booking/create for exactly this purpose.
+  if (!existing.razorpayOrderId || existing.razorpayOrderId !== razorpayOrderId) {
+    console.error(
+      `[payment/verify] order mismatch for ${existing.bookingNumber}: ` +
+        `booking holds ${existing.razorpayOrderId ?? "no order"}, request presented ${razorpayOrderId}`
+    );
+    return fail("This payment does not belong to that booking", 403);
+  }
+
+  // Replaying a triple against its own booking is harmless but must not write a
+  // second payment row — that would double-count the stay in every revenue
+  // report. Answer as if we had just confirmed it.
+  if (existing.paymentStatus === "paid" && existing.razorpayPaymentId === razorpayPaymentId) {
+    return ok({ bookingId: existing.id, bookingNumber: existing.bookingNumber });
   }
 
   // Update booking: mark paid, store payment ID
@@ -74,6 +109,10 @@ export async function POST(req: NextRequest) {
         ? `<tr><td style="padding:4px 0;color:#6b7280;">CGST + SGST</td><td style="padding:4px 0;">₹${(booking.cgstAmount + booking.sgstAmount).toLocaleString("en-IN")}</td></tr>`
         : "";
 
+    // Non-fatal. The payment is already recorded, so a Resend outage must not
+    // turn a confirmed booking into a 500 — the wizard reads that as "we could
+    // not confirm the booking" and tells a guest who has just paid to contact
+    // support about a stay that is, in fact, confirmed.
     await resend.emails.send({
       from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
       to: booking.guestEmail,
@@ -105,6 +144,8 @@ export async function POST(req: NextRequest) {
           </p>
         </div>
       `,
+    }).catch((err) => {
+      console.error(`[payment/verify] confirmation email failed for ${booking.bookingNumber}:`, err);
     });
   }
 

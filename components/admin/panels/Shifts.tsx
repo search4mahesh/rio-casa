@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 
 type Staff = { id: string; name: string; role: string };
@@ -214,6 +214,7 @@ function EditAssignmentModal({
   onDelete: (id: string) => void;
   onClose: () => void;
 }) {
+  const fieldId = useId();
   const [staffId, setStaffId] = useState(editing.existing?.staffId ?? "");
   const [notes, setNotes] = useState(editing.existing?.notes ?? "");
   const slotLabel = SLOTS.find((s) => s.id === editing.slot)?.label ?? editing.slot;
@@ -233,8 +234,8 @@ function EditAssignmentModal({
 
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Staff Member *</label>
-              <select value={staffId} onChange={(e) => setStaffId(e.target.value)}
+              <label htmlFor={`${fieldId}-staff-member`} className="block text-sm font-medium text-gray-700 mb-1">Staff Member *</label>
+              <select id={`${fieldId}-staff-member`} value={staffId} onChange={(e) => setStaffId(e.target.value)}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white">
                 <option value="">Select staff…</option>
                 {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
@@ -242,8 +243,8 @@ function EditAssignmentModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+              <label htmlFor={`${fieldId}-notes`} className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea id={`${fieldId}-notes`} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
                 placeholder="Cover details, swap notes, etc."
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg resize-none" />
             </div>

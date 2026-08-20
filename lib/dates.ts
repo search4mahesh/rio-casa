@@ -87,9 +87,29 @@ export function startOfMonth(day: Date): Date {
   return dateOnly(`${toDayString(day).slice(0, 7)}-01`);
 }
 
-/** First day of the month `n` months after `day`. */
+/**
+ * Shift a calendar day by whole months, keeping the day-of-month where the
+ * target month has one and clamping to its last day where it does not.
+ *
+ * `setUTCMonth` alone overflows into the following month: from 31 January it
+ * produces "31 February", which is 3 March. This was documented as "first day
+ * of the month n months after day" — true of every caller that passes a month
+ * start, but `reports` uses it as a plain month shift (`addMonths(to, -12)`)
+ * on whatever day the report ends, so the name has to mean what it says.
+ *
+ *   addMonths(dateOnly("2026-01-31"),  1)  →  2026-02-28
+ *   addMonths(dateOnly("2026-03-31"), -1)  →  2026-02-28
+ *   addMonths(dateOnly("2026-09-01"),  1)  →  2026-10-01
+ *
+ * Use `startOfMonth` when you want a month boundary — that is what it is for.
+ */
 export function addMonths(day: Date, n: number): Date {
-  const d = new Date(day.getTime());
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d;
+  const year = day.getUTCFullYear();
+  const month = day.getUTCMonth();
+  const dayOfMonth = day.getUTCDate();
+
+  // Day 0 of the *next* month is the last day of the one we are aiming at.
+  const lastDayOfTarget = new Date(Date.UTC(year, month + n + 1, 0)).getUTCDate();
+
+  return new Date(Date.UTC(year, month + n, Math.min(dayOfMonth, lastDayOfTarget)));
 }

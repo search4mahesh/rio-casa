@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { ROOM_TYPE_FILTER_LABEL as ROOM_TYPE_LABEL, RATE_PLAN_ROOM_TYPES } from "@/lib/labels";
 import { useToast, Toast } from "@/components/ui/Toast";
 
@@ -175,6 +175,7 @@ type FormState = {
 };
 
 function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () => void }) {
+  const fieldId = useId();
   const [form, setForm] = useState<FormState>({
     name: plan?.name ?? "",
     roomType: plan?.roomType ?? "all",
@@ -229,14 +230,14 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name *</label>
-              <input required value={form.name} onChange={f("name")} placeholder='e.g. "Peak Season 2026"'
+              <label htmlFor={`${fieldId}-plan-name`} className="block text-sm font-medium text-gray-700 mb-1">Plan Name *</label>
+              <input id={`${fieldId}-plan-name`} required value={form.name} onChange={f("name")} placeholder='e.g. "Peak Season 2026"'
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
-                <select required value={form.roomType} onChange={f("roomType")}
+                <label htmlFor={`${fieldId}-room-type`} className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
+                <select id={`${fieldId}-room-type`} required value={form.roomType} onChange={f("roomType")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                   {RATE_PLAN_ROOM_TYPES.map((t) => (
                     <option key={t} value={t}>{ROOM_TYPE_LABEL[t] ?? "All Rooms"}</option>
@@ -244,43 +245,43 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Base Rate (₹/night) *</label>
-                <input required type="number" min="0" step="0.01" value={form.baseRate} onChange={f("baseRate")}
+                <label htmlFor={`${fieldId}-base-rate-night`} className="block text-sm font-medium text-gray-700 mb-1">Base Rate (₹/night) *</label>
+                <input id={`${fieldId}-base-rate-night`} required type="number" min="0" step="0.01" value={form.baseRate} onChange={f("baseRate")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Valid From *</label>
-                <input required type="date" value={form.validFrom} onChange={f("validFrom")}
+                <label htmlFor={`${fieldId}-valid-from`} className="block text-sm font-medium text-gray-700 mb-1">Valid From *</label>
+                <input id={`${fieldId}-valid-from`} required type="date" value={form.validFrom} onChange={f("validFrom")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Valid To *</label>
-                <input required type="date" min={form.validFrom} value={form.validTo} onChange={f("validTo")}
+                <label htmlFor={`${fieldId}-valid-to`} className="block text-sm font-medium text-gray-700 mb-1">Valid To *</label>
+                <input id={`${fieldId}-valid-to`} required type="date" min={form.validFrom} value={form.validTo} onChange={f("validTo")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Weekend Markup (%)</label>
-                <input type="number" min="0" max="100" step="0.1" value={form.weekendMarkup} onChange={f("weekendMarkup")}
+                <label htmlFor={`${fieldId}-weekend-markup`} className="block text-sm font-medium text-gray-700 mb-1">Weekend Markup (%)</label>
+                <input id={`${fieldId}-weekend-markup`} type="number" min="0" max="100" step="0.1" value={form.weekendMarkup} onChange={f("weekendMarkup")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Min Nights</label>
-                <input type="number" min="1" value={form.minNights} onChange={f("minNights")}
+                <label htmlFor={`${fieldId}-min-nights`} className="block text-sm font-medium text-gray-700 mb-1">Min Nights</label>
+                <input id={`${fieldId}-min-nights`} type="number" min="1" value={form.minNights} onChange={f("minNights")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                <input type="number" min="0" value={form.priority} onChange={f("priority")}
+                <label htmlFor={`${fieldId}-priority`} className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <input id={`${fieldId}-priority`} type="number" min="0" value={form.priority} onChange={f("priority")}
                   className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Extra Bed Rate (₹/night)</label>
-              <input type="number" min="0" step="0.01" value={form.extraBedRate} onChange={f("extraBedRate")}
+              <label htmlFor={`${fieldId}-extra-bed-rate-night`} className="block text-sm font-medium text-gray-700 mb-1">Extra Bed Rate (₹/night)</label>
+              <input id={`${fieldId}-extra-bed-rate-night`} type="number" min="0" step="0.01" value={form.extraBedRate} onChange={f("extraBedRate")}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div className="flex items-center gap-2">

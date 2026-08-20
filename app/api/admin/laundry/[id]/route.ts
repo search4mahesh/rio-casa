@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail, failValidation, okEmpty } from "@/lib/api-response";
+import { dateOnly } from "@/lib/dates";
 
 const ReturnSchema = z.object({
   returnedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
@@ -64,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const result = await prisma.laundryBatch.update({
     where: { id: batch.id },
     data: {
-      returnedDate: new Date(parsed.data.returnedDate),
+      returnedDate: dateOnly(parsed.data.returnedDate),
       // "returned" means fully accounted for — pieces still missing keep the
       // batch open so they stay visible in the outstanding list.
       status: fullyBack ? "returned" : anyBack ? "partial" : "sent",
@@ -92,22 +93,46 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 // DELETE /api/admin/laundry/[id] — cancel a batch entered by mistake
+//
+// Marks it `cancelled` rather than deleting the row. This used to call
+// `prisma.laundryBatch.delete`, which cascaded the item lines away with it:
+// the record of what physically went to the laundryman was gone, the
+// `cancelled` status the PATCH above guards against was unreachable, and the
+// audit row written here pointed at an `entityId` that no longer existed.
+//
+// Cancelled batches drop out of the outstanding count on their own — the list
+// route builds it from `sent` and `partial` only.
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireRole(req, "manager");
   if (!auth.ok) return auth.response;
 
   const batch = await prisma.laundryBatch.findUnique({ where: { id: params.id } });
   if (!batch) return fail("Batch not found", 404);
+  if (batch.status === "cancelled") return fail("This batch is already cancelled", 409);
 
-  await prisma.laundryBatch.delete({ where: { id: params.id } });
+  // A batch the laundryman has already returned pieces against is a real
+  // event, not a typo. Cancelling it would drop those returns out of the
+  // record while the linen is back on the shelf.
+  if (batch.status === "returned" || batch.status === "partial") {
+    return fail(
+      `Cannot cancel a batch that has already been ${batch.status === "returned" ? "returned" : "partially returned"}`,
+      409
+    );
+  }
+
+  await prisma.laundryBatch.update({
+    where: { id: params.id },
+    data: { status: "cancelled" },
+  });
 
   await prisma.auditLog.create({
     data: {
       userId: auth.staff.staffId,
-      action: "laundry_batch_deleted",
+      action: "laundry_batch_cancelled",
       entityType: "laundry_batch",
       entityId: params.id,
-      oldValue: { batchNumber: batch.batchNumber, totalPieces: batch.totalPieces },
+      oldValue: { batchNumber: batch.batchNumber, totalPieces: batch.totalPieces, status: batch.status },
+      newValue: { status: "cancelled" },
     },
   });
 

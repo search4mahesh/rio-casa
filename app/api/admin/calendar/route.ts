@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { dateOnly, addDays, addMonths, daysBetween, toDayString, propertyDayString } from "@/lib/dates";
 
 const MAX_RANGE_DAYS = 180;
 
@@ -22,35 +23,37 @@ export async function GET(req: NextRequest) {
   let monthStart: Date | null = null;
   let daysInMonth: number | null = null;
 
+  // Calendar days against DATE columns — see lib/dates.ts. Every bound below
+  // is UTC midnight. Built with `new Date(y, m, d)` they were local midnight,
+  // which in IST is 18:30 UTC on the *previous* day: Postgres cast that back a
+  // day, so the timeline fetched one day early at both ends and the blocked-
+  // date query pulled in the day before the window.
   if (from) {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from);
-    if (!m) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       return NextResponse.json({ success: false, error: "Use YYYY-MM-DD for from" }, { status: 400 });
     }
-    rangeStart = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    if (isNaN(rangeStart.getTime())) {
+    try {
+      rangeStart = dateOnly(from);
+    } catch {
       return NextResponse.json({ success: false, error: "Invalid from date" }, { status: 400 });
     }
     const requested = parseInt(searchParams.get("days") ?? "60", 10);
     rangeDays = Math.min(MAX_RANGE_DAYS, Math.max(1, isNaN(requested) ? 60 : requested));
   } else {
-    const rawMonth = searchParams.get("month") ?? new Date().toISOString().slice(0, 7);
-    const parts = rawMonth.split("-");
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10);
+    // Default to the current month *at the property*, not on the server.
+    const rawMonth = searchParams.get("month") ?? propertyDayString().slice(0, 7);
 
-    if (!year || !month || month < 1 || month > 12 || isNaN(year)) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)) {
       return NextResponse.json({ success: false, error: "Use YYYY-MM format" }, { status: 400 });
     }
 
-    monthStart = new Date(year, month - 1, 1);
-    daysInMonth = new Date(year, month, 0).getDate();
+    monthStart = dateOnly(`${rawMonth}-01`);
+    daysInMonth = daysBetween(monthStart, addMonths(monthStart, 1));
     rangeStart = monthStart;
     rangeDays = daysInMonth;
   }
 
-  const rangeEnd = new Date(rangeStart);
-  rangeEnd.setDate(rangeEnd.getDate() + rangeDays);
+  const rangeEnd = addDays(rangeStart, rangeDays);
 
   const [rooms, bookings, blockedDates] = await Promise.all([
     prisma.room.findMany({
@@ -79,10 +82,9 @@ export async function GET(req: NextRequest) {
 
   // Dates go out as plain YYYY-MM-DD, not ISO instants: the client keys
   // cells by calendar day, and an instant would shift across the date line
-  // for anyone east or west of the server's timezone.
-  const isoDay = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
+  // for anyone east or west of the server's timezone. `toDayString` reads the
+  // UTC components — the local getters this used to call reintroduced exactly
+  // the shift the format is meant to avoid.
   return ok({
     rooms,
     bookings: bookings.map((b) => ({
@@ -94,7 +96,7 @@ export async function GET(req: NextRequest) {
       ...bd,
       blockDate: bd.blockDate.toISOString(),
     })),
-    rangeStart: isoDay(rangeStart),
+    rangeStart: toDayString(rangeStart),
     days: rangeDays,
     // Month-mode only — null when called with ?from=
     daysInMonth,

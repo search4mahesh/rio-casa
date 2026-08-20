@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { format } from "date-fns";
 import { Plus, Pencil, Trash2, X, IndianRupee } from "lucide-react";
 
@@ -49,6 +49,7 @@ function categoryMeta(cat: string) {
 }
 
 export default function ExpensesPanel() {
+  const fieldId = useId();
   const today = new Date();
   const [month, setMonth] = useState(format(today, "yyyy-MM"));
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -274,34 +275,34 @@ export default function ExpensesPanel() {
             <div className="px-6 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Date *</label>
-                  <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  <label htmlFor={`${fieldId}-date`} className="block text-xs font-medium text-gray-500 mb-1">Date *</label>
+                  <input id={`${fieldId}-date`} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Category *</label>
-                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  <label htmlFor={`${fieldId}-category`} className="block text-xs font-medium text-gray-500 mb-1">Category *</label>
+                  <select id={`${fieldId}-category`} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
                     {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Description *</label>
-                <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+                <label htmlFor={`${fieldId}-description`} className="block text-xs font-medium text-gray-500 mb-1">Description *</label>
+                <input id={`${fieldId}-description`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="e.g. Monthly housekeeping supplies"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Amount (₹) *</label>
-                  <input type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  <label htmlFor={`${fieldId}-amount`} className="block text-xs font-medium text-gray-500 mb-1">Amount (₹) *</label>
+                  <input id={`${fieldId}-amount`} type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })}
                     placeholder="0.00"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Payment Method *</label>
-                  <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
+                  <label htmlFor={`${fieldId}-payment-method`} className="block text-xs font-medium text-gray-500 mb-1">Payment Method *</label>
+                  <select id={`${fieldId}-payment-method`} value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
                     {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
@@ -309,21 +310,21 @@ export default function ExpensesPanel() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Vendor / Payee</label>
-                  <input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+                  <label htmlFor={`${fieldId}-vendor-payee`} className="block text-xs font-medium text-gray-500 mb-1">Vendor / Payee</label>
+                  <input id={`${fieldId}-vendor-payee`} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })}
                     placeholder="Supplier name"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Reference / Receipt #</label>
-                  <input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })}
+                  <label htmlFor={`${fieldId}-reference-receipt`} className="block text-xs font-medium text-gray-500 mb-1">Reference / Receipt #</label>
+                  <input id={`${fieldId}-reference-receipt`} value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })}
                     placeholder="INV-001"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Recorded By *</label>
-                <input value={form.recordedBy} onChange={(e) => setForm({ ...form, recordedBy: e.target.value })}
+                <label htmlFor={`${fieldId}-recorded-by`} className="block text-xs font-medium text-gray-500 mb-1">Recorded By *</label>
+                <input id={`${fieldId}-recorded-by`} value={form.recordedBy} onChange={(e) => setForm({ ...form, recordedBy: e.target.value })}
                   placeholder="Your name"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
               </div>
