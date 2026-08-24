@@ -80,13 +80,13 @@ export default function ReconciliationPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Revenue</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Revenue Received</p>
                 <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
                   <TrendingUp size={16} className="text-green-600" />
                 </div>
               </div>
               <p className="text-2xl font-bold text-gray-900">{fmt(data.revenue.total)}</p>
-              <p className="text-xs text-gray-400 mt-1">{monthLabel}</p>
+              <p className="text-xs text-gray-400 mt-1">{monthLabel} · what arrivals owe us, by check-in month</p>
             </div>
 
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -139,8 +139,14 @@ export default function ReconciliationPanel() {
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
                 <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                  Revenue by Source
+                  Revenue Received by Source
                 </h3>
+                <p className="text-xs text-gray-400 -mt-3 mb-4">
+                  Bookings paid to us, plus OTA stays the guest already paid the
+                  channel for — booked whole to their check-in month. See{" "}
+                  <span className="font-medium text-gray-500">Reports</span> for
+                  revenue earned per night over a chosen date range instead.
+                </p>
                 {data.revenue.bySource.length === 0 ? (
                   <p className="text-sm text-gray-400">No revenue this month</p>
                 ) : (
@@ -158,7 +164,7 @@ export default function ReconciliationPanel() {
                       </div>
                     ))}
                     <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-sm font-semibold">
-                      <span className="text-gray-700">Total Revenue</span>
+                      <span className="text-gray-700">Total Received</span>
                       <span className="text-green-700">{fmt(data.revenue.total)}</span>
                     </div>
                   </div>
@@ -208,7 +214,7 @@ export default function ReconciliationPanel() {
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Revenue</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Received</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expenses</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Net</th>
                     </tr>

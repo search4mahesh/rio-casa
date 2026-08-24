@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { ROOM_TYPE_LABEL } from "@/lib/labels";
+import { today, dateOnly, toDayString, addDays, addMonths, startOfMonth } from "@/lib/dates";
 
 type Report = {
   from: string;
@@ -38,25 +39,43 @@ function fmtINR(n: number) {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n).replace(/^/, "₹");
 }
 
+// The report window is a pair of calendar days, so every bound below is built
+// with the lib/dates.ts helpers and stays in UTC.
+//
+// These used to be local-time constructions serialised with `toISOString()`,
+// which is the UTC day — `…T18:30:00Z` on the day before, in IST. "Last Month"
+// took the worst of it: `new Date(y, m + 1, 0)` is local midnight on the last
+// day of the month, so the preset always ended a day early — July reported
+// ₹414,400 over 1–30 Jul instead of ₹426,720 over the whole month, and June
+// and February were short their last day too (B-33).
+const DAY_TZ = { timeZone: "UTC" } as const;
+
 function fmtMonth(key: string) {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+  return dateOnly(`${key}-01`).toLocaleDateString("en-IN", { month: "short", year: "2-digit", ...DAY_TZ });
 }
 
+/** Today at the property, shifted by whole days, as YYYY-MM-DD. */
 function todayISO(offset = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().split("T")[0];
+  return toDayString(addDays(today(), offset));
 }
 
 function firstOfMonth() {
-  const d = new Date();
-  d.setDate(1);
-  return d.toISOString().split("T")[0];
+  return toDayString(startOfMonth(today()));
 }
 
 function firstOfYear() {
-  return `${new Date().getFullYear()}-01-01`;
+  return `${toDayString(today()).slice(0, 4)}-01-01`;
+}
+
+/**
+ * The first and last calendar day of the month `monthsAgo` months back — both
+ * inclusive, which is what `/api/admin/reports` expects for `from`/`to`.
+ * The end is derived as "the day before the next month starts" rather than
+ * from a day-of-month, so it lands on the 28th/29th/30th/31st correctly.
+ */
+function wholeMonthAgo(monthsAgo: number): { from: string; to: string } {
+  const start = addMonths(startOfMonth(today()), -monthsAgo);
+  return { from: toDayString(start), to: toDayString(addDays(addMonths(start, 1), -1)) };
 }
 
 function exportCSV(report: Report) {
@@ -68,7 +87,7 @@ function exportCSV(report: Report) {
   rows.push(`"Occupancy Rate","${report.kpi.occupancyRate}%"`);
   rows.push(`"ADR","₹${report.kpi.adr}"`);
   rows.push(`"RevPAR","₹${report.kpi.revpar}"`);
-  rows.push(`"Total Revenue","₹${report.kpi.totalRevenue}"`);
+  rows.push(`"Revenue Earned","₹${report.kpi.totalRevenue}"`);
   rows.push(`"Total Bookings","${report.kpi.totalBookings}"`);
   rows.push(`"Total Guests","${report.kpi.totalGuests}"`);
   rows.push(`"Avg Length of Stay","${report.kpi.avgLOS} nights"`);
@@ -106,10 +125,7 @@ export default function ReportsPanel() {
   const fieldId = useId();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
-  const [from, setFrom] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() - 11); d.setDate(1);
-    return d.toISOString().split("T")[0];
-  });
+  const [from, setFrom] = useState(() => toDayString(addMonths(startOfMonth(today()), -11)));
   const [to, setTo] = useState(todayISO());
 
   const load = useCallback(async () => {
@@ -125,14 +141,12 @@ export default function ReportsPanel() {
   function applyPreset(preset: "this-month" | "last-month" | "this-year" | "last-12") {
     if (preset === "this-month") { setFrom(firstOfMonth()); setTo(todayISO()); return; }
     if (preset === "last-month") {
-      const d = new Date(); d.setMonth(d.getMonth() - 1, 1);
-      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      setFrom(d.toISOString().split("T")[0]); setTo(end.toISOString().split("T")[0]);
+      const { from: start, to: end } = wholeMonthAgo(1);
+      setFrom(start); setTo(end);
       return;
     }
     if (preset === "this-year") { setFrom(firstOfYear()); setTo(todayISO()); return; }
-    const d = new Date(); d.setMonth(d.getMonth() - 11); d.setDate(1);
-    setFrom(d.toISOString().split("T")[0]); setTo(todayISO());
+    setFrom(toDayString(addMonths(startOfMonth(today()), -11))); setTo(todayISO());
   }
 
   const maxRevenue = Math.max(1, ...(report?.monthlySeries.map((m) => m.revenue) ?? [1]));
@@ -178,12 +192,19 @@ export default function ReportsPanel() {
         <div className="text-center py-20 text-gray-400">No data</div>
       ) : (
         <>
+          <p className="text-xs text-gray-400 mb-4">
+            Revenue here is <span className="font-medium text-gray-500">earned</span> —
+            every confirmed stay, spread per night across the dates it occupies,
+            whether or not it has been paid yet. See{" "}
+            <span className="font-medium text-gray-500">Reconciliation</span> for
+            what has actually been received this month.
+          </p>
           {/* KPI Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <KPICard label="Occupancy Rate" value={`${report.kpi.occupancyRate}%`} sub={`${report.kpi.occupiedNights} / ${report.kpi.totalAvailableNights} nights`} accent="border-primary" />
             <KPICard label="ADR" value={fmtINR(report.kpi.adr)} sub="Avg Daily Rate" accent="border-amber-300" />
             <KPICard label="RevPAR" value={fmtINR(report.kpi.revpar)} sub="Revenue per available room" accent="border-blue-300" />
-            <KPICard label="Total Revenue" value={fmtINR(report.kpi.totalRevenue)} sub={`${report.daysInRange} days`} accent="border-green-300" />
+            <KPICard label="Revenue Earned" value={fmtINR(report.kpi.totalRevenue)} sub={`${report.daysInRange} days · per night, incl. unpaid`} accent="border-green-300" />
             <KPICard label="Total Bookings" value={String(report.kpi.totalBookings)} sub={`${report.kpi.totalGuests} guests`} />
             <KPICard label="Avg Length of Stay" value={`${report.kpi.avgLOS} N`} sub="per booking" />
             <KPICard label="Active Rooms" value={String(report.activeRoomCount)} />

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { propertyDayString } from "@/lib/dates";
 
 type BlockedDate = {
   id: string;
@@ -162,7 +163,12 @@ export default function BlockedDatesPanel() {
 
 function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }) {
   const fieldId = useId();
-  const today = new Date().toISOString().split("T")[0];
+  // `toISOString()` is the UTC day, so before 05:30 IST this modal opened on
+  // *yesterday* — the POST succeeded, the success toast showed, and the row
+  // never appeared in the list (the route filters `blockDate >= today()`)
+  // while the day staff meant to close stayed bookable. B-13 in the walk-in
+  // modal, again here (B-34).
+  const today = propertyDayString();
   const [form, setForm] = useState({ roomId: "", startDate: today, endDate: today, reason: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createOrder } from "@/lib/razorpay";
-import { createBooking, recalcGuestTotals } from "@/lib/booking-service";
+import { createBooking, recalcGuestTotals, releasePromoClaimByCode } from "@/lib/booking-service";
 import { ok, fail, failValidation } from "@/lib/api-response";
 
 const schema = z.object({
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
   if (!result.success || !result.booking) {
     const statusCode = result.errorCode === "ROOM_NOT_AVAILABLE" ? 409
       : result.errorCode === "INVALID_DATES" ? 400
+      : result.errorCode === "PROMO_INVALID" ? 400
       : 500;
     return fail(result.error ?? "Booking could not be created", statusCode);
   }
@@ -103,6 +104,15 @@ export async function POST(req: NextRequest) {
     // The voided booking must stop counting toward the guest's lifetime totals.
     await recalcGuestTotals(prisma, guestId);
 
+    // The promo claim committed along with the booking that is now being
+    // voided — hand it back, or a capped code loses a redemption to every
+    // guest whose Razorpay order simply failed to create.
+    if (promoCode) {
+      await releasePromoClaimByCode(promoCode).catch((e) =>
+        console.error("[booking/create] could not release promo claim:", e)
+      );
+    }
+
     return fail("We could not start the payment. No booking was made — please try again.", 502);
   }
 
@@ -117,6 +127,7 @@ export async function POST(req: NextRequest) {
       bookingNumber: result.booking.bookingNumber,
       orderId: order.id,
       amount: result.booking.totalAmount,
+      discountAmount: result.booking.discountAmount,
       cgstAmount: result.booking.cgstAmount,
       sgstAmount: result.booking.sgstAmount,
       nights: result.booking.nights,

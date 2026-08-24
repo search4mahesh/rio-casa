@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { okMessage } from "@/lib/api-response";
+import { generateInvoice } from "@/lib/invoice-service";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireRole(req, "frontdesk");
@@ -59,6 +60,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       },
     }),
   ]);
+
+  // Bookkeeping, not check-out — the room is already vacant and the guest
+  // already gone regardless of whether this succeeds. A stay that was never
+  // actually paid for (still "pending", or a no-show that got checked out by
+  // mistake) gets no tax invoice; "paid"/"cash" mirrors how reconciliation
+  // already defines revenue that counts.
+  if (booking.paymentStatus === "paid" || booking.paymentStatus === "cash") {
+    try {
+      await generateInvoice(booking.id);
+    } catch (err) {
+      console.error(`[checkout] invoice generation failed for ${booking.bookingNumber}:`, err);
+    }
+  }
 
   return okMessage(`${booking.guestName} checked out`);
 }

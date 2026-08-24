@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { propertyDayString } from "@/lib/dates";
 
 type Review = {
   id: string; platform: string; guestName: string; rating: number;
@@ -185,7 +186,9 @@ export default function ReviewsPanel() {
 
 function AddReviewModal({ onClose }: { onClose: () => void }) {
   const fieldId = useId();
-  const today = new Date().toISOString().split("T")[0];
+  // The property's day, not the server's UTC day — before 05:30 IST the
+  // latter dates a review to yesterday. See B-34 and lib/dates.ts.
+  const today = propertyDayString();
   const [form, setForm] = useState({
     platform: "google",
     guestName: "",

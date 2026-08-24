@@ -640,3 +640,19 @@ model GalleryImage {
 
   @@map("gallery_images")
 }
+
+// Submissions from the public /contact form. `/api/contact` used to only
+// console.log these — a durable row plus a staff-notification email replaces
+// that (see B-36).
+model ContactInquiry {
+  id      String  @id @default(cuid())
+  name    String
+  email   String
+  phone   String?
+  message String  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("contact_inquiries")
+}

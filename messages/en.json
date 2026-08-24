@@ -7,6 +7,7 @@
     "packages": "Packages",
     "dining": "Dining & Amenities",
     "blog": "Blog",
+    "contact": "Contact",
     "bookNow": "Book Now"
   },
   "hero": {
@@ -95,6 +96,22 @@
     "subtitle": "Stories from the hills",
     "readMore": "Read More",
     "backToBlog": "Back to Blog"
+  },
+  "contactPage": {
+    "title": "Contact Us",
+    "subtitle": "We'd love to hear from you",
+    "intro": "Questions about a stay, a package, or planning something special? Send us a message and our team will get back to you shortly.",
+    "name": "Full Name",
+    "email": "Email Address",
+    "phone": "Phone Number",
+    "message": "Message",
+    "messagePlaceholder": "Tell us how we can help…",
+    "submit": "Send Message",
+    "sending": "Sending…",
+    "success": "Thank you! Your message has been sent — we'll be in touch shortly.",
+    "visitTitle": "Visit Us",
+    "callTitle": "Call Us",
+    "emailTitle": "Email Us"
   },
   "footer": {
     "tagline": "Your serene escape in the Sahyadri hills",

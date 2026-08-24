@@ -160,6 +160,16 @@ describe("quoteStay", () => {
     const desk = await quoteStay({ room, checkIn: FRI, checkOut: SUN, extraBed: true });
     expect(desk.subtotal).toBe(web.subtotal);
   });
+
+  it("looks up a plan by this room's type or by 'all' (B-30)", async () => {
+    // RATE_PLAN_ROOM_TYPES in lib/labels.ts deliberately includes "all" — the
+    // admin form's "All Rooms" option saves exactly that string. Matching only
+    // room.roomType meant such a plan could save without error and then never
+    // be found by the one place that prices a stay.
+    await quoteStay({ room, checkIn: MON, checkOut: TUE });
+    const where = mockPrisma.ratePlan.findFirst.mock.calls[0][0].where;
+    expect(where.roomType).toEqual({ in: ["deluxe", "all"] });
+  });
 });
 
 describe("applyGst", () => {

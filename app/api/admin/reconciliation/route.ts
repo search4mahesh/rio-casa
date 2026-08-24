@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dateOnly, addMonths, propertyDayString, toDayString } from "@/lib/dates";
+import { CHANNEL_PAID_SOURCES } from "@/lib/labels";
 
 const SOURCE_LABEL: Record<string, string> = {
   website: "Website",
@@ -46,12 +47,23 @@ export async function GET(req: NextRequest) {
   const from = dateOnly(`${month}-01`);
   const to = addMonths(from, 1);
 
-  // ── Revenue (money in) ────────────────────────────────────────
+  // ── Revenue received (money in) ───────────────────────────────
+  //
+  // This is the *cash* view: what this month's arrivals are actually owed to
+  // us, booked whole to the month the guest checked in. `/admin/reports` answers
+  // a different question — revenue *earned* per night across an arbitrary
+  // window — so the two figures legitimately differ and are labelled apart in
+  // the UI. What was wrong was dropping OTA stays: they sit at `pending`
+  // forever because the guest paid the channel, so filtering on
+  // `paid`/`cash` alone silently excluded them (B-35).
   const paidBookings = await prisma.booking.findMany({
     where: {
       checkIn: { gte: from, lt: to },
-      paymentStatus: { in: ["paid", "cash"] },
       status: { notIn: ["cancelled", "no_show"] },
+      OR: [
+        { paymentStatus: { in: ["paid", "cash"] } },
+        { source: { in: [...CHANNEL_PAID_SOURCES] }, paymentStatus: "pending" },
+      ],
     },
     select: {
       totalAmount: true,

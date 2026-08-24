@@ -233,4 +233,25 @@ describe("POST /api/admin/communications — send", () => {
     expect(body.data.sentCount).toBe(1);
     expect(body.data.errors).toHaveLength(1);
   });
+
+  // B-37 — the SDK resolves `{ data: null, error }` for an API-level failure
+  // (bad key, rejected recipient, …) rather than throwing. Counting on the
+  // promise merely resolving used to credit `sentCount` for every recipient
+  // regardless, so a bad key reported "sent to N guests" for a campaign that
+  // reached nobody.
+  it("does not count a resolved-but-rejected send as sent", async () => {
+    mockBookingFindMany.mockResolvedValueOnce([
+      mockBooking({ guestEmail: "a@a.com", guestName: "Alpha" }),
+      mockBooking({ guestEmail: "b@b.com", guestName: "Beta" }),
+    ]);
+    mockResendSend.mockResolvedValue({ data: null, error: { name: "validation_error", message: "API key is invalid" } });
+    const res = await POST(makeReq("POST", {
+      action: "send", channel: "email", filter: { type: "checked-in" },
+      subject: "x", body: "y",
+    }));
+    const body = await res.json();
+    expect(body.data.sentCount).toBe(0);
+    expect(body.data.errors).toHaveLength(2);
+    expect(body.data.errors[0]).toContain("API key is invalid");
+  });
 });

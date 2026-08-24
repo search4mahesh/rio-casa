@@ -52,6 +52,7 @@ export default function Footer({ locale }: { locale: string }) {
                 ["packages", "/packages"],
                 ["dining", "/dining"],
                 ["blog", "/blog"],
+                ["contact", "/contact"],
               ].map(([key, href]) => (
                 <li key={key}>
                   <Link

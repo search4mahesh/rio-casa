@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { today, addDays, dateOnly, toDayString } from "@/lib/dates";
 
 type Staff = { id: string; name: string; role: string };
 
@@ -27,25 +28,33 @@ const STATIONS = [
   { id: "kitchen", label: "Kitchen", color: "bg-amber-50 border-amber-200" },
 ];
 
-function startOfWeek(d: Date) {
-  const out = new Date(d);
-  out.setHours(0, 0, 0, 0);
-  const day = out.getDay(); // 0 Sun
-  const diff = day === 0 ? -6 : 1 - day; // make Monday the start
-  out.setDate(out.getDate() + diff);
-  return out;
+// `ShiftAssignment.date` is a `@db.Date` column, so every day here is a UTC
+// midnight value and every reader has to stay in UTC — see lib/dates.ts.
+//
+// This used to build the week with `setHours(0, 0, 0, 0)` (local midnight) and
+// serialise it with `toISOString()` (the UTC day). In IST local midnight is
+// `…T18:30:00Z` on the day before, so the whole grid was off by one: the cell
+// under the "Mon 24 Aug" header opened a dialog headed "Sunday, 23 August" and
+// saved `date: 2026-08-23`, and the printed roster told staff the wrong day.
+// Formatting is pinned to UTC for the same reason — these values are calendar
+// days, not instants, so they must not be re-interpreted in the viewer's zone.
+const DAY_TZ = { timeZone: "UTC" } as const;
+
+function startOfWeek(day: Date) {
+  const dow = day.getUTCDay(); // 0 Sun
+  return addDays(day, dow === 0 ? -6 : 1 - dow); // Monday starts the week
 }
 
-function addDays(d: Date, n: number) { const o = new Date(d); o.setDate(o.getDate() + n); return o; }
-
-function toISO(d: Date) { return d.toISOString().split("T")[0]; }
-
 function fmtDay(d: Date) {
-  return { dayName: d.toLocaleDateString("en-IN", { weekday: "short" }), dayNum: d.getDate(), monthShort: d.toLocaleDateString("en-IN", { month: "short" }) };
+  return {
+    dayName: d.toLocaleDateString("en-IN", { weekday: "short", ...DAY_TZ }),
+    dayNum: d.getUTCDate(),
+    monthShort: d.toLocaleDateString("en-IN", { month: "short", ...DAY_TZ }),
+  };
 }
 
 export default function ShiftsPanel() {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(today()));
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +63,7 @@ export default function ShiftsPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/shifts?weekStart=${toISO(weekStart)}`);
+    const res = await fetch(`/api/admin/shifts?weekStart=${toDayString(weekStart)}`);
     const data = await res.json();
     if (data.success) { setAssignments(data.data.assignments); setStaff(data.data.staff); }
     setLoading(false);
@@ -93,12 +102,12 @@ export default function ShiftsPanel() {
       {/* Header */}
       <div className="flex items-center justify-end gap-3 mb-6 print:hidden">
         <div className="flex items-center gap-2">
-          <button onClick={() => setWeekStart(startOfWeek(new Date()))}
+          <button onClick={() => setWeekStart(startOfWeek(today()))}
             className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50">This Week</button>
           <button onClick={() => setWeekStart(addDays(weekStart, -7))}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">← Prev</button>
           <span className="text-sm font-medium text-gray-700 mx-1 min-w-[180px] text-center">
-            {weekStart.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – {addDays(weekStart, 6).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            {weekStart.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...DAY_TZ })} – {addDays(weekStart, 6).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", ...DAY_TZ })}
           </span>
           <button onClick={() => setWeekStart(addDays(weekStart, 7))}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Next →</button>
@@ -117,8 +126,8 @@ export default function ShiftsPanel() {
                 <th className="text-left px-3 py-3 font-medium text-gray-500 sticky left-0 bg-gray-50 z-10 min-w-[120px]">Shift</th>
                 {days.map((d, i) => {
                   const { dayName, dayNum, monthShort } = fmtDay(d);
-                  const isToday = toISO(d) === toISO(new Date());
-                  const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                  const isToday = toDayString(d) === toDayString(today());
+                  const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
                   return (
                     <th key={i} className={`text-center px-3 py-3 font-medium min-w-[140px] ${isToday ? "bg-primary/10" : ""}`}>
                       <div className={`text-xs ${isToday ? "text-primary" : isWeekend ? "text-amber-600" : "text-gray-500"}`}>{dayName}</div>
@@ -143,7 +152,7 @@ export default function ShiftsPanel() {
                       <div className={`mt-${stationIdx === 0 ? "1" : "0"} text-xs font-medium text-gray-600`}>{station.label}</div>
                     </td>
                     {days.map((d, i) => {
-                      const dateISO = toISO(d);
+                      const dateISO = toDayString(d);
                       const a = getAssignment(dateISO, slot.id, station.id);
                       return (
                         <td key={i} className="p-1.5 align-top">
@@ -228,7 +237,7 @@ function EditAssignmentModal({
           <div className="px-6 py-4 border-b">
             <h2 className="font-semibold text-gray-900">{editing.existing ? "Edit Assignment" : "Assign Staff"}</h2>
             <p className="text-xs text-gray-500 mt-1">
-              {new Date(editing.date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })} · {slotLabel} · {stationLabel}
+              {dateOnly(editing.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", ...DAY_TZ })} · {slotLabel} · {stationLabel}
             </p>
           </div>
 

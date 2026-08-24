@@ -24,6 +24,8 @@ export type RoomMarketing = {
   heroImage: string;
   heroAlt: string;
   gallery: { src: string; alt: string }[];
+  /** One-line hook for compact cards (e.g. the homepage). */
+  tagline: string;
   /** Longer copy for the detail page. The short description comes from the DB. */
   longDescription: string;
 };
@@ -41,6 +43,7 @@ export const DEFAULT_MARKETING: RoomMarketing = {
   heroImage: "/images/rooms/room-entrance.jpg",
   heroAlt: "Guest room at Rio Casa",
   gallery: GENERIC_GALLERY,
+  tagline: "A restful stay in the hills",
   longDescription:
     "A comfortable room in the hills of Mahabaleshwar, with everything you need for a restful stay.",
 };
@@ -57,6 +60,7 @@ export const ROOM_MARKETING: Record<string, RoomMarketing> = {
       { src: "/images/rooms/balcony-chairs.jpg", alt: "Private balcony with rattan chairs" },
       { src: "/images/rooms/bathroom-vessel.jpg", alt: "Ensuite bathroom with vessel sink" },
     ],
+    tagline: "Comfort in the hills",
     longDescription:
       "A beautifully appointed room designed for couples or solo travellers. Warm earthy décor, a comfortable double bed, and all the essentials for a restorative hill station stay.",
   },
@@ -72,6 +76,7 @@ export const ROOM_MARKETING: Record<string, RoomMarketing> = {
       { src: "/images/rooms/bathroom-grey.jpg", alt: "Ensuite bathroom" },
       { src: "/images/rooms/tea-coffee.jpg", alt: "In-room tea and coffee tray" },
     ],
+    tagline: "A step up, with a private balcony",
     longDescription:
       "A step up in space and outlook, with a generous balcony and a quiet position on the upper floor — a comfortable middle ground between our Standard and Luxury rooms.",
   },
@@ -87,6 +92,7 @@ export const ROOM_MARKETING: Record<string, RoomMarketing> = {
       { src: "/images/rooms/balcony-courtyard.jpg", alt: "Balcony overlooking the courtyard" },
       { src: "/images/rooms/view-forest.jpg", alt: "Forest view from the room" },
     ],
+    tagline: "With soaking bathtub",
     longDescription:
       "Our finest room, featuring a luxurious soaking bathtub and premium toiletries. Unwind after a day of exploring Mahabaleshwar with a long, relaxing bath.",
   },
@@ -102,6 +108,7 @@ export const ROOM_MARKETING: Record<string, RoomMarketing> = {
       { src: "/images/rooms/family-wardrobe.jpg", alt: "Family Room wardrobe and seating" },
       { src: "/images/rooms/balcony-courtyard.jpg", alt: "Balcony overlooking the courtyard" },
     ],
+    tagline: "2 double beds · Up to 4 guests",
     longDescription:
       "Our spacious family room fits the whole family comfortably with two double beds and a dedicated seating area — ideal for a Mahabaleshwar family holiday.",
   },

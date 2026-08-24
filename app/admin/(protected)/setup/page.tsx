@@ -18,7 +18,6 @@ const PANELS: Record<string, React.ComponentType> = {
   reviews:  ReviewsPanel,
   messages: CommunicationsPanel,
   shifts:   ShiftsPanel,
-  hotel:    HotelSettingsPanel,
 };
 
 export default async function SetupPage({
@@ -33,7 +32,10 @@ export default async function SetupPage({
   const tab = resolveTab(HUB, searchParams.tab, staff.role);
   if (!tab) redirect("/admin/dashboard");
 
-  const Panel = PANELS[tab.slug];
+  // `HotelSettingsPanel` is a client component, so it cannot read the
+  // server-only `HOTEL_GSTIN` var itself — this Server Component reads it and
+  // passes it down. See B-29.
+  const Panel = tab.slug === "hotel" ? null : PANELS[tab.slug];
 
   return (
     <div>
@@ -44,7 +46,11 @@ export default async function SetupPage({
         tabs={visibleTabs(HUB, staff.role)}
         active={tab.slug}
       />
-      <Panel />
+      {tab.slug === "hotel" ? (
+        <HotelSettingsPanel gstin={process.env.HOTEL_GSTIN || "27XXXXX0000X1ZX"} />
+      ) : (
+        Panel && <Panel />
+      )}
     </div>
   );
 }

@@ -12,11 +12,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockUpdate, mockPaymentCreate, mockAuditCreate } = vi.hoisted(() => ({
+const { mockFindUnique, mockUpdate, mockPaymentCreate, mockAuditCreate, mockResendSend } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
   mockPaymentCreate: vi.fn().mockResolvedValue({}),
   mockAuditCreate: vi.fn().mockResolvedValue({}),
+  mockResendSend: vi.fn().mockResolvedValue({ data: { id: "msg_1" }, error: null }),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -39,7 +40,7 @@ vi.mock("@/lib/booking-service", () => ({
 
 vi.mock("resend", () => ({
   Resend: class {
-    emails = { send: vi.fn().mockResolvedValue({}) };
+    emails = { send: mockResendSend };
   },
 }));
 
@@ -78,6 +79,8 @@ beforeEach(() => {
   mockUpdate.mockReset();
   mockPaymentCreate.mockClear();
   mockAuditCreate.mockClear();
+  mockResendSend.mockReset();
+  mockResendSend.mockResolvedValue({ data: { id: "msg_1" }, error: null });
   vi.mocked(verifySignature).mockReturnValue(true);
   mockUpdate.mockResolvedValue({
     id: "bk_target",
@@ -188,6 +191,24 @@ describe("POST /api/payment/verify — confirmation email", () => {
     // to a guest whose stay is, in fact, confirmed.
     process.env.RESEND_API_KEY = "re_test";
     mockFindUnique.mockResolvedValueOnce(booking());
+    mockResendSend.mockRejectedValueOnce(new Error("network failure"));
+
+    const res = await POST(post({ ...VALID, razorpayOrderId: "order_target" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).success).toBe(true);
+
+    delete process.env.RESEND_API_KEY;
+  });
+
+  // B-37 — the SDK resolves `{ data: null, error }` for an API-level failure
+  // (bad key, rejected recipient, …) rather than throwing; only a network
+  // failure throws. A resolved-but-rejected send must be just as non-fatal to
+  // the payment confirmation as a thrown one — the route now checks `.error`
+  // explicitly rather than assuming a resolved promise means the email sent.
+  it("confirms the payment when Resend resolves with an error, not a throw", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    mockFindUnique.mockResolvedValueOnce(booking());
+    mockResendSend.mockResolvedValueOnce({ data: null, error: { name: "validation_error", message: "API key is invalid" } });
 
     const res = await POST(post({ ...VALID, razorpayOrderId: "order_target" }));
     expect(res.status).toBe(200);

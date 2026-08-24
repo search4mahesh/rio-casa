@@ -55,3 +55,20 @@ export const ROOM_TYPE_FILTER_LABEL: Record<string, string> = {
 
 /** Options for a rate-plan room-type picker: the sellable types plus "all". */
 export const RATE_PLAN_ROOM_TYPES = ["all", ...SELLABLE_ROOM_TYPES] as const;
+
+/**
+ * Booking sources where the guest pays the *channel*, not us.
+ *
+ * These stay at `paymentStatus: "pending"` for their whole life — there is no
+ * Razorpay payment to record, because the money reached the OTA. That is
+ * deliberate (see CLAUDE.md, `expireStalePaymentHolds`, which refuses to sweep
+ * them for the same reason), so anything asking "what did this month earn?"
+ * has to count them. Reconciliation previously filtered on
+ * `paymentStatus in (paid, cash)` alone and so dropped every OTA stay: a
+ * ₹33,600 Booking.com booking vanished from August's revenue and the channel
+ * disappeared from the by-source breakdown entirely (B-35).
+ *
+ * `pending` on a `walkin`, `phone` or `website` booking means the opposite —
+ * nobody has paid yet — so those are still excluded.
+ */
+export const CHANNEL_PAID_SOURCES = ["booking_com", "mmt", "goibibo", "airbnb"] as const;

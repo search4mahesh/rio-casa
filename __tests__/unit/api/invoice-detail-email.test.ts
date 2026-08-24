@@ -171,4 +171,20 @@ describe("POST /api/admin/invoices/[id]/email", () => {
     const res = await emailPost(makeReq("POST"), idParams);
     expect(res.status).toBe(500);
   });
+
+  // B-37 — the SDK resolves `{ data: null, error }` for an API-level failure
+  // (bad key, rejected recipient, …) rather than throwing; only a network
+  // failure throws. The route used to mark the invoice "sent" and write an
+  // audit row off the promise merely resolving, so a rejected send still told
+  // staff "Invoice emailed to X" with nothing actually delivered.
+  it("does not mark the invoice sent when Resend resolves with an error", async () => {
+    mockInvoiceFindUnique.mockResolvedValueOnce(fullInvoice);
+    mockResendSend.mockResolvedValueOnce({ data: null, error: { name: "validation_error", message: "API key is invalid" } });
+    const res = await emailPost(makeReq("POST"), idParams);
+    const body = await res.json();
+    expect(res.status).toBe(502);
+    expect(body.success).toBe(false);
+    expect(mockInvoiceUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
 });

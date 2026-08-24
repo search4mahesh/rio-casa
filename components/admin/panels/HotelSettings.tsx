@@ -22,7 +22,7 @@ const ROLE_COLOR: Record<string, string> = {
   housekeeping: "bg-yellow-100 text-yellow-700",
 };
 
-export default function HotelSettingsPanel() {
+export default function HotelSettingsPanel({ gstin }: { gstin: string }) {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -62,7 +62,11 @@ export default function HotelSettingsPanel() {
   const hotelInfo = [
     { label: "Hotel Name", value: "Rio Casa Resort" },
     { label: "Location", value: "Mahabaleshwar, Satara District, Maharashtra" },
-    { label: "GSTIN", value: process.env.NEXT_PUBLIC_HOTEL_GSTIN ?? "27XXXXX0000X1ZX" },
+    // `HOTEL_GSTIN` has no `NEXT_PUBLIC_` prefix — it's read server-side, same
+    // as lib/invoice-service.ts reads it, and passed down as a prop. This
+    // component is a client component, so reading `process.env.HOTEL_GSTIN`
+    // here directly would always be `undefined` (B-29).
+    { label: "GSTIN", value: gstin },
     { label: "WhatsApp", value: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "—" },
   ];
 

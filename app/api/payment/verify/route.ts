@@ -113,40 +113,49 @@ export async function POST(req: NextRequest) {
     // turn a confirmed booking into a 500 — the wizard reads that as "we could
     // not confirm the booking" and tells a guest who has just paid to contact
     // support about a stay that is, in fact, confirmed.
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
-      to: booking.guestEmail,
-      subject: `Booking Confirmed — ${booking.bookingNumber} | Rio Casa`,
-      html: `
-        <div style="font-family:Georgia,serif;max-width:600px;margin:auto;padding:24px;color:#2C2416;">
-          <h1 style="color:#4A6741;font-size:26px;margin-bottom:4px;">Booking Confirmed!</h1>
-          <p style="color:#6b7280;font-size:13px;margin-top:0;">${booking.bookingNumber}</p>
-          <p>Dear ${booking.guestName},</p>
-          <p>Your stay at <strong>Rio Casa, Mahabaleshwar</strong> is confirmed. We look forward to welcoming you!</p>
-          <hr style="border-color:#e5e7eb;margin:20px 0;" />
-          <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <tr><td style="padding:6px 0;color:#6b7280;">Room</td><td style="padding:6px 0;font-weight:bold;">${booking.room.name}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280;">Check-in</td><td style="padding:6px 0;">${new Date(booking.checkIn).toDateString()}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280;">Check-out</td><td style="padding:6px 0;">${new Date(booking.checkOut).toDateString()}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280;">Nights</td><td style="padding:6px 0;">${booking.nights}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280;">Guests</td><td style="padding:6px 0;">${booking.adults}${booking.children > 0 ? ` adults + ${booking.children} children` : ""}</td></tr>
-            ${gstLine}
-            <tr style="border-top:1px solid #e5e7eb;">
-              <td style="padding:8px 0;font-weight:bold;color:#4A6741;">Total Paid</td>
-              <td style="padding:8px 0;font-weight:bold;color:#4A6741;font-size:16px;">₹${booking.totalAmount.toLocaleString("en-IN")}</td>
-            </tr>
-          </table>
-          <hr style="border-color:#e5e7eb;margin:20px 0;" />
-          ${booking.specialRequests ? `<p style="font-size:13px;"><strong>Special Requests:</strong> ${booking.specialRequests}</p>` : ""}
-          <p style="font-size:13px;color:#6b7280;">
-            For any queries, call us at +91 98765 43210 or email info@riocasa.in<br/>
-            Rio Casa Resort, Mahabaleshwar, Satara District, Maharashtra — 412806
-          </p>
-        </div>
-      `,
-    }).catch((err) => {
+    //
+    // The SDK resolves `{ data, error }` for an API-level failure (bad key,
+    // rejected recipient, …) rather than throwing — only a network failure
+    // throws, which is all a trailing `.catch()` here used to catch (B-37).
+    try {
+      const { error: sendError } = await resend.emails.send({
+        from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
+        to: booking.guestEmail,
+        subject: `Booking Confirmed — ${booking.bookingNumber} | Rio Casa`,
+        html: `
+          <div style="font-family:Georgia,serif;max-width:600px;margin:auto;padding:24px;color:#2C2416;">
+            <h1 style="color:#4A6741;font-size:26px;margin-bottom:4px;">Booking Confirmed!</h1>
+            <p style="color:#6b7280;font-size:13px;margin-top:0;">${booking.bookingNumber}</p>
+            <p>Dear ${booking.guestName},</p>
+            <p>Your stay at <strong>Rio Casa, Mahabaleshwar</strong> is confirmed. We look forward to welcoming you!</p>
+            <hr style="border-color:#e5e7eb;margin:20px 0;" />
+            <table style="width:100%;border-collapse:collapse;font-size:14px;">
+              <tr><td style="padding:6px 0;color:#6b7280;">Room</td><td style="padding:6px 0;font-weight:bold;">${booking.room.name}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">Check-in</td><td style="padding:6px 0;">${new Date(booking.checkIn).toDateString()}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">Check-out</td><td style="padding:6px 0;">${new Date(booking.checkOut).toDateString()}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">Nights</td><td style="padding:6px 0;">${booking.nights}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">Guests</td><td style="padding:6px 0;">${booking.adults}${booking.children > 0 ? ` adults + ${booking.children} children` : ""}</td></tr>
+              ${gstLine}
+              <tr style="border-top:1px solid #e5e7eb;">
+                <td style="padding:8px 0;font-weight:bold;color:#4A6741;">Total Paid</td>
+                <td style="padding:8px 0;font-weight:bold;color:#4A6741;font-size:16px;">₹${booking.totalAmount.toLocaleString("en-IN")}</td>
+              </tr>
+            </table>
+            <hr style="border-color:#e5e7eb;margin:20px 0;" />
+            ${booking.specialRequests ? `<p style="font-size:13px;"><strong>Special Requests:</strong> ${booking.specialRequests}</p>` : ""}
+            <p style="font-size:13px;color:#6b7280;">
+              For any queries, call us at +91 98765 43210 or email info@riocasa.in<br/>
+              Rio Casa Resort, Mahabaleshwar, Satara District, Maharashtra — 412806
+            </p>
+          </div>
+        `,
+      });
+      if (sendError) {
+        console.error(`[payment/verify] confirmation email failed for ${booking.bookingNumber}:`, sendError);
+      }
+    } catch (err) {
       console.error(`[payment/verify] confirmation email failed for ${booking.bookingNumber}:`, err);
-    });
+    }
   }
 
   return ok({ bookingId: booking.id, bookingNumber: booking.bookingNumber });

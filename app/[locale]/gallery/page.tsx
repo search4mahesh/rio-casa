@@ -7,14 +7,22 @@ import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
 const categories = ["all", "rooms", "amenities", "nature"] as const;
 
+// Captions must match lib/room-marketing.ts, the canonical file → room-type
+// mapping every other page uses. The `deluxe-*`/`premium-*` filenames are
+// legacy — from before the room catalogue was corrected — and no longer
+// match what they actually show: `deluxe-main.jpg`/`deluxe-wardrobe.jpg` are
+// the Standard Room's photos there, and `premium-bed.jpg`/`premium-bathtub.jpg`
+// are the Luxury Room's ("Premium Room" isn't a room type this property has).
+// Captioning by filename instead of by the real mapping is how this page
+// drifted out of sync with /rooms and the booking wizard (see B-24, B-31).
 const images = [
   // ── Rooms ──────────────────────────────────────────────────────────────
-  { id:  1, src: "/images/rooms/deluxe-main.jpg",        category: "rooms",     alt: "Deluxe Room — double bed with wood ceiling" },
-  { id:  2, src: "/images/rooms/premium-bed.jpg",        category: "rooms",     alt: "Premium Room — upholstered headboard" },
-  { id:  3, src: "/images/rooms/premium-bathtub.jpg",    category: "rooms",     alt: "Premium Room — soaking bathtub" },
+  { id:  1, src: "/images/rooms/deluxe-main.jpg",        category: "rooms",     alt: "Standard Room — double bed with wood ceiling" },
+  { id:  2, src: "/images/rooms/premium-bed.jpg",        category: "rooms",     alt: "Luxury Room — upholstered headboard" },
+  { id:  3, src: "/images/rooms/premium-bathtub.jpg",    category: "rooms",     alt: "Luxury Room — soaking bathtub" },
   { id:  4, src: "/images/rooms/family-main.jpg",        category: "rooms",     alt: "Family Room — two double beds" },
   { id:  5, src: "/images/rooms/family-beds.jpg",        category: "rooms",     alt: "Family Room — side-by-side beds" },
-  { id:  6, src: "/images/rooms/deluxe-wardrobe.jpg",    category: "rooms",     alt: "Deluxe Room — wardrobe and TV unit" },
+  { id:  6, src: "/images/rooms/deluxe-wardrobe.jpg",    category: "rooms",     alt: "Standard Room — wardrobe and TV unit" },
   { id:  7, src: "/images/rooms/bathroom-vessel.jpg",    category: "rooms",     alt: "Ensuite bathroom — vessel sink and round mirror" },
   { id:  8, src: "/images/rooms/bathroom-grey.jpg",      category: "rooms",     alt: "Ensuite bathroom — grey marble" },
   { id:  9, src: "/images/rooms/bathroom-dark.jpg",      category: "rooms",     alt: "Ensuite bathroom — dark marble tiles" },

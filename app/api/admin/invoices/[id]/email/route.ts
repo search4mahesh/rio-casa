@@ -64,12 +64,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    // The SDK resolves `{ data, error }` for an API-level failure (bad key,
+    // rejected recipient, …) rather than throwing — only a network failure
+    // throws. Marking the invoice "sent" and writing an audit log entry off
+    // the promise merely resolving meant a rejected send still told staff
+    // "Invoice emailed to X" (B-37) — the guest never got it, and the invoice
+    // list showed a status that wasn't true.
+    const { error: sendError } = await resend.emails.send({
       from: "Rio Casa <invoices@riocasa.com>",
       to: toEmail,
       subject: `Tax Invoice ${invoice.invoiceNumber} — Rio Casa Resort`,
       html,
     });
+    if (sendError) {
+      return NextResponse.json({ success: false, error: sendError.message }, { status: 502 });
+    }
 
     await prisma.invoice.update({
       where: { id },

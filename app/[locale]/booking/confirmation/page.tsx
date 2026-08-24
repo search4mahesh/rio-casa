@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle, QrCode, SearchX } from "lucide-react";
+import { CheckCircle, QrCode, SearchX, XCircle } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
@@ -33,6 +33,8 @@ export default async function BookingConfirmationPage({
           adults: true,
           children: true,
           totalAmount: true,
+          discountAmount: true,
+          status: true,
           paymentStatus: true,
           room: { select: { name: true, roomNumber: true } },
         },
@@ -57,6 +59,35 @@ export default async function BookingConfirmationPage({
 
   const amount = Number(booking.totalAmount);
   const guests = booking.adults + booking.children;
+
+  // A stale hold or a failed payment leaves the booking `cancelled` — the
+  // room is already back on the calendar for someone else. Checking only
+  // `paymentStatus` here (both "pending" and this booking's "failed" satisfy
+  // `!== "paid"`) rendered the same "Confirmed" / "still pending" copy for a
+  // booking that will never be confirmed, which is worse than no page at all.
+  if (booking.status === "cancelled") {
+    return (
+      <div className="min-h-screen bg-earth-bg py-20">
+        <div className="container-resort max-w-lg text-center">
+          <XCircle size={56} className="text-accent mx-auto mb-4" />
+          <h1 className="section-heading mb-4">This booking did not go through</h1>
+          <p className="font-sans text-earth-text/70 mb-8">
+            Booking {booking.bookingNumber} was cancelled and the room has been released. If you
+            have already been charged, message us with the booking number below and we will sort
+            it out right away — please do not pay again.
+          </p>
+          <div className="bg-earth-white rounded-sm shadow-sm p-6 mb-8 text-left font-sans text-sm space-y-2">
+            <Row label="Booking number" value={<span className="font-mono">{booking.bookingNumber}</span>} />
+            <Row label="Guest" value={booking.guestName} />
+            <Row label="Room" value={`#${booking.room.roomNumber} — ${booking.room.name}`} />
+            <Row label={t("checkIn")} value={format(booking.checkIn, "dd MMM yyyy")} />
+            <Row label={t("checkOut")} value={format(booking.checkOut, "dd MMM yyyy")} />
+          </div>
+          <ConfirmationActions reference={booking.bookingNumber} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-earth-bg py-20">
@@ -100,6 +131,12 @@ export default async function BookingConfirmationPage({
               renders the raw key path to the guest. */}
           <Row label={t("duration")} value={t("nights", { count: booking.nights })} />
           <Row label={t("guests")} value={String(guests)} />
+          {booking.discountAmount > 0 && (
+            <Row
+              label="Discount"
+              value={<span className="text-primary">−₹{Number(booking.discountAmount).toLocaleString("en-IN")}</span>}
+            />
+          )}
           <div className="border-t border-primary-200 pt-2 mt-2 flex justify-between font-semibold text-primary text-base">
             <span>{t("totalAmount")}</span>
             <span>₹{amount.toLocaleString("en-IN")}</span>

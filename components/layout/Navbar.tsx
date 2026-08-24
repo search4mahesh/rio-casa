@@ -17,6 +17,7 @@ export default function Navbar({ locale }: { locale: string }) {
     { href: "/packages",  label: t("packages") },
     { href: "/dining",    label: t("dining") },
     { href: "/blog",      label: t("blog") },
+    { href: "/contact",   label: t("contact") },
   ];
 
   return (

@@ -69,6 +69,19 @@ export async function POST(req: NextRequest) {
       nights
     );
 
+    // `Payment.amount` is what the desk is crediting toward this booking, not
+    // cash physically handed over — change is a till concern, not a system
+    // one. Without this cap a fat-fingered amount (an extra zero, transposed
+    // digits) was accepted and written as a permanent, unflagged overpayment:
+    // ₹8,000 recorded "Completed" against a ₹4,480 total, with no warning
+    // anywhere it could be caught.
+    if (data.amountPaid > total) {
+      return fail(
+        `Amount paid (₹${data.amountPaid.toLocaleString("en-IN")}) is more than the total (₹${total.toLocaleString("en-IN")})`,
+        400
+      );
+    }
+
     // Two staff creating a booking at the same moment used to read the same
     // count and generate the same number; the second insert died on the unique
     // index and the front desk saw "Server error". Allocation is atomic now,

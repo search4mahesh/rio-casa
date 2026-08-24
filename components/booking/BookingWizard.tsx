@@ -50,6 +50,23 @@ interface Quote {
   totalAmount: number;
 }
 
+/**
+ * A promo code's effect on the stay, previewed without spending a redemption
+ * — see /api/booking/promo/preview. The actual claim only happens inside
+ * `createBooking`, so this can go stale between "Apply" and "Confirm
+ * Booking"; the server refuses the whole booking rather than silently
+ * charging more than this total if that happens.
+ */
+interface PromoPreview {
+  valid: boolean;
+  reason?: string;
+  discountAmount?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  taxAmount?: number;
+  totalAmount?: number;
+}
+
 export default function BookingWizard({
   locale,
   preselectedSlug,
@@ -78,6 +95,13 @@ export default function BookingWizard({
 
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+
+  const [promoCode, setPromoCode] = useState("");
+  const [promoPreview, setPromoPreview] = useState<PromoPreview | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
+  // The code actually behind `promoPreview` — only this is sent at checkout,
+  // so editing the input after "Apply" can't submit an unvalidated string.
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
 
   const nights = differenceInCalendarDays(new Date(checkOut), new Date(checkIn));
 
@@ -115,6 +139,55 @@ export default function BookingWizard({
       cancelled = true;
     };
   }, [selectedRoom, checkIn, checkOut, nights]);
+
+  // A promo's discount depends on the subtotal and nights, both of which just
+  // changed. A stale "applied" preview would show a total that no longer
+  // matches what a fresh claim would compute — same reasoning as clearing the
+  // quote above.
+  useEffect(() => {
+    setPromoPreview(null);
+    setAppliedPromoCode(null);
+  }, [selectedRoom, checkIn, checkOut]);
+
+  async function applyPromo() {
+    const code = promoCode.trim();
+    if (!code || !selectedRoom) return;
+    setPromoChecking(true);
+    setPromoPreview(null);
+    setAppliedPromoCode(null);
+    try {
+      const params = new URLSearchParams({ code, roomId: selectedRoom.id, checkIn, checkOut });
+      const res = await fetch(`/api/booking/promo/preview?${params}`);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        const preview = data.data as PromoPreview;
+        setPromoPreview(preview);
+        if (preview.valid) setAppliedPromoCode(code);
+      } else {
+        setPromoPreview({ valid: false, reason: data?.error ?? "Could not check that code" });
+      }
+    } catch {
+      setPromoPreview({ valid: false, reason: "Could not reach the server — try again" });
+    } finally {
+      setPromoChecking(false);
+    }
+  }
+
+  // What the guest actually sees as "the total" — the promo's numbers once a
+  // code has been applied, the plain quote otherwise. Never a client-side
+  // computation: both come straight from the server, same as the quote always
+  // has (see the Quote interface's note on B-02).
+  const displayTotals =
+    appliedPromoCode && promoPreview?.valid
+      ? {
+          subtotal: quote?.subtotal ?? 0,
+          taxAmount: promoPreview.taxAmount!,
+          totalAmount: promoPreview.totalAmount!,
+          discountAmount: promoPreview.discountAmount!,
+        }
+      : quote
+      ? { subtotal: quote.subtotal, taxAmount: quote.taxAmount, totalAmount: quote.totalAmount, discountAmount: 0 }
+      : null;
 
   async function fetchAvailableRooms() {
     setRoomsLoading(true);
@@ -175,6 +248,10 @@ export default function BookingWizard({
           checkIn: new Date(checkIn).toISOString(),
           checkOut: new Date(checkOut).toISOString(),
           guests,
+          // Only a code this session actually previewed as valid — never the
+          // raw text box, which the guest could have edited after "Apply" (or
+          // never applied at all).
+          ...(appliedPromoCode ? { promoCode: appliedPromoCode } : {}),
           ...formData,
         }),
       });
@@ -184,6 +261,13 @@ export default function BookingWizard({
       // to the guest.
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
+        // The promo previewed as valid moments ago but could not actually be
+        // claimed (exhausted, expired) — surface that plainly rather than a
+        // generic failure, and drop it so the total show on retry is honest.
+        if (data?.error && /promo code/i.test(data.error)) {
+          setPromoPreview(null);
+          setAppliedPromoCode(null);
+        }
         throw new Error(data?.error || "Something went wrong. Please try again, or contact us to book.");
       }
 
@@ -442,26 +526,73 @@ export default function BookingWizard({
 
               {/* Room charges and GST are itemised so the total is checkable
                   against what Razorpay opens for, rather than a bare number
-                  the guest has to take on trust. */}
-              {quote ? (
+                  the guest has to take on trust. Discount (if a promo code
+                  applied) is drawn from the same server response — never
+                  computed here — for the same reason. */}
+              {displayTotals ? (
                 <>
                   <div className="flex justify-between">
                     <span className="text-earth-text/60">{t("roomCharges")}</span>
-                    <span>₹{quote.subtotal.toLocaleString("en-IN")}</span>
+                    <span>₹{displayTotals.subtotal.toLocaleString("en-IN")}</span>
                   </div>
+                  {displayTotals.discountAmount > 0 && (
+                    <div className="flex justify-between text-primary">
+                      <span className="text-earth-text/60">Discount ({appliedPromoCode})</span>
+                      <span>−₹{displayTotals.discountAmount.toLocaleString("en-IN")}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-earth-text/60">{t("taxes")}</span>
-                    <span>₹{quote.taxAmount.toLocaleString("en-IN")}</span>
+                    <span>₹{displayTotals.taxAmount.toLocaleString("en-IN")}</span>
                   </div>
                   <div className="border-t border-primary-200 pt-2 mt-2 flex justify-between font-semibold text-primary text-base">
                     <span>{t("totalAmount")}</span>
-                    <span>₹{quote.totalAmount.toLocaleString("en-IN")}</span>
+                    <span>₹{displayTotals.totalAmount.toLocaleString("en-IN")}</span>
                   </div>
                 </>
               ) : (
                 <div className="border-t border-primary-200 pt-2 mt-2 text-earth-text/60">
                   {quoteLoading ? t("priceLoading") : t("priceUnavailable")}
                 </div>
+              )}
+            </div>
+
+            {/* Promo code — previewed read-only against /api/booking/promo/preview
+                so the discount shown here is real, not guessed client-side.
+                The actual redemption is only claimed once "Confirm Booking" is
+                pressed; see createBooking's PROMO_INVALID handling. */}
+            <div className="mb-6">
+              <label className="font-sans text-sm text-earth-text/70 block mb-1">Promo Code</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value);
+                    // Editing after a successful apply must not leave a stale
+                    // discount showing for a code that is no longer the one typed.
+                    if (appliedPromoCode) {
+                      setAppliedPromoCode(null);
+                      setPromoPreview(null);
+                    }
+                  }}
+                  placeholder="Enter code"
+                  className="flex-1 border border-primary-200 rounded-sm px-3 py-2 font-sans text-sm focus:outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={applyPromo}
+                  disabled={promoChecking || !promoCode.trim() || !selectedRoom}
+                  className="btn-outline text-sm px-4 disabled:opacity-50"
+                >
+                  {promoChecking ? "Checking…" : "Apply"}
+                </button>
+              </div>
+              {promoPreview && !promoPreview.valid && (
+                <p className="text-red-500 text-xs mt-1">{promoPreview.reason}</p>
+              )}
+              {appliedPromoCode && promoPreview?.valid && (
+                <p className="text-primary text-xs mt-1">Code applied.</p>
               )}
             </div>
 
@@ -499,7 +630,7 @@ export default function BookingWizard({
                   having shown them a price is the bug this screen had. */}
               <button
                 type="submit"
-                disabled={loading || !quote}
+                disabled={loading || !displayTotals}
                 className="btn-primary flex-1 disabled:opacity-50"
               >
                 {loading ? "Processing..." : t("confirm")}

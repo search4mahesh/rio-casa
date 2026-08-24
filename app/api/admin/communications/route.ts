@@ -191,12 +191,21 @@ export async function POST(req: NextRequest) {
 
     for (const r of reachable) {
       try {
-        await resend.emails.send({
+        // The SDK resolves `{ data, error }` for an API-level failure (bad
+        // key, rejected recipient, …) rather than throwing — only a network
+        // failure throws. Counting on the promise merely resolving used to
+        // credit `sentCount` for every recipient regardless, so a bad key
+        // reported "sent to N guests" for a campaign that reached nobody (B-37).
+        const { error: sendError } = await resend.emails.send({
           from: "Rio Casa <hello@riocasa.com>",
           to: r.email!,
           subject: substituteTags(subject!, r),
           html: `<div style="font-family: Arial; max-width: 600px; padding: 20px; color: #2C2416;">${substituteTags(body, r).replace(/\n/g, "<br/>")}</div>`,
         });
+        if (sendError) {
+          errors.push(`${r.guestName}: ${sendError.message}`);
+          continue;
+        }
         sentCount += 1;
       } catch (err) {
         errors.push(`${r.guestName}: ${err instanceof Error ? err.message : "send failed"}`);

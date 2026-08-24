@@ -46,6 +46,7 @@ export interface BookingResult {
     id: string;
     bookingNumber: string;
     totalAmount: number;
+    discountAmount: number;
     cgstAmount: number;
     sgstAmount: number;
     nights: number;
@@ -56,7 +57,7 @@ export interface BookingResult {
     checkOut: Date;
   };
   error?: string;
-  errorCode?: "ROOM_NOT_AVAILABLE" | "INVALID_DATES" | "BLOCKED_DATE" | "UNKNOWN";
+  errorCode?: "ROOM_NOT_AVAILABLE" | "INVALID_DATES" | "BLOCKED_DATE" | "PROMO_INVALID" | "UNKNOWN";
 }
 
 // ─────────────────────────────────────────────
@@ -309,9 +310,16 @@ export async function quoteStay(args: {
     };
   }
 
+  // `RATE_PLAN_ROOM_TYPES` in lib/labels.ts deliberately includes "all"
+  // alongside the four real room types — the admin form's "All Rooms" option
+  // saves exactly that string. Matching only `room.roomType` here meant an
+  // "all" plan could never be found by the one place that prices a stay: it
+  // saved without error and silently never applied to anything. If both a
+  // specific-type plan and an "all" plan cover the same dates, `priority`
+  // decides which wins — same as when two plans of the same type overlap.
   const ratePlan = await prisma.ratePlan.findFirst({
     where: {
-      roomType: room.roomType,
+      roomType: { in: [room.roomType, "all"] },
       isActive: true,
       validFrom: { lte: checkIn },
       validTo: { gte: checkOut },
@@ -416,6 +424,25 @@ export async function nextDailyNumber(
   return `${prefix}-${dayStr.replace(/-/g, "")}-${String(row.last_seq).padStart(pad, "0")}`;
 }
 
+/** Shape shared by `claimPromo`'s UPDATE...RETURNING and `previewPromo`'s SELECT. */
+type PromoRow = { discount_type: string; discount_value: string; max_discount: string | null };
+
+function computeDiscount(promo: PromoRow, subtotal: number): number {
+  const value = Number(promo.discount_value);
+  // `Number(null)` is 0, which would wipe out every percentage discount that
+  // has no cap set.
+  const cap = promo.max_discount === null ? Infinity : Number(promo.max_discount);
+  const raw =
+    promo.discount_type === "percentage" ? Math.min(subtotal * (value / 100), cap) : value;
+
+  // A flat code can be worth more than the stay it is applied to — FLAT2000
+  // against a ₹1,800 subtotal. Uncapped, that made `taxableAmount` negative in
+  // `applyGst`, which then picked the 12% slab off a negative average and
+  // returned a negative total straight to Razorpay. A discount can zero a
+  // booking out; it cannot pay the guest.
+  return Math.min(raw, subtotal);
+}
+
 /**
  * Reserve one use of a promo code and return the discount it buys.
  *
@@ -435,9 +462,7 @@ async function claimPromo(
   subtotal: number
 ): Promise<{ id: string; discount: number } | null> {
   const day = toDayString(checkIn);
-  const rows = await prisma.$queryRaw<
-    Array<{ id: string; discount_type: string; discount_value: string; max_discount: string | null }>
-  >`
+  const rows = await prisma.$queryRaw<Array<PromoRow & { id: string }>>`
     UPDATE promotions
        SET used_count = used_count + 1
      WHERE code       = ${code}
@@ -453,27 +478,90 @@ async function claimPromo(
   const promo = rows[0];
   if (!promo) return null;
 
-  const value = Number(promo.discount_value);
-  // `Number(null)` is 0, which would wipe out every percentage discount that
-  // has no cap set.
-  const cap = promo.max_discount === null ? Infinity : Number(promo.max_discount);
-  const raw =
-    promo.discount_type === "percentage" ? Math.min(subtotal * (value / 100), cap) : value;
+  return { id: promo.id, discount: computeDiscount(promo, subtotal) };
+}
 
-  // A flat code can be worth more than the stay it is applied to — FLAT2000
-  // against a ₹1,800 subtotal. Uncapped, that made `taxableAmount` negative in
-  // `applyGst`, which then picked the 12% slab off a negative average and
-  // returned a negative total straight to Razorpay. A discount can zero a
-  // booking out; it cannot pay the guest.
-  const discount = Math.min(raw, subtotal);
+/**
+ * Read-only look at what a promo code would buy, for the booking wizard to
+ * show a guest before they commit to anything.
+ *
+ * Deliberately a plain SELECT, not `claimPromo`'s UPDATE — a price preview
+ * must not spend a redemption (same reason `/api/booking/quote` never takes a
+ * promo code at all). The actual claim still only ever happens inside
+ * `createBooking`, so the usage cap is enforced in exactly one place.
+ *
+ * Because this can go stale between preview and submit (the code could be
+ * exhausted by someone else in between), `createBooking` fails the whole
+ * attempt if a submitted `promoCode` cannot actually be claimed — it never
+ * silently falls back to full price. Otherwise a guest could approve a
+ * discounted total here and get charged more once claimPromo comes up empty.
+ */
+export async function previewPromo(
+  code: string,
+  checkIn: Date,
+  nights: number,
+  subtotal: number
+): Promise<{ valid: boolean; discount: number; reason?: string }> {
+  const day = toDayString(checkIn);
+  const rows = await prisma.$queryRaw<
+    Array<
+      PromoRow & {
+        valid_from: Date;
+        valid_to: Date;
+        min_nights: number;
+        min_amount: string;
+        usage_limit: number | null;
+        used_count: number;
+        is_active: boolean;
+      }
+    >
+  >`
+    SELECT discount_type, discount_value, max_discount,
+           valid_from, valid_to, min_nights, min_amount, usage_limit, used_count, is_active
+      FROM promotions
+     WHERE code = ${code}
+     LIMIT 1
+  `;
 
-  return { id: promo.id, discount };
+  const promo = rows[0];
+  if (!promo || !promo.is_active) return { valid: false, discount: 0, reason: "Invalid promo code" };
+  if (toDayString(promo.valid_from) > day || toDayString(promo.valid_to) < day) {
+    return { valid: false, discount: 0, reason: "This code is not valid for these dates" };
+  }
+  if (promo.min_nights > nights) {
+    return { valid: false, discount: 0, reason: `Minimum stay of ${promo.min_nights} nights required` };
+  }
+  if (Number(promo.min_amount) > subtotal) {
+    return { valid: false, discount: 0, reason: "Booking amount is below this code's minimum" };
+  }
+  if (promo.usage_limit !== null && promo.used_count >= promo.usage_limit) {
+    return { valid: false, discount: 0, reason: "This code has been fully redeemed" };
+  }
+
+  return { valid: true, discount: computeDiscount(promo, subtotal) };
 }
 
 /** Hand a promo use back after a booking that claimed it did not commit. */
 async function releasePromoClaim(id: string): Promise<void> {
   await prisma.$executeRaw`
     UPDATE promotions SET used_count = used_count - 1 WHERE id = ${id} AND used_count > 0
+  `;
+}
+
+/**
+ * Same release, keyed by code instead of id — for callers outside
+ * `createBooking` that only ever see the code, never the promo row's id.
+ *
+ * `/api/booking/create` needs this: the booking (and its promo claim) has
+ * already committed by the time a Razorpay order-creation failure forces it
+ * to void the booking. Without handing the claim back there too, a code with
+ * a usage cap loses one redemption to every guest whose payment never even
+ * started — the same leak `unspentPromoClaim` exists to close inside
+ * `createBooking` itself, just on the other side of that boundary.
+ */
+export async function releasePromoClaimByCode(code: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE promotions SET used_count = used_count - 1 WHERE code = ${code} AND used_count > 0
   `;
 }
 
@@ -619,11 +707,26 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
 
     // Promo code — claimed up front, because the claim is what enforces the
     // usage cap and it must not be repeated if the transaction below retries.
-    const claim = input.promoCode
-      ? await claimPromo(input.promoCode, input.checkIn, nights, subtotal)
-      : null;
-    const discount = claim?.discount ?? 0;
-    unspentPromoClaim = claim?.id ?? null;
+    //
+    // A code the guest supplied that fails to claim (expired, exhausted,
+    // stopped qualifying between the wizard's preview and this call) fails
+    // the whole booking rather than silently falling back to full price —
+    // the wizard shows a discounted total before the guest confirms, and
+    // charging more than that number is exactly the mismatch B-02 fixed for
+    // GST, just via a different door.
+    let discount = 0;
+    if (input.promoCode) {
+      const claim = await claimPromo(input.promoCode, input.checkIn, nights, subtotal);
+      if (!claim) {
+        return {
+          success: false,
+          error: "That promo code is no longer valid. Remove it and try again.",
+          errorCode: "PROMO_INVALID",
+        };
+      }
+      unspentPromoClaim = claim.id;
+      discount = claim.discount;
+    }
 
     const { cgstAmount, sgstAmount, totalAmount } = applyGst(subtotal, discount, nights);
 
@@ -704,6 +807,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         id: booking.id,
         bookingNumber: booking.bookingNumber,
         totalAmount: booking.totalAmount,
+        discountAmount: booking.discountAmount,
         cgstAmount: booking.cgstAmount ?? 0,
         sgstAmount: booking.sgstAmount ?? 0,
         nights: booking.nights,
