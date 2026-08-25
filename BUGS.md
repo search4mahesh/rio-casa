@@ -25,7 +25,32 @@ Severity:
 
 ## Open
 
-None open.
+| ID | Severity | Summary | Where |
+|---|---|---|---|
+| B-53 | Low | `Package`, `Testimonial` and `BlogPost` hold live rows no code reads; the site serves hardcoded copies, and "Monsoon Magic" is priced two ways | `app/[locale]/packages/page.tsx`, `components/sections/Testimonials.tsx`, `lib/blog-posts.ts` |
+
+**B-53.** Three models are fully defined in `schema.prisma`, and nothing in the
+application ever reads them:
+
+| Model | Rows | What the site shows instead |
+|---|---|---|
+| `Package` | 12 (all `isActive`) | a hardcoded array in `packages/page.tsx` |
+| `Testimonial` | 24 | three hardcoded quotes in `Testimonials.tsx` |
+| `BlogPost` | 0 | `BLOG_POSTS` in `lib/blog-posts.ts` |
+
+This is the shape of B-28 — schema present, nothing reading or writing it —
+except the tables are not empty. The two sources of truth disagree on both
+content and price: the site advertises Honeymoon Escape, Weekend Getaway and
+Corporate Retreat, none of which exist in the database, while Romantic Getaway
+and Family Fun Pack sit there unadvertised. **"Monsoon Magic" appears in both
+at different prices — ₹11,000 on the page, ₹9,999 in the database.**
+
+`Testimonial.isApproved` defaults to `false`, implying an approval workflow —
+but there is no panel to approve through (admin *Reviews* manages `ReviewLog`,
+a different model for OTA review tracking) and no page that would read an
+approved one. Editing a package price or approving a testimonial is a code
+change and a deploy; `Package.validFrom` / `validTo` mean seasonal packages
+were intended, and a hardcoded page cannot expire one.
 
 ---
 
@@ -33,6 +58,24 @@ None open.
 
 | ID | Severity | Summary | Fixed in |
 |---|---|---|---|
+| B-51 | High | 6 stays sat `checked_in` up to 91 days past departure, holding their rooms and with no tax invoice | `prisma/close-overdue-checkouts.ts`, `backfill-invoices.ts`, `repair-data.ts` (all run 2026-08-25) |
+| B-55 | Medium | `/rooms` advertised every amenity in a category, so a forest view on 1 of 4 standard rooms was sold to all of them | `lib/room-catalogue.ts`, `getAvailableRooms()`, `app/[locale]/rooms/[slug]/page.tsx` |
+| B-56 | Low | A non-numeric `DATABASE_POOL_MAX` silently reverted the pool to 10, undoing the fix for booking-contention `P2028` | `lib/prisma.ts` |
+| B-52 | Medium | 11 of 13 public pages shared one `<title>` and one meta description | `lib/page-metadata.ts`, `messages/en.json`, 12 pages and 2 new layouts |
+| B-54 | Low | `seed-demo.ts` created instead of upserting, so each run duplicated every package and testimonial | `prisma/seed-demo.ts` |
+| B-49 | Medium | Every control in the guest booking wizard was unlabelled — 8 bare `<label>`s, no `htmlFor`, no ids | `components/booking/BookingWizard.tsx`, `messages/en.json`, `__tests__/unit/components/field-labels.test.tsx` |
+| B-50 | Medium | Past-guest campaigns deduped by email even for WhatsApp, dropping every emailless guest but one | `app/api/admin/communications/route.ts` |
+| B-48 | High | The nightly cron flagged rooms "Due Check-in" and nothing could ever clear them | `runNightAudit()` in `lib/booking-service.ts`, `prisma/repair-data.ts` |
+| B-42 | Low | The room list offered stays for past dates that the single-room check and `createBooking` both refused | `getAvailableRooms()` in `lib/booking-service.ts` |
+| B-43 | Low | `previewPromo` trimmed the code and `claimPromo` did not, so a previewed discount could fail the whole booking | `lib/booking-service.ts` |
+| B-44 | Low | Cancel accepted an unbounded `refundAmount` — the twin of B-26 | `app/api/admin/bookings/[id]/cancel/route.ts` |
+| B-45 | Low | `dateOnly("2026-02-30")` silently returned 2 March instead of throwing | `lib/dates.ts`, 15 routes now validating with `isDayString` |
+| B-46 | Low | `npm run lint` had not run since `eslint-config-next` 16 — it died on its own config | `package.json`, `app/[locale]/about/page.tsx`, `components/sections/Testimonials.tsx`, `components/admin/panels/NightAudit.tsx` |
+| B-47 | High | The Communications panel crashed on the render right after a successful bulk send | `components/admin/panels/Communications.tsx` |
+| B-39 | Medium | Any failed admin fetch left the panel on "Loading…" forever, with no error and no retry | `lib/api-client.ts`, `components/ui/ErrorState.tsx`, 24 panels and pages |
+| B-40 | Medium | A 401 carried no `error` string, so an expired session made "Email Invoice" do nothing at all | `lib/api-auth.ts`, `app/admin/(protected)/invoices/[id]/print/page.tsx` |
+| B-41 | Medium | Malformed query params returned an empty 500 instead of a 400 | `lib/query-params.ts`, `lib/dates.ts`, reconciliation/expenses/laundry/guests/bookings/availability routes |
+| B-38 | Critical | A guest paying after their hold expired was charged for a cancelled booking and emailed "Booking Confirmed!" | `app/api/payment/verify/route.ts` |
 | B-37 | Low | A Resend send that resolved with an API-level error was treated as sent everywhere except `/api/contact` | `app/api/payment/verify/route.ts`, `app/api/admin/communications/route.ts`, `app/api/admin/invoices/[id]/email/route.ts` |
 | B-36 | Low | `/api/contact` was unreachable and, even if reached, only `console.log`d the inquiry | `prisma/schema.prisma`, `app/api/contact/route.ts`, `app/[locale]/contact/page.tsx`, `components/layout/Navbar.tsx`, `components/layout/Footer.tsx`, `messages/en.json` |
 | B-29 | Low | `/admin/setup`'s GSTIN display always showed the placeholder fallback, never the real value | `app/admin/(protected)/setup/page.tsx`, `components/admin/panels/HotelSettings.tsx` |
@@ -76,6 +119,329 @@ hold sweeper from cancelling a paid stay — are in CLAUDE.md under
 describe how the system now works, not what is wrong with it.
 
 Notes on the rest:
+
+- **B-42.** `checkAvailability` refuses a stay in the past and so does
+  `createBooking`, but `getAvailableRooms` — the query behind the room list —
+  had no such guard, so /rooms advertised rooms for dates nobody could book and
+  the single-room check on those same dates said the opposite. It now applies
+  the same two guards and returns `[]` without a round trip.
+
+- **B-43.** The preview route trimmed the code before matching and `claimPromo`
+  did not, so a pasted or autocompleted `" SUMMER20 "` previewed as a valid
+  discount and then failed to claim — and a promo that cannot be claimed fails
+  the *whole* booking rather than falling back to full price, so the guest was
+  refused with "that promo code is no longer valid" against a code they had
+  just watched work. Both functions trim now, so they cannot disagree about
+  which string they are matching. `releasePromoClaimByCode` trims too, or a
+  code claimed as `SUMMER20` would not be found when handed back under the
+  untrimmed form and the redemption would leak; the booking stores the trimmed
+  code for the same reason.
+
+- **B-44.** Twin of B-26. `z.number().min(0)` with no ceiling meant a mistyped
+  refund — an extra zero, transposed digits — was stored as-is and shown on the
+  booking page as fact. Capped against the booking total, and the cancellation
+  is refused outright rather than going through with a bad figure attached.
+
+- **B-45.** A day that does not exist does not come back as `Invalid Date`, it
+  rolls over: `new Date("2026-02-30T00:00:00.000Z")` is 2 March, so blocking
+  "30 Feb" silently blocked a day in March. `dateOnly` round-trips the parse
+  now and throws `No such date`.
+
+  That fix could not land on its own. `dateOnly` throwing is precisely what
+  turns into an empty 500, and ~20 callers validated with a bare
+  `/^\d{4}-\d{2}-\d{2}$/` that happily accepts `2026-02-30` — so making it
+  strict without touching them would have re-created the B-41 class it was
+  meant to close. `isDayString` in `lib/dates.ts` is the same check without the
+  throw, and all 24 validation sites across 15 routes now use it (via
+  `z.string().refine(isDayString, …)`), so an impossible date is a 400 with a
+  message. Verified end to end: blocked-dates, promos, calendar, quote, shifts
+  and reports all answer 400 for `2026-02-30`, none of them 500.
+
+- **B-46.** `eslint-config-next` had drifted to 16 while the project runs Next
+  14, and eslint 8 cannot load its flat config — `next lint` died on
+  "Converting circular structure to JSON", so nothing had been linted for some
+  time. Pinned back to `^14` to match the framework. It runs clean now, but
+  only after fixing the 8 `react/no-unescaped-entities` errors it had not been
+  around to report.
+
+- **B-51.** The departure half of B-04. That bug was "the cron night audit only
+  ever looked at yesterday, so a skipped run was permanent", and arrivals were
+  changed to an open-ended `checkIn: { lt: today }`. Departures never were:
+  `checkOut: today` in `runNightAudit` and `{ gte: today, lt: tomorrow }` in
+  `/api/admin/night-audit/run` and `/summary` all matched the checkout day
+  exactly, so a guest who left without the desk pressing "Check out" dropped
+  off the due-departures list at midnight and stayed `checked_in` for good.
+
+  Two consequences. The room board held those rooms indefinitely — #104 read
+  "Due Check-in" because a guest who left on 2 August was still, as far as the
+  system knew, in it. And `generateInvoice` is only ever called from check-out,
+  so all six were completed, paid stays with no GST invoice that
+  `backfill-invoices.ts` could not reach, because it selects
+  `status: "checked_out"`. `repair-data.ts` could not reach them either: its
+  `ENDED` list is `cancelled`/`no_show`/`checked_out`, and a stuck `checked_in`
+  is none of those.
+
+  Fixed in two parts. **Surfacing:** departures now match
+  `checkOut: { lte: today }` in all three places, and `overdueCheckouts` is
+  returned separately from `dueCheckouts` so a backlog cannot hide inside
+  today's number. The audit still closes nothing on its own — an overdue
+  checkout is a real stay that ended, but the guest may equally still be in the
+  room, and checking out issues a tax invoice, which is not an act to automate
+  on a guess.
+
+  **The backlog**, six stays totalling ₹153,380, was closed on 2026-08-25 by
+  the three scripts in order. Clearing it through the admin panel would have
+  been wrong: the check-out route stamps `actualCheckout: new Date()` and
+  `generateInvoice` dates both the invoice number and `invoiceDate` from
+  `today()`, so pushing a stay that ended on 26 May through the UI issues a tax
+  invoice dated August for a May supply — and `generateInvoice` is idempotent,
+  so it could not be reissued with the right date afterwards.
+
+  ```
+  1. close-overdue-checkouts.ts --apply   6 closed, actualCheckout backdated
+  2. backfill-invoices.ts --apply         INV-20260526-001/002, -20260527-001,
+                                          -20260731-001, -20260802-001/002
+  3. repair-data.ts --apply               6 rooms freed (#102-#105, #203, #204)
+  ```
+
+  Step 3 is separate on purpose: `repairStaleCheckinFlags` skips any room with
+  a guest checked into it, so it could only see these once step 1 had closed
+  them. It had reported 5 stale rooms before and 6 after — the extra is #104,
+  which B-48's note called out as drift of a different kind.
+
+  The three May bookings carry no `cgstAmount`/`sgstAmount`, so their invoices
+  show ₹0 GST. That matches the five pre-June invoices the B-28 backfill
+  already issued — the figure comes off the booking row, and these predate GST
+  being recorded on one at all.
+
+- **B-55.** `getRoomCategories` merges the rooms of a type into one card, and
+  merged price honestly — the category **minimum**, "so the headline figure is
+  one a guest can actually get" — while merging amenities as a **union**, which
+  breaks the same principle one line above. "Forest View" is on one of four
+  standard rooms, so `/rooms` sold a view to three guests in four who would not
+  get one. The guest never picks a door number: the wizard shows one card per
+  type and allocates a specific room, which was `standard-room-102` — no view.
+
+  `amenities` is now the **intersection**, so a card only promises what every
+  room of the type has. The odd ones out are not dropped, because the property
+  really does have a forest-view room: they come back as `someRoomsAmenities`
+  and the *detail* page lists them apart, under "Available in selected rooms of
+  this type". Cards show guaranteed amenities only.
+
+  The second half was latent and is closed too. `getAvailableRooms` had no
+  `orderBy`, so which room represented a type — and therefore its price in the
+  wizard — was whatever Postgres returned first. It now orders by
+  `pricePerNight asc, roomNumber asc`, the same order `getRoomCategories` uses
+  to pick the advertised price, so `/rooms` and the wizard cannot quote
+  different numbers for one type. Prices are uniform within every type today,
+  which is the only reason this had not already become B-02 again.
+
+- **B-56.** `lib/prisma.ts` read the pool size as
+  `Number(process.env.DATABASE_POOL_MAX ?? 20)`. `Number("abc")` is NaN, and
+  pg-pool assigns `max = max || … || 10` — NaN is falsy, so it landed on 10,
+  verified against the installed package:
+
+  ```
+  DATABASE_POOL_MAX=20    -> pool max = 20
+  DATABASE_POOL_MAX=abc   -> pool max = 10
+  ```
+
+  Ten is exactly the starving default the comment on that line exists to move
+  away from, so a typo in one env var silently undid a documented concurrency
+  fix and surfaced to guests as "Something went wrong" when two booked the same
+  room at once. It uses `positiveIntParam` now, which cannot return NaN, with a
+  ceiling of 100 to catch the same typo in the other direction.
+
+- **B-52.** `app/layout.tsx` had always defined the template — `%s | Rio Casa
+  Mahabaleshwar` with a default — and almost nothing supplied the `%s`. Only
+  `/privacy` and `/blog/[slug]` exported metadata, so eleven pages returned the
+  identical title *and* description: a guest with two tabs open could not tell
+  them apart, and the pages competed with each other in search for one snippet.
+
+  Copy now lives in a `meta` namespace in `messages/en.json` and is read
+  through `getTranslations`, which is what CLAUDE.md specifies for metadata —
+  so page titles are subject to the same "no hardcoded UI text" rule as
+  everything else. `lib/page-metadata.ts` reduces a page to one line:
+  `export const generateMetadata = () => pageMetadata("about");`
+
+  Three things were not uniform and are worth knowing before adding a page:
+
+  - **`/contact` and `/gallery` are client components**, and only a server
+    component can export metadata. Each gained a sibling `layout.tsx` that
+    carries it.
+  - **`/rooms/[slug]` is titled from live inventory** via `getRoomCategory`,
+    the same call the page itself uses, so a room type the property does not
+    have gets "Room not found" rather than the site default.
+  - **The home page deliberately sets nothing.** Next applies `title.default`
+    verbatim and the template only to child titles, so `/` correctly renders
+    "Rio Casa — Luxury Resort in Mahabaleshwar" with no suffix.
+
+  The template also means **a page title must not contain the brand**. Both
+  pages that already had metadata did: `/blog/[slug]` returned
+  `${post.title} — Rio Casa`, which rendered as "… — Rio Casa | Rio Casa
+  Mahabaleshwar". Both are fixed, and a test fails on any title containing
+  "Rio Casa" outside the root layout.
+
+- **B-54.** `prisma/seed-demo.ts` called `create` rather than upserting, so
+  every run added a fresh set — four runs left four copies of each package and
+  24 testimonials where six were intended. The package call was written
+  `create({ data: p }).catch(() => {})`, apparently to make re-runs safe; with
+  no unique constraint on `nameEn` the insert *succeeded* and duplicated, and
+  the `catch` only hid genuine errors.
+
+  Both seeds now match on a natural key (`nameEn`, `guestName`) and update
+  rather than insert. `upsert` was not available: it needs a unique
+  constraint, and a unique index cannot be added to `packages` while the
+  duplicates are still there — the fix would have had to run before its own
+  migration could.
+
+  Cleaning up the existing duplicates is opt-in behind `--prune`, because
+  deleting rows is not something a seed should do by default and the script no
+  longer creates any. Without the flag it reports what it found. The duplicates
+  are inert either way, since nothing reads those tables (B-53).
+
+- **B-49.** `components/ui/Field.tsx` exists so a label cannot be written
+  without its `htmlFor`, and `field-labels.test.tsx` fails the build if a bare
+  one reappears — but it grepped `components/admin app/admin` only, so the
+  wizard was never in scope. Every control on every step came back unlabelled
+  when audited in a browser: both dates, name, email, phone, special requests
+  and the promo code. The public contact form was already correct, which is
+  what made this the one form on the site that had been missed — and the one
+  every booking goes through.
+
+  All seven inputs go through `Field` now, with the wizard's own label
+  typography passed as `labelClassName` so nothing changed visually. "Number of
+  Guests" was a `<label>` over a pair of buttons, which names nothing at all;
+  it is a `<span id>` with `role="group"` and `aria-labelledby` on the
+  container, and the `−`/`+` buttons — bare punctuation to a screen reader —
+  now carry their own `aria-label`.
+
+  The guard was widened from the two admin directories to `components app`, so
+  a guest-facing form cannot slip past it again. Two things came out of doing
+  that. It flagged its own documentation, because a comment explaining why the
+  counter uses `role="group"` mentions the tag — it now tracks block-comment
+  state, since prose about labels is not a label, and a guard that makes people
+  reword their comments is a guard people work around. And the strings the
+  promo block had hardcoded (`"Promo Code"`, `"Enter code"`, `"Apply"`,
+  `"Checking…"`, `"Code applied."`) had to move to `messages/en.json` to be
+  passed through `Field` at all, which closes a Strict Rule 1 violation as a
+  side effect.
+
+- **B-50.** `distinct: ["guestEmail"]` in the past-guests query is right for an
+  email campaign — two stays by one guest should not mean two emails — but the
+  channel filter ran *afterwards*, so a WhatsApp campaign had already been
+  deduplicated on a column it never messages anyone by. The walk-in form takes
+  an email marked "optional" and stores `""`, so every guest without one shared
+  a single key and all but one were dropped before their phone numbers were
+  looked at. Nothing reported the loss: `skippedCount` is computed after the
+  rows are already gone.
+
+  Deduplication moved out of SQL into `dedupeByChannel`, which keys on the
+  identifier that channel actually reaches someone by — email for email, phone
+  for WhatsApp — and is applied inside `resolveRecipients` so the counts staff
+  see keep meaning "unique people". Addresses are compared case-insensitively.
+  A recipient with no usable identifier is kept rather than collapsed, so it is
+  counted as skipped instead of silently merging with whichever other
+  contactless guest happened to sort first.
+
+- **B-48.** Two implementations of one operation, one fixed and the other not —
+  and the one that ran nightly in production was the broken one.
+  `runNightAudit()` flagged today's arrivals with `occupancy: "due_checkin"`
+  but never wrote `currentBookingId`, while every path that frees a room keys
+  on exactly that column: `releaseRoomsHolding` matches
+  `currentBookingId: { in: … }`, the cancel route matches
+  `currentBookingId: booking.id`, and `repair-data.ts` looked for the same
+  drift. None of them can match a NULL, so a guest who no-showed, cancelled or
+  moved their dates left the room reading "Due Check-in" for good and the flags
+  accumulated. `/api/admin/night-audit/run` had written `currentBookingId` all
+  along — its comment even records this exact failure being fixed there, "rooms
+  201/202 sat that way for two months" — but the scheduled path never got the
+  same change.
+
+  Fixed on both counts. The upsert now writes `currentBookingId` /
+  `currentGuestId`, which is what makes the flag clearable at all; and the
+  audit clears stale `due_checkin` rows before re-flagging, so the state is
+  derived from today's bookings rather than added to — the same lesson as
+  `guest.totalStays` and `roomStatus.currentBookingId` in CLAUDE.md. Clearing
+  is scoped to rooms the audit owns: `occupied` and `out_of_order` are left
+  alone, and a room with a guest still checked into it is never reset, because
+  a stale flag is better than a board that hides someone who is in the room.
+
+  `repair-data.ts` gained a third repair for the rows already broken — the
+  existing one starts from `currentBookingId: { not: null }` and so could not
+  see them. It reported 5 stale rooms on the live database where it previously
+  reported none. (It spared #104 at the time, which was drift of a different
+  kind — a stay stuck `checked_in`; see B-51, whose backlog has since been
+  closed, freeing that room too.)
+
+- **B-47.** Found while typing the `apiJson` conversion — TypeScript caught what
+  `res.json()`'s `any` had been hiding. `/api/admin/communications` answers
+  `ok({ sentCount, skippedCount, errors, … })`, so the payload is under `data`,
+  but the panel did `setSendResult(data)` and stored the whole envelope. Every
+  field it then rendered was `undefined`, and `sendResult.errors.length` threw
+  `Cannot read properties of undefined` — so the panel blanked on the render
+  immediately after a successful send, with the messages already delivered and
+  no way to see how many. Exactly the drift `lib/api-response.ts` warns about,
+  just from the client side: `data.data` is the payload, always.
+
+- **B-39.** The same failure B-14 fixed for `WalkInModal`, left everywhere else:
+  `setLoading(true)` → `await fetch` → `await res.json()` → `setLoading(false)`,
+  with no `try`/`catch`. `fetch` rejects when the network drops and `res.json()`
+  throws on an empty body (B-41), and either way the `setLoading(false)` below
+  never ran. Fixed with `apiJson` in `lib/api-client.ts` — the browser-side
+  companion to `lib/api-response.ts`, which does the fetch and the parse in one
+  call that cannot throw and always yields a string `error`. It replaced 59
+  hand-written call sites across 24 files.
+
+  A panel that merely stopped hanging would still have been wrong: it fell
+  through to its *empty* state, and "No promo codes yet" claims the property has
+  none when in truth we never managed to ask. Loaders now keep a `loadError` and
+  render the shared `ErrorState` (message + "Try again") instead.
+
+- **B-40.** `requireRole` hand-wrote `{ success: false }` with no `error`,
+  breaking the one rule `lib/api-response.ts` exists to hold. The invoice print
+  page does `setEmailMsg(data.success ? data.message : data.error)`, so an
+  expired session set the message to `undefined` and the click appeared to do
+  nothing at all. It returns `fail("Your session has expired — please sign in
+  again.", 401)` now, and `apiJson` fills a message in for any response that
+  still carries none.
+
+- **B-41.** Two shapes, both ending in a zero-byte 500 that the panels could not
+  parse — which is what triggered B-39 in practice. `/^\d{4}-\d{2}$/` accepts
+  "2026-99", which then threw inside `dateOnly`; `MONTH_PATTERN` /
+  `isMonthString` in `lib/dates.ts` constrain the month to 01–12, and
+  reconciliation, expenses and laundry all use it (calendar already did — that
+  is where the correct version was). And `Math.max(1, parseInt("abc"))` is NaN,
+  not 1, which reached Prisma as `skip: NaN`; `positiveIntParam` in
+  `lib/query-params.ts` never returns NaN, used by the guests, bookings and
+  public availability routes.
+
+- **B-38.** `/api/payment/verify` selected `paymentStatus` but never `status`,
+  so it could not tell a live booking from one `expireStalePaymentHolds()` had
+  already cancelled. A guest who left the Razorpay modal open past
+  `BOOKING_HOLD_MINUTES` and then paid was charged for a stay whose room was
+  back on the calendar, emailed "Booking Confirmed!", and shown "This booking
+  did not go through" by the confirmation page — which had been handling this
+  case correctly all along. The sweeper's Razorpay check does not close it: it
+  rules out a booking that was *already* paid, not one paid a moment later.
+
+  The route now selects `status` and, for a `cancelled`/`no_show` booking,
+  tries to give the room back before doing anything else. Reinstatement goes
+  through `guardRoomAvailability` like every other path that writes a booking,
+  so it takes the same `FOR UPDATE` and the same conflict/blocked-date
+  re-check, and it flips the row to `confirmed`/`paid` inside that transaction
+  so the `no_overlapping_bookings` exclusion constraint backstops it at commit.
+  That is the common case — a hold expiring does not mean anyone else took the
+  room in the seconds since.
+
+  When the room really has gone (or the stay has already started, which is the
+  no-show case), nothing is confirmed and no email is sent: the payment is
+  written to `payments` as `completed` with a note saying to refund or rebook,
+  `razorpayPaymentId` is stamped on the booking so a replay cannot write a
+  second row, and an audit row goes in with `needsRefund: true`. The booking
+  stays `cancelled`, so the money never reaches a revenue report — this is a
+  refund waiting to happen, not income. The wizard already shows "do not pay
+  again" on any non-2xx, so the guest is told the truth either way.
 
 - **B-24.** `components/sections/FeaturedRooms.tsx` carried its own hardcoded
   room list — the exact failure `lib/room-marketing.ts`'s doc comment already

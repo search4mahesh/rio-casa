@@ -1,9 +1,8 @@
 import Link from "next/link";
 
-export const metadata = {
-  title: "Privacy Policy — Rio Casa",
-  description: "How Rio Casa collects, uses and protects your personal information.",
-};
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const generateMetadata = () => pageMetadata("privacy");
 
 /**
  * The footer has always linked here, so until now every public page carried a

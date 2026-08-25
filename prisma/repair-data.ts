@@ -8,19 +8,25 @@
  *   npx tsx prisma/repair-data.ts            # report only
  *   npx tsx prisma/repair-data.ts --apply    # write the corrections
  *
- * Two things get repaired:
+ * Three things get repaired:
  *
  * 1. Rooms still holding a booking that has ended. `roomStatus.currentBookingId`
  *    was only ever cleared on check-out, so no-shows and cancellations left the
  *    room pointing at a dead booking — the room board kept showing that guest's
  *    name and check-out date and the room sat on `due_checkin` forever.
  *
- * 2. Guest `totalStays` / `totalRevenue`. These were maintained by a lone
+ * 2. Rooms flagged `due_checkin` with nobody arriving. The scheduled night
+ *    audit set the flag without `currentBookingId`, so every clearing path —
+ *    repair (1) above included — looked straight past it, and the flags piled
+ *    up until the board claimed every room was expecting a guest (B-48).
+ *
+ * 3. Guest `totalStays` / `totalRevenue`. These were maintained by a lone
  *    increment at booking creation: nothing decremented on cancellation, and
  *    bookings created any other way never touched them. Guests ended up showing
  *    "Total Stays 2" beside a history of 23 bookings.
  */
 import { makeScriptClient } from "./script-client";
+import { today as todayDate } from "../lib/dates";
 
 const prisma = makeScriptClient();
 const APPLY = process.argv.includes("--apply");
@@ -56,6 +62,57 @@ async function repairRoomStatus() {
       data: { occupancy: "vacant", currentBookingId: null, currentGuestId: null },
     });
     console.log(`  → released ${count}`);
+  }
+  return stale.length;
+}
+
+/**
+ * Rooms sitting on `due_checkin` with nobody arriving.
+ *
+ * `repairRoomStatus` above cannot see these: it starts from
+ * `currentBookingId: { not: null }`, and the whole point of B-48 is that the
+ * scheduled night audit set the flag *without* one. Rooms with a guest
+ * actually checked in are left alone — a stale flag is better than hiding
+ * someone who is in the room.
+ */
+async function repairStaleCheckinFlags() {
+  const today = todayDate();
+
+  const flagged = await prisma.roomStatus.findMany({
+    where: { occupancy: "due_checkin" },
+    include: { room: { select: { roomNumber: true } } },
+  });
+
+  const arriving = new Set(
+    (
+      await prisma.booking.findMany({
+        where: { checkIn: today, status: "confirmed" },
+        select: { roomId: true },
+      })
+    ).map((b) => b.roomId)
+  );
+  const occupied = new Set(
+    (
+      await prisma.booking.findMany({
+        where: { status: "checked_in" },
+        select: { roomId: true },
+        distinct: ["roomId"],
+      })
+    ).map((b) => b.roomId)
+  );
+
+  const stale = flagged.filter((rs) => !arriving.has(rs.roomId) && !occupied.has(rs.roomId));
+
+  console.log(`\nRooms flagged due_checkin: ${flagged.length}`);
+  console.log(`  stale (nobody arriving today, nobody checked in): ${stale.length}`);
+  for (const rs of stale) console.log(`   #${rs.room.roomNumber}`);
+
+  if (APPLY && stale.length > 0) {
+    const { count } = await prisma.roomStatus.updateMany({
+      where: { id: { in: stale.map((s) => s.id) } },
+      data: { occupancy: "vacant", currentBookingId: null, currentGuestId: null },
+    });
+    console.log(`  → cleared ${count}`);
   }
   return stale.length;
 }
@@ -97,10 +154,11 @@ async function repairGuestTotals() {
 async function main() {
   console.log(APPLY ? "REPAIR (writing changes)" : "DRY RUN — pass --apply to write changes");
   const rooms = await repairRoomStatus();
+  const flags = await repairStaleCheckinFlags();
   const guests = await repairGuestTotals();
 
-  if (!APPLY && rooms + guests > 0) {
-    console.log(`\nNothing written. Re-run with --apply to fix ${rooms} room(s) and ${guests} guest(s).`);
+  if (!APPLY && rooms + flags + guests > 0) {
+    console.log(`\nNothing written. Re-run with --apply to fix ${rooms + flags} room(s) and ${guests} guest(s).`);
   } else if (APPLY) {
     console.log("\nDone.");
   } else {

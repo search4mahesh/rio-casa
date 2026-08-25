@@ -9,8 +9,8 @@ export function generateStaticParams() {
 
 export function generateMetadata({ params }: { params: { slug: string } }) {
   const post = getPost(params.slug);
-  if (!post) return { title: "Post not found — Rio Casa" };
-  return { title: `${post.title} — Rio Casa`, description: post.excerpt };
+  if (!post) return { title: "Post not found" };
+  return { title: post.title, description: post.excerpt };
 }
 
 export default function BlogPostPage({ params }: { params: { locale: string; slug: string } }) {

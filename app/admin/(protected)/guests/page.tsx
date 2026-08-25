@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { apiJson } from "@/lib/api-client";
 
 type Guest = {
   id: string;
@@ -37,8 +38,7 @@ export default function GuestsPage() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (search) params.set("search", search);
-    const res = await fetch(`/api/admin/guests?${params}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/guests?${params}`);
     if (data.success) { setGuests(data.data.guests); setTotal(data.data.total); }
     setLoading(false);
   }, [page, search]);

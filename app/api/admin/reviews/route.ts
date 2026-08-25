@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
-import { dateOnly } from "@/lib/dates";
+import { dateOnly, isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
   platform: z.enum(["google", "booking_com", "tripadvisor", "mmt", "other"]),
@@ -11,7 +11,7 @@ const CreateSchema = z.object({
   rating: z.number().int().min(1).max(5),
   reviewText: z.string().min(1).max(5000),
   reviewUrl: z.string().url().nullable().optional(),
-  datePosted: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  datePosted: z.string().refine(isDayString, "Use YYYY-MM-DD"),
   responded: z.boolean().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });

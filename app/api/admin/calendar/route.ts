@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
-import { dateOnly, addDays, addMonths, daysBetween, toDayString, propertyDayString } from "@/lib/dates";
+import { dateOnly, addDays, addMonths, daysBetween, toDayString, propertyDayString, isDayString, isMonthString } from "@/lib/dates";
 
 const MAX_RANGE_DAYS = 180;
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   // day, so the timeline fetched one day early at both ends and the blocked-
   // date query pulled in the day before the window.
   if (from) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    if (!isDayString(from)) {
       return NextResponse.json({ success: false, error: "Use YYYY-MM-DD for from" }, { status: 400 });
     }
     try {
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     // Default to the current month *at the property*, not on the server.
     const rawMonth = searchParams.get("month") ?? propertyDayString().slice(0, 7);
 
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)) {
+    if (!isMonthString(rawMonth)) {
       return NextResponse.json({ success: false, error: "Use YYYY-MM format" }, { status: 400 });
     }
 

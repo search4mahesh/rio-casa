@@ -7,6 +7,21 @@ import { getRoomCategory } from "@/lib/room-catalogue";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Resolved from the same live inventory the page renders, so a room type that
+ * does not exist gets the not-found title rather than the site default. The
+ * brand is appended by the template in app/layout.tsx — do not repeat it here
+ * (B-52).
+ */
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const room = await getRoomCategory(params.slug);
+  if (!room) return { title: "Room not found" };
+  return {
+    title: room.name,
+    description: `${room.name} at Rio Casa, Mahabaleshwar — from ₹${room.pricePerNight.toLocaleString("en-IN")} per night, up to ${room.maxGuests} guests. Book direct.`,
+  };
+}
+
 /** Amenity strings the DB uses → the icon that best represents them. */
 const AMENITY_ICON: Record<string, "bath" | "wind" | "wifi" | "tv" | "water" | "bed"> = {
   Bathtub: "bath",
@@ -131,6 +146,24 @@ export default async function RoomDetailPage({ params }: { params: { locale: str
                   </div>
                 ))}
               </div>
+
+              {/* Amenities only some rooms of this type have. Listed apart from
+                  the guaranteed ones so the page cannot imply they come as
+                  standard — a forest view on one of four standard rooms was
+                  being advertised as if every guest got one (B-55). */}
+              {room.someRoomsAmenities.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-primary/10">
+                  <p className="font-sans text-xs text-earth-text/50 mb-2">{t("someRoomsAmenities")}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {room.someRoomsAmenities.map((amenity) => (
+                      <div key={amenity} className="flex items-center gap-2 text-sm text-earth-text/50">
+                        <Check size={14} className="text-earth-text/30 shrink-0" />
+                        <span>{amenity}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Pricing + CTA */}

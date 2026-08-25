@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
 
 type AuditBooking = {
   id: string; bookingNumber: string; guestName: string; guestPhone: string;
@@ -95,8 +96,7 @@ export default function NightAuditPanel() {
 
   async function loadSummary() {
     setLoading(true);
-    const res = await fetch("/api/admin/night-audit/summary");
-    const data = await res.json();
+    const data = await apiJson("/api/admin/night-audit/summary");
     if (data.success) setSummary(data.data);
     setLoading(false);
   }
@@ -105,8 +105,7 @@ export default function NightAuditPanel() {
 
   async function runAudit() {
     setRunning(true);
-    const res = await fetch("/api/admin/night-audit/run", { method: "POST" });
-    const data = await res.json();
+    const data = await apiJson("/api/admin/night-audit/run", { method: "POST" });
     if (data.success) {
       setResult(data.data);
       showToast(`Audit complete — ${data.data.noShowsMarked} no-show${data.data.noShowsMarked !== 1 ? "s" : ""} marked`);
@@ -157,7 +156,7 @@ export default function NightAuditPanel() {
           <div className="text-sm text-green-800">
             <span className="font-semibold">Audit complete.</span>{" "}
             {result.noShowsMarked} booking{result.noShowsMarked !== 1 ? "s" : ""} marked as no-show ·{" "}
-            {result.arrivalsFlagged} room{result.arrivalsFlagged !== 1 ? "s" : ""} flagged for today's arrivals ·{" "}
+            {result.arrivalsFlagged} room{result.arrivalsFlagged !== 1 ? "s" : ""} flagged for today&rsquo;s arrivals ·{" "}
             {result.departuresFlagged} room{result.departuresFlagged !== 1 ? "s" : ""} flagged for due checkout
           </div>
           <button onClick={() => setResult(null)} className="ml-auto text-green-400 hover:text-green-600">

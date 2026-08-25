@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addDays, format, differenceInCalendarDays } from "date-fns";
 import { Calendar, Users, User, CreditCard, QrCode, Check } from "lucide-react";
+import { Field } from "@/components/ui/Field";
 
 const guestSchema = z.object({
   guestName: z.string().min(2, "Name must be at least 2 characters"),
@@ -67,6 +68,9 @@ interface PromoPreview {
   totalAmount?: number;
 }
 
+/** The wizard's label typography — `Field` defaults to the admin style. */
+const LABEL_CLASS = "font-sans text-sm text-earth-text/70 block mb-1";
+
 export default function BookingWizard({
   locale,
   preselectedSlug,
@@ -96,6 +100,7 @@ export default function BookingWizard({
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
 
+  const guestsLabelId = useId();
   const [promoCode, setPromoCode] = useState("");
   const [promoPreview, setPromoPreview] = useState<PromoPreview | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
@@ -363,33 +368,40 @@ export default function BookingWizard({
             Select Your Dates
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("checkIn")}</label>
-              <input
-                type="date"
-                value={checkIn}
-                min={format(addDays(today, 1), "yyyy-MM-dd")}
-                onChange={(e) => setCheckIn(e.target.value)}
-                className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("checkOut")}</label>
-              <input
-                type="date"
-                value={checkOut}
-                min={format(addDays(new Date(checkIn), 1), "yyyy-MM-dd")}
-                onChange={(e) => setCheckOut(e.target.value)}
-                className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
+            <Field label={t("checkIn")} labelClassName={LABEL_CLASS}>
+              {(id) => (
+                <input
+                  id={id}
+                  type="date"
+                  value={checkIn}
+                  min={format(addDays(today, 1), "yyyy-MM-dd")}
+                  onChange={(e) => setCheckIn(e.target.value)}
+                  className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary"
+                />
+              )}
+            </Field>
+            <Field label={t("checkOut")} labelClassName={LABEL_CLASS}>
+              {(id) => (
+                <input
+                  id={id}
+                  type="date"
+                  value={checkOut}
+                  min={format(addDays(new Date(checkIn), 1), "yyyy-MM-dd")}
+                  onChange={(e) => setCheckOut(e.target.value)}
+                  className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary"
+                />
+              )}
+            </Field>
           </div>
           <div className="mb-6">
-            <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("guests")}</label>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setGuests(Math.max(1, guests - 1))} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50">−</button>
+            {/* A pair of buttons is a group, not a labelled control: a
+                `<label>` here names nothing, so this is a `<span id>` the
+                container points at with `aria-labelledby`. See CLAUDE.md. */}
+            <span id={guestsLabelId} className={LABEL_CLASS}>{t("guests")}</span>
+            <div className="flex items-center gap-3" role="group" aria-labelledby={guestsLabelId}>
+              <button type="button" aria-label={t("guestsDecrease")} onClick={() => setGuests(Math.max(1, guests - 1))} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50">−</button>
               <div className="flex items-center gap-2 font-sans text-earth-text"><Users size={16} className="text-primary" />{guests}</div>
-              <button onClick={() => setGuests(Math.min(8, guests + 1))} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50">+</button>
+              <button type="button" aria-label={t("guestsIncrease")} onClick={() => setGuests(Math.min(8, guests + 1))} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50">+</button>
             </div>
           </div>
           {nights > 0 && (
@@ -481,25 +493,35 @@ export default function BookingWizard({
             {t("guestDetails")}
           </h2>
           <div className="space-y-4 mb-6">
-            <div>
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("name")} *</label>
-              <input {...register("guestName")} placeholder="Rahul Sharma" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-              {errors.guestName && <p className="text-red-500 text-xs mt-1">{errors.guestName.message}</p>}
-            </div>
-            <div>
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("email")} *</label>
-              <input {...register("guestEmail")} type="email" placeholder="rahul@email.com" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-              {errors.guestEmail && <p className="text-red-500 text-xs mt-1">{errors.guestEmail.message}</p>}
-            </div>
-            <div>
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("phone")} *</label>
-              <input {...register("guestPhone")} type="tel" placeholder="98765 43210" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-              {errors.guestPhone && <p className="text-red-500 text-xs mt-1">{errors.guestPhone.message}</p>}
-            </div>
-            <div>
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">{t("specialRequests")}</label>
-              <textarea {...register("specialRequests")} rows={3} placeholder="Early check-in, anniversary decoration, dietary requirements..." className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary resize-none" />
-            </div>
+            <Field label={<>{t("name")} *</>} labelClassName={LABEL_CLASS}>
+              {(id) => (
+                <>
+                  <input id={id} {...register("guestName")} placeholder="Rahul Sharma" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
+                  {errors.guestName && <p className="text-red-500 text-xs mt-1">{errors.guestName.message}</p>}
+                </>
+              )}
+            </Field>
+            <Field label={<>{t("email")} *</>} labelClassName={LABEL_CLASS}>
+              {(id) => (
+                <>
+                  <input id={id} {...register("guestEmail")} type="email" placeholder="rahul@email.com" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
+                  {errors.guestEmail && <p className="text-red-500 text-xs mt-1">{errors.guestEmail.message}</p>}
+                </>
+              )}
+            </Field>
+            <Field label={<>{t("phone")} *</>} labelClassName={LABEL_CLASS}>
+              {(id) => (
+                <>
+                  <input id={id} {...register("guestPhone")} type="tel" placeholder="98765 43210" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
+                  {errors.guestPhone && <p className="text-red-500 text-xs mt-1">{errors.guestPhone.message}</p>}
+                </>
+              )}
+            </Field>
+            <Field label={t("specialRequests")} labelClassName={LABEL_CLASS}>
+              {(id) => (
+                <textarea id={id} {...register("specialRequests")} rows={3} placeholder={t("specialRequestsPlaceholder")} className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary resize-none" />
+              )}
+            </Field>
           </div>
           <div className="flex gap-3">
             <button onClick={() => setStep("room")} className="btn-outline flex-1">← Back</button>
@@ -562,11 +584,13 @@ export default function BookingWizard({
                 The actual redemption is only claimed once "Confirm Booking" is
                 pressed; see createBooking's PROMO_INVALID handling. */}
             <div className="mb-6">
-              <label className="font-sans text-sm text-earth-text/70 block mb-1">Promo Code</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={promoCode}
+              <Field label={t("promoCode")} labelClassName={LABEL_CLASS}>
+                {(id) => (
+                  <div className="flex gap-2">
+                    <input
+                      id={id}
+                      type="text"
+                      value={promoCode}
                   onChange={(e) => {
                     setPromoCode(e.target.value);
                     // Editing after a successful apply must not leave a stale
@@ -576,23 +600,25 @@ export default function BookingWizard({
                       setPromoPreview(null);
                     }
                   }}
-                  placeholder="Enter code"
-                  className="flex-1 border border-primary-200 rounded-sm px-3 py-2 font-sans text-sm focus:outline-none focus:border-primary"
-                />
-                <button
-                  type="button"
-                  onClick={applyPromo}
-                  disabled={promoChecking || !promoCode.trim() || !selectedRoom}
-                  className="btn-outline text-sm px-4 disabled:opacity-50"
-                >
-                  {promoChecking ? "Checking…" : "Apply"}
-                </button>
-              </div>
+                      placeholder={t("promoPlaceholder")}
+                      className="flex-1 border border-primary-200 rounded-sm px-3 py-2 font-sans text-sm focus:outline-none focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyPromo}
+                      disabled={promoChecking || !promoCode.trim() || !selectedRoom}
+                      className="btn-outline text-sm px-4 disabled:opacity-50"
+                    >
+                      {promoChecking ? t("promoChecking") : t("promoApply")}
+                    </button>
+                  </div>
+                )}
+              </Field>
               {promoPreview && !promoPreview.valid && (
                 <p className="text-red-500 text-xs mt-1">{promoPreview.reason}</p>
               )}
               {appliedPromoCode && promoPreview?.valid && (
-                <p className="text-primary text-xs mt-1">Code applied.</p>
+                <p className="text-primary text-xs mt-1">{t("promoApplied")}</p>
               )}
             </div>
 

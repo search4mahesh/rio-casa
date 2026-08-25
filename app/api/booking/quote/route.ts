@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { quoteStay, applyGst } from "@/lib/booking-service";
-import { dateOnly } from "@/lib/dates";
+import { dateOnly, isDayString } from "@/lib/dates";
 import { ok, fail, failValidation } from "@/lib/api-response";
 
 // GET /api/booking/quote?roomId=&checkIn=YYYY-MM-DD&checkOut=YYYY-MM-DD&extraBed=
@@ -23,8 +23,8 @@ import { ok, fail, failValidation } from "@/lib/api-response";
 // codes today; adding them means a separate non-consuming preview.
 const QuerySchema = z.object({
   roomId: z.string().min(1),
-  checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD for checkIn"),
-  checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD for checkOut"),
+  checkIn: z.string().refine(isDayString, "Use YYYY-MM-DD for checkIn"),
+  checkOut: z.string().refine(isDayString, "Use YYYY-MM-DD for checkOut"),
   extraBed: z.enum(["true", "false"]).optional(),
 });
 

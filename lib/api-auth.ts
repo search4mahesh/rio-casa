@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminToken, ADMIN_COOKIE, type AdminPayload } from "@/lib/admin-auth";
 import { hasMinRole, forbidden, type Role } from "@/lib/rbac";
+import { fail } from "@/lib/api-response";
 
 // ─────────────────────────────────────────────────────────────
 // Route-handler auth gate.
@@ -36,7 +37,12 @@ export async function requireRole(req: NextRequest, min: Role): Promise<AuthResu
   const staff = token ? await verifyAdminToken(token) : null;
 
   if (!staff) {
-    return { ok: false, response: NextResponse.json({ success: false }, { status: 401 }) };
+    // `{ success: false }` with no `error` used to go out here, which breaks the
+    // one rule lib/api-response.ts exists to hold: `error` is always a string
+    // because clients render it directly. A panel doing
+    // `setMessage(data.error)` showed the staff member nothing at all when
+    // their session expired — the click just appeared to do nothing (B-40).
+    return { ok: false, response: fail("Your session has expired — please sign in again.", 401) };
   }
   if (!hasMinRole(staff.role, min)) {
     return { ok: false, response: forbidden(min) };

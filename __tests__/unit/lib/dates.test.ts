@@ -16,6 +16,7 @@ import {
   today,
   propertyDayString,
   dayRange,
+  isDayString,
 } from "@/lib/dates";
 
 describe("addMonths", () => {
@@ -111,5 +112,44 @@ describe("propertyDayString / today", () => {
   it("today() is that day as a DATE-column value", () => {
     const t = today(new Date("2026-08-14T19:00:00.000Z"));
     expect(t.toISOString()).toBe("2026-08-15T00:00:00.000Z");
+  });
+});
+
+/**
+ * B-45. A day that does not exist does not come back as `Invalid Date` — it
+ * rolls over. `new Date("2026-02-30T00:00:00.000Z")` is 2 March, so a request
+ * to block "30 Feb" silently blocked a day in March and nothing told the
+ * caller. Round-tripping is the only way to catch it.
+ */
+describe("dateOnly — impossible days (B-45)", () => {
+  it("rejects a day that does not exist instead of rolling it forward", () => {
+    expect(() => dateOnly("2026-02-30")).toThrow(/no such date/i);
+    expect(() => dateOnly("2026-11-31")).toThrow(/no such date/i);
+    expect(() => dateOnly("2025-02-29")).toThrow(/no such date/i); // 2025 is not a leap year
+  });
+
+  it("still accepts the real edges, including a leap day", () => {
+    expect(toDayString(dateOnly("2026-02-28"))).toBe("2026-02-28");
+    expect(toDayString(dateOnly("2024-02-29"))).toBe("2024-02-29"); // 2024 is
+    expect(toDayString(dateOnly("2026-12-31"))).toBe("2026-12-31");
+  });
+
+  it("still rejects the shapes it always did", () => {
+    expect(() => dateOnly("2026-13-01")).toThrow();
+    expect(() => dateOnly("not-a-date")).toThrow();
+    expect(() => dateOnly("2026-1-1")).toThrow();
+  });
+});
+
+describe("isDayString — the predicate behind dateOnly, without the throw", () => {
+  it("agrees with dateOnly on every input", () => {
+    for (const s of [
+      "2026-02-30", "2026-11-31", "2025-02-29", "2026-13-01", "2026-1-1",
+      "not-a-date", "", "2026-02-28", "2024-02-29", "2026-12-31",
+    ]) {
+      let parses = true;
+      try { dateOnly(s); } catch { parses = false; }
+      expect(isDayString(s)).toBe(parses);
+    }
   });
 });

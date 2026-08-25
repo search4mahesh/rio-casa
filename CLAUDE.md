@@ -6,10 +6,10 @@ Goals: direct bookings, brand presence, event/package promotion.
 
 ## Known bugs — `BUGS.md`
 Defects live in `BUGS.md`, with stable ids (`B-04`) you can cite in commit
-messages. Nothing is open today; the Fixed table is the useful part. **Read it
-before starting on anything money-, date- or promo-shaped** — it records what
-each bug actually did, so you can tell a deliberate decision from a regression
-you are about to reintroduce.
+messages. Both tables are worth reading: Open is what is still wrong, and Fixed
+records what each bug actually did. **Read it before starting on anything
+money-, date- or promo-shaped**, so you can tell a deliberate decision from a
+regression you are about to reintroduce.
 
 Maintain it as you go: log what you find but do not fix, move entries to the
 Fixed table when you do, and delete ones that turn out to be wrong. Every entry
@@ -106,6 +106,77 @@ Exceptions are third-party brand colours (WhatsApp green, Razorpay theme).
   `__tests__/unit/components/field-labels.test.tsx` fails the build if a bare
   label reappears anywhere under `components/admin` or `app/admin`.
 
+## Talking to the API from the browser (`lib/api-client.ts`)
+
+**Never call `fetch` + `res.json()` directly in a panel.** Use `apiJson`, the
+browser-side companion to `lib/api-response.ts`:
+
+```ts
+const data = await apiJson<Promo[]>("/api/admin/promos");
+if (data.success) setPromos(data.data);
+else setLoadError(data.error);
+setLoading(false);              // always reached
+```
+
+It does the fetch and the parse in one call that **cannot throw**, and returns
+the same `{ success, data, error }` envelope the route sent. Two things it
+guarantees that hand-written pairs did not:
+
+- **`setLoading(false)` always runs.** `fetch` rejects when the network drops,
+  and `res.json()` throws on an empty body — which is what an unhandled route
+  error returns. Either one used to skip the line below it and leave the panel
+  on "Loading…" until the page was reloaded (B-39).
+- **`error` is always a non-empty string**, even when the response carried
+  none, so `showToast(data.error)` cannot render `undefined`.
+
+Read the payload as `data.data` — `ok(payload)` nests it, and storing the whole
+envelope is how the Communications panel came to crash on `sendResult.errors`
+(B-47).
+
+A load that fails must not fall through to the panel's *empty* state: "No promo
+codes yet" says the property has none, when in truth we never managed to ask.
+Keep a `loadError` and render `ErrorState` from `components/ui/ErrorState.tsx`,
+which shows the message and a "Try again" that re-runs the loader.
+
+## Query params in route handlers
+
+Bodies are validated with Zod. Query params need the same care, because
+`parseInt` returns NaN and NaN then propagates silently — `Math.max(1,
+parseInt("abc"))` is NaN, not 1, and `skip: NaN` reaches Prisma and kills the
+request with an empty 500 (B-41).
+
+- `positiveIntParam(raw, fallback?, max?)` from `lib/query-params.ts` for
+  counts, pages and page sizes. Never returns NaN.
+- `isMonthString(s)` / `MONTH_PATTERN` from `lib/dates.ts` for `YYYY-MM`. A
+  bare `/^\d{4}-\d{2}$/` accepts `2026-99`, which then throws inside
+  `dateOnly`.
+- `isDayString(s)` from `lib/dates.ts` for `YYYY-MM-DD`, in **bodies too**:
+  `z.string().refine(isDayString, "Use YYYY-MM-DD")`, never
+  `z.string().regex(/^\d{4}-\d{2}-\d{2}$/)`. The regex accepts `2026-02-30`,
+  which `dateOnly` rejects — so validating with it and then parsing gives an
+  empty 500 where a 400 belongs (B-45).
+
+`dateOnly` throws on a date that does not exist rather than rolling it over
+into the next month. Anything downstream of user input either validates first
+with the helpers above, or wraps the parse in `try`/`catch`.
+
+## Room categories (`lib/room-catalogue.ts`)
+The public site groups rooms by `roomType` — guests choose a kind of room, not
+a door number — while the wizard allocates an individual room. Both read
+`getRoomCategories()`, so a category cannot be advertised that does not exist
+or priced differently from checkout.
+
+**A category may only promise what every room in it has.** Price takes the
+category minimum and amenities take the *intersection*, for the same reason:
+the guest cannot choose which room they get. Amenities only some rooms have
+come back as `someRoomsAmenities` and belong on the detail page, labelled — not
+on a card. Advertising the union is how a forest view on one of four standard
+rooms was sold to all four (B-55).
+
+`getAvailableRooms` is ordered `pricePerNight asc, roomNumber asc` because the
+wizard keeps the first room of each type. Without an explicit order the room a
+guest is offered, and its price, is whatever Postgres returns first.
+
 ## Shared Data (`lib/labels.ts`)
 `ROLE_LABEL`, `ROOM_TYPE_LABEL`, `ROOM_TYPE_FILTER_LABEL` — display names for
 domain enums. Import them; defining a local copy in a panel is how
@@ -172,6 +243,8 @@ npx tsx prisma/normalize-rooms.ts     # reshape rooms, keeping bookings (dry run
 npx tsx prisma/seed-linen.ts          # linen catalogue
 npx tsx prisma/seed-bookings.ts       # bookings around today
 npx tsx prisma/repair-data.ts         # report drifted derived state (--apply to fix)
+npx tsx prisma/close-overdue-checkouts.ts  # stays never checked out (--apply to close)
+npx tsx prisma/seed-demo.ts           # demo data; idempotent (--prune drops old duplicates)
 ```
 
 ## Scheduled Jobs (`vercel.json` → `crons`)
@@ -185,6 +258,23 @@ Constraints worth knowing before editing the schedule:
 - **Vercel schedules in UTC**, not IST. `runNightAudit()` derives "yesterday"
   from the server clock, so it must run shortly *after* UTC midnight. Moving it
   to midnight IST (18:30 UTC) would audit a day that is still in progress.
+- **Both ends of the audit look backwards, and neither closes anything.**
+  No-shows match `checkIn: { lt: today }` and due departures
+  `checkOut: { lte: today }`, so a skipped run — or a checkout the desk never
+  pressed — is caught up rather than lost at midnight (B-04, B-51). The audit
+  only ever *flags* a departure: an overdue checkout is a real stay that ended,
+  but the guest may equally still be in the room, and checking out issues a GST
+  invoice. `overdueCheckouts` is returned separately from `dueCheckouts` so a
+  backlog cannot hide inside today's number.
+- **Hobby fires within the scheduled hour, not at the scheduled minute.** Vercel
+  documents Hobby precision as ±59 minutes, so `15 0 * * *` lands somewhere in
+  00:00–00:59 UTC — the times in the table above are nominal. That is still
+  safely after UTC midnight, so `runNightAudit()`'s "yesterday" holds, but the
+  three jobs' stagger is *not* an ordering guarantee: they can fire in any
+  order. Nothing depends on it — `runNightAudit` sweeps stale holds itself as a
+  backstop and the conflict detector is read-only — and nothing new should.
+- **Cron jobs only run on Production deployments.** Not on previews, not on
+  branch deploys. A cron that "never fires" is usually this.
 - **Sub-daily schedules require a Pro plan** and fail at deploy time on Hobby.
   Hourly conflict detection would be better; on Pro use `"0 * * * *"`.
   **`expire-holds` wants hourly most of all** — daily means a room can show as
@@ -231,7 +321,7 @@ Ranges are half-open: `{ gte: start, lt: end }`. An inclusive `lte` on the last
 day matches that whole day and pulls in one extra.
 
 ## Derived state that used to drift
-Two things are computed from bookings rather than maintained incrementally,
+Three things are computed from bookings rather than maintained incrementally,
 because incremental updates silently fell out of sync:
 
 - **`roomStatus.currentBookingId`** — only check-out used to clear it, so
@@ -243,8 +333,17 @@ because incremental updates silently fell out of sync:
   booking's status or amount; never `increment`/`decrement`. Cancelled and
   no-show bookings are excluded.
 
-`npx tsx prisma/repair-data.ts` reports both kinds of drift; `--apply` fixes it.
-Idempotent and safe to re-run.
+- **`roomStatus.occupancy` = `due_checkin`** — a statement about *today*, so
+  `runNightAudit()` clears yesterday's before flagging today's arrivals rather
+  than adding to them. Write `currentBookingId` alongside the flag: every path
+  that frees a room (`releaseRoomsHolding`, the cancel route, `repair-data.ts`)
+  filters on that column, and a flag set without one can never be cleared by
+  any of them. That is how the board came to show seven rooms awaiting guests
+  on a day with one arrival (B-48). Never reset a room that has a guest
+  checked into it — a stale flag beats hiding someone who is in the room.
+
+`npx tsx prisma/repair-data.ts` reports all three kinds of drift; `--apply`
+fixes it. Idempotent and safe to re-run.
 
 ## Booking Flow
 1. User picks dates + guests → `/api/booking/availability?roomId=&checkIn=&checkOut=`
@@ -298,6 +397,33 @@ the stay is double-counted in every revenue report.
 
 There is no Razorpay webhook. This route is the only path to `paid`, so nothing
 downstream compensates for a weak check here.
+
+**It also checks the booking is still live.** The signature and the order check
+both pass for a booking `expireStalePaymentHolds()` has already cancelled — the
+order genuinely does belong to it. A guest who leaves the Razorpay modal open
+past `BOOKING_HOLD_MINUTES` and then pays used to be charged for a stay whose
+room was already back on the calendar, and emailed "Booking Confirmed!" while
+the confirmation page told them the opposite. The sweeper's Razorpay check does
+not prevent this: it rules out a booking that was *already* paid, not one paid a
+moment later.
+
+So `status` is selected too, and a `cancelled`/`no_show` booking takes a
+different path:
+
+- **Try to give the room back first.** Reinstatement goes through
+  `guardRoomAvailability` like every other path that writes a booking, and
+  flips the row to `confirmed`/`paid` inside that transaction so the exclusion
+  constraint backstops it at commit. This is the common case — a hold expiring
+  does not mean anyone else took the room in the seconds since.
+- **Otherwise confirm nothing and send no email.** The payment is written to
+  `payments` as `completed`, noted for refund, and audited with
+  `needsRefund: true`; `razorpayPaymentId` is stamped on the booking so a
+  replay cannot write a second row. The booking stays `cancelled`, so the money
+  never reaches a revenue report — it is a refund waiting to happen, not
+  income.
+
+A stay that has already started is never reinstated: that is the no-show case,
+and a late payment against it is a refund, not a check-in.
 
 ### Unpaid holds expire — `expireStalePaymentHolds()`
 A booking committed at step 4 holds the room until the guest pays. Nothing used
@@ -363,6 +489,21 @@ string store so copy lives in one file instead of being scattered in JSX.
 - `useTranslations('namespace')` in client components
 - `getTranslations('namespace')` in server components / metadata
 - Keys live in `messages/en.json`, grouped by namespace
+
+**Page titles and descriptions are copy too**, and live under the `meta`
+namespace. A page supplies them in one line —
+`export const generateMetadata = () => pageMetadata("about");` from
+`lib/page-metadata.ts`. Two rules the root template imposes:
+
+- **Never put the brand in a page title.** `app/layout.tsx` sets
+  `template: "%s | Rio Casa Mahabaleshwar"`, so "Rooms — Rio Casa" renders as
+  "Rooms — Rio Casa | Rio Casa Mahabaleshwar". The blog and privacy pages both
+  did this (B-52); a test now fails on any title containing "Rio Casa".
+- **The home page sets nothing on purpose.** `title.default` applies verbatim
+  and the template only wraps child titles, so `/` gets the unsuffixed default.
+
+A client component cannot export metadata — give it a sibling `layout.tsx`, as
+`/contact` and `/gallery` have.
 
 **Mind the namespace.** A key read from the wrong one renders the raw key path
 to the visitor — next-intl does not fall back. `perNight` lives under `rooms`,

@@ -4,15 +4,15 @@ import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
-import { dateOnly, today as todayDate } from "@/lib/dates";
+import { dateOnly, today as todayDate, isDayString } from "@/lib/dates";
 
 // ─── Audience resolver ────────────────────────────────────────────────────────
 
 const FilterSchema = z.object({
   type: z.enum(["upcoming-arrivals", "checked-in", "past-guests", "manual"]),
   days: z.number().int().min(1).max(30).optional(),
-  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  fromDate: z.string().refine(isDayString, "Use a real date in YYYY-MM-DD form").optional(),
+  toDate: z.string().refine(isDayString, "Use a real date in YYYY-MM-DD form").optional(),
   recipients: z.array(z.object({
     guestName: z.string(),
     phone: z.string().optional(),
@@ -31,7 +31,36 @@ type Recipient = {
   roomName?: string;
 };
 
-async function resolveRecipients(filter: Filter): Promise<Recipient[]> {
+/** The identifier a campaign actually reaches someone on. */
+type Channel = "email" | "whatsapp";
+
+/**
+ * One message per person, keyed on the identifier that channel messages them by.
+ *
+ * This used to be a `distinct: ["guestEmail"]` in the past-guests query, which
+ * is right for an email campaign — two stays by one guest should not mean two
+ * emails — but the channel filter ran *afterwards*, so a WhatsApp campaign had
+ * already been deduplicated on the wrong column. The walk-in form takes an
+ * email marked "optional" and stores `""` when it is blank, so every guest
+ * without one shared a single key and all but one were dropped before their
+ * phone numbers were ever looked at (B-50).
+ */
+function dedupeByChannel(rows: Recipient[], channel: Channel): Recipient[] {
+  const seen = new Set<string>();
+  const out: Recipient[] = [];
+  for (const r of rows) {
+    const key = (channel === "email" ? r.email : r.phone)?.trim().toLowerCase() ?? "";
+    // No usable identifier — keep it, so it is counted as skipped rather than
+    // collapsed into whichever other contactless guest happened to come first.
+    if (!key) { out.push(r); continue; }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
+async function resolveRecipients(filter: Filter, channel: Channel): Promise<Recipient[]> {
   if (filter.type === "manual") {
     return (filter.recipients ?? []).map((r) => ({
       guestName: r.guestName,
@@ -92,15 +121,19 @@ async function resolveRecipients(filter: Filter): Promise<Recipient[]> {
       bookingNumber: true, checkIn: true,
       room: { select: { name: true } },
     },
-    distinct: ["guestEmail"],
     take: 1000,
   });
-  return rows.map((r) => ({
-    guestName: r.guestName, phone: r.guestPhone, email: r.guestEmail,
-    bookingNumber: r.bookingNumber,
-    checkIn: r.checkIn.toISOString().split("T")[0],
-    roomName: r.room.name,
-  }));
+  // Deduplicated here rather than in SQL, because which column identifies a
+  // person depends on the channel — see `dedupeByChannel`.
+  return dedupeByChannel(
+    rows.map((r) => ({
+      guestName: r.guestName, phone: r.guestPhone, email: r.guestEmail,
+      bookingNumber: r.bookingNumber,
+      checkIn: r.checkIn.toISOString().split("T")[0],
+      roomName: r.room.name,
+    })),
+    channel
+  );
 }
 
 function substituteTags(template: string, r: Recipient): string {
@@ -151,7 +184,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Subject is required for email" }, { status: 400 });
   }
 
-  const recipients = await resolveRecipients(filter);
+  const recipients = await resolveRecipients(filter, channel);
 
   // Channel-specific recipient filtering
   const reachable = recipients.filter((r) => (channel === "email" ? !!r.email : !!r.phone));

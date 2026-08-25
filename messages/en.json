@@ -32,7 +32,8 @@
     "maxGuests": "up to {count} guests",
     "bookRoom": "Book This Room",
     "checkAvailability": "Check Availability",
-    "amenities": "Amenities"
+    "amenities": "Amenities",
+    "someRoomsAmenities": "Available in selected rooms of this type — ask us when booking"
   },
   "booking": {
     "title": "Book Your Stay",
@@ -58,7 +59,15 @@
     "taxes": "GST",
     "priceLoading": "Calculating price…",
     "priceUnavailable": "We could not calculate the price for these dates. Please go back and try again.",
-    "taxNote": "Includes all taxes."
+    "taxNote": "Includes all taxes.",
+    "guestsDecrease": "Fewer guests",
+    "guestsIncrease": "More guests",
+    "specialRequestsPlaceholder": "Early check-in, anniversary decoration, dietary requirements...",
+    "promoCode": "Promo Code",
+    "promoPlaceholder": "Enter code",
+    "promoApply": "Apply",
+    "promoChecking": "Checking…",
+    "promoApplied": "Code applied."
   },
   "packages": {
     "title": "Packages & Offers",
@@ -130,5 +139,47 @@
     "loading": "Loading...",
     "error": "Something went wrong. Please try again.",
     "required": "This field is required"
+  },
+  "meta": {
+    "about": {
+      "title": "About Us",
+      "description": "The story behind Rio Casa — a family retreat in the Sahyadri hills turned boutique resort in Mahabaleshwar."
+    },
+    "rooms": {
+      "title": "Rooms & Suites",
+      "description": "Standard, Deluxe, Luxury and Family rooms at Rio Casa Mahabaleshwar. Compare rates, amenities and views, and book direct."
+    },
+    "gallery": {
+      "title": "Gallery",
+      "description": "Photographs of the rooms, balconies, bathrooms and grounds at Rio Casa, Mahabaleshwar."
+    },
+    "packages": {
+      "title": "Packages & Offers",
+      "description": "Curated stay packages at Rio Casa Mahabaleshwar — honeymoon, weekend, monsoon and corporate retreats."
+    },
+    "dining": {
+      "title": "Dining & Amenities",
+      "description": "Home-style Maharashtrian and Indian meals, in-room tea and coffee, and the amenities available to guests at Rio Casa."
+    },
+    "blog": {
+      "title": "Blog",
+      "description": "Guides to Mahabaleshwar — what to see, when to visit, and how to make the most of a hill station weekend."
+    },
+    "contact": {
+      "title": "Contact Us",
+      "description": "Reach Rio Casa, Mahabaleshwar by phone, WhatsApp or email, or send an enquiry about your stay."
+    },
+    "booking": {
+      "title": "Book Your Stay",
+      "description": "Check availability and book a room at Rio Casa, Mahabaleshwar directly — no booking fees, instant confirmation."
+    },
+    "confirmation": {
+      "title": "Booking Confirmation",
+      "description": "Your booking reference and stay details at Rio Casa, Mahabaleshwar."
+    },
+    "privacy": {
+      "title": "Privacy Policy",
+      "description": "How Rio Casa collects, uses and protects your personal information."
+    }
   }
 }

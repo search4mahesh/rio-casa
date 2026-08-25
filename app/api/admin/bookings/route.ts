@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { positiveIntParam } from "@/lib/query-params";
 
 export async function GET(req: NextRequest) {
   const auth = await requireRole(req, "frontdesk");
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search");
   const from = searchParams.get("from");
   const to = searchParams.get("to");
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
+  const page = positiveIntParam(searchParams.get("page"));
   const pageSize = 25;
 
   const where: Record<string, unknown> = {};

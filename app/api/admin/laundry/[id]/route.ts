@@ -3,10 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail, failValidation, okEmpty } from "@/lib/api-response";
-import { dateOnly } from "@/lib/dates";
+import { dateOnly, isDayString } from "@/lib/dates";
 
 const ReturnSchema = z.object({
-  returnedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  returnedDate: z.string().refine(isDayString, "Use YYYY-MM-DD"),
   notes: z.string().max(500).optional(),
   items: z
     .array(

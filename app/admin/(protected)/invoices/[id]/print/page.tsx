@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type LineItem = { description: string; nights?: number; rate?: number; amount: number };
 
@@ -75,26 +77,31 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
   const { id } = params;
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [emailing, setEmailing] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
 
   useEffect(() => {
-    fetch(`/api/admin/invoices/${id}`)
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setInvoice(d.data); setLoading(false); });
+    apiJson(`/api/admin/invoices/${id}`).then((d) => {
+      if (d.success) setInvoice(d.data);
+      else setLoadError(d.error);
+      setLoading(false);
+    });
   }, [id]);
 
   async function sendEmail() {
     setEmailing(true);
     setEmailMsg("");
-    const res = await fetch(`/api/admin/invoices/${id}/email`, { method: "POST" });
-    const data = await res.json();
-    setEmailMsg(data.success ? data.message : data.error);
+    const data = await apiJson(`/api/admin/invoices/${id}/email`, { method: "POST" });
+    setEmailMsg(data.success ? (data.message ?? "Invoice emailed") : data.error);
     setEmailing(false);
     setTimeout(() => setEmailMsg(""), 5000);
   }
 
   if (loading) return <div className="p-10 text-center text-gray-400">Loading invoice…</div>;
+  // A failed load used to fall through to "Invoice not found", which blames
+  // the invoice for what was actually a failed request.
+  if (loadError) return <ErrorState message={loadError} className="py-16" />;
   if (!invoice) return <div className="p-10 text-center text-gray-400">Invoice not found</div>;
 
   const guestAddress = [

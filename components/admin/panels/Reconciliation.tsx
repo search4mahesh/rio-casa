@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 const CATEGORY_COLORS: Record<string, string> = {
   housekeeping: "bg-blue-500",
@@ -44,13 +46,15 @@ export default function ReconciliationPanel() {
   const [month, setMonth] = useState(currentMonth);
   const [data, setData] = useState<ReconcData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<"summary" | "daily">("summary");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/reconciliation?month=${month}`);
-    const json = await res.json();
+    setLoadError(null);
+    const json = await apiJson(`/api/admin/reconciliation?month=${month}`);
     if (json.success) setData(json.data);
+    else setLoadError(json.error);
     setLoading(false);
   }, [month]);
 
@@ -72,6 +76,8 @@ export default function ReconciliationPanel() {
 
       {loading ? (
         <div className="text-center text-gray-400 py-20 text-sm">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={fetchData} className="py-20" />
       ) : !data ? (
         <div className="text-center text-gray-400 py-20 text-sm">No data</div>
       ) : (

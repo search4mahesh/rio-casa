@@ -3,11 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail, failValidation } from "@/lib/api-response";
-import { dateOnly, addMonths, toDayString } from "@/lib/dates";
+import { dateOnly, addMonths, toDayString, isMonthString, isDayString } from "@/lib/dates";
 import { nextDailyNumber } from "@/lib/booking-service";
 
 const CreateSchema = z.object({
-  sentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  sentDate: z.string().refine(isDayString, "Use YYYY-MM-DD"),
   vendorName: z.string().max(120).optional(),
   notes: z.string().max(500).optional(),
   items: z
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   if (month) {
     // `sentDate` is a DATE column — see lib/dates.ts. Local-midnight bounds
     // put a batch dispatched on the 1st into the previous month's list.
-    if (!/^\d{4}-\d{2}$/.test(month)) {
+    if (!isMonthString(month)) {
       return fail("Use YYYY-MM for month", 400);
     }
     const from = dateOnly(`${month}-01`);

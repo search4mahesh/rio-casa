@@ -3,6 +3,7 @@
 import { useEffect, useState, useId } from "react";
 import { ROLE_LABEL } from "@/lib/labels";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
 
 type StaffMember = {
   id: string;
@@ -31,29 +32,25 @@ export default function HotelSettingsPanel({ gstin }: { gstin: string }) {
   const [myRole, setMyRole] = useState<string>("");
 
   async function loadStaff() {
-    const res = await fetch("/api/admin/staff");
-    const data = await res.json();
+    const data = await apiJson("/api/admin/staff");
     if (data.success) setStaff(data.data);
     setLoading(false);
   }
 
   useEffect(() => {
     loadStaff();
-    fetch("/api/admin/auth/me")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setMyRole(d.data.role); })
-      .catch(() => {});
+    apiJson("/api/admin/auth/me")
+      .then((d) => { if (d.success) setMyRole(d.data.role); });
   }, []);
 
 
   async function toggleActive(member: StaffMember) {
     setTogglingId(member.id);
-    const res = await fetch(`/api/admin/staff/${member.id}`, {
+    const data = await apiJson(`/api/admin/staff/${member.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !member.isActive }),
     });
-    const data = await res.json();
     if (data.success) { showToast(`${member.name} ${!member.isActive ? "activated" : "deactivated"}`); loadStaff(); }
     else showToast(data.error ?? "Error");
     setTogglingId(null);
@@ -178,12 +175,11 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/admin/staff", {
+    const data = await apiJson("/api/admin/staff", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
-    const data = await res.json();
     if (data.success) onClose();
     else setError(data.error ?? "Failed to create staff");
     setLoading(false);

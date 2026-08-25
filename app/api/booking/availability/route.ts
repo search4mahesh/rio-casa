@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAvailability, getAvailableRooms } from "@/lib/booking-service";
 import { ok } from "@/lib/api-response";
+import { positiveIntParam } from "@/lib/query-params";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const checkIn = searchParams.get("checkIn");
   const checkOut = searchParams.get("checkOut");
   const roomId = searchParams.get("roomId");
-  const guests = parseInt(searchParams.get("guests") ?? "1", 10);
+  // `parseInt("abc")` is NaN, which reached `maxGuests: { gte: NaN }` and died
+  // as an empty 500 — a blank body the wizard cannot parse (B-41).
+  const guests = positiveIntParam(searchParams.get("guests"), 1, 20);
 
   if (!checkIn || !checkOut) {
     return NextResponse.json(

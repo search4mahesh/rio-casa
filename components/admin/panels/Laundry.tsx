@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 import { Field } from "@/components/ui/Field";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type LinenItem = { id: string; name: string; category: string; ratePerPiece: number };
 
@@ -65,6 +67,7 @@ export default function LaundryPanel() {
   const [summary, setSummary] = useState<Summary>({ openBatches: 0, piecesOut: 0, totalCost: 0 });
   const [items, setItems] = useState<LinenItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState("outstanding");
   const [showDispatch, setShowDispatch] = useState(false);
   const [returning, setReturning] = useState<Batch | null>(null);
@@ -73,17 +76,17 @@ export default function LaundryPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [bRes, iRes] = await Promise.all([
-      fetch(`/api/admin/laundry?status=${filter}`),
-      fetch("/api/admin/laundry/items"),
+    setLoadError(null);
+    const [b, i] = await Promise.all([
+      apiJson(`/api/admin/laundry?status=${filter}`),
+      apiJson("/api/admin/laundry/items"),
     ]);
-    const b = await bRes.json();
-    const i = await iRes.json();
     if (b.success) {
       setBatches(b.data.batches);
       setOutstanding(b.data.outstanding);
       setSummary(b.data.summary);
     }
+    else setLoadError(b.error);
     if (i.success) setItems(i.data);
     setLoading(false);
   }, [filter]);
@@ -94,8 +97,7 @@ export default function LaundryPanel() {
     // The batch is kept and marked cancelled, not removed — the record of what
     // went to the laundryman survives either way.
     if (!confirm(`Cancel ${batchNumber}? It stays on record, marked cancelled.`)) return;
-    const res = await fetch(`/api/admin/laundry/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/laundry/${id}`, { method: "DELETE" });
     if (data.success) { showToast("Batch cancelled"); load(); }
     else showToast(data.error ?? "Could not cancel batch");
   }
@@ -155,6 +157,8 @@ export default function LaundryPanel() {
       {/* Batch list */}
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
       ) : batches.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">🧺</div>
@@ -306,7 +310,7 @@ function DispatchModal({
     setSaving(true);
     setError("");
 
-    const res = await fetch("/api/admin/laundry", {
+    const data = await apiJson("/api/admin/laundry", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -314,7 +318,6 @@ function DispatchModal({
         items: chosen.map(([linenItemId, qtySent]) => ({ linenItemId, qtySent })),
       }),
     });
-    const data = await res.json();
     setSaving(false);
     if (data.success) onSaved(`${totalPieces} pieces sent to laundry`);
     else setError(data.error ?? "Could not save");
@@ -416,7 +419,7 @@ function ReturnModal({
     setSaving(true);
     setError("");
 
-    const res = await fetch(`/api/admin/laundry/${batch.id}`, {
+    const data = await apiJson(`/api/admin/laundry/${batch.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -424,7 +427,6 @@ function ReturnModal({
         items: rows.map(({ id, qtyReturned, qtyDamaged }) => ({ id, qtyReturned, qtyDamaged })),
       }),
     });
-    const data = await res.json();
     setSaving(false);
     if (data.success) {
       onSaved(missing > 0 ? `Return recorded — ${missing} piece(s) still missing` : "All linen returned");

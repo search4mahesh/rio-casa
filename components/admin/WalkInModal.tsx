@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { propertyDayString, dateOnly, addDays, toDayString } from "@/lib/dates";
 import { Field } from "@/components/ui/Field";
+import { apiJson } from "@/lib/api-client";
 
 export function WalkInModal({ onClose }: { onClose: () => void }) {
   const [rooms, setRooms] = useState<{ id: string; name: string; roomNumber?: string; pricePerNight: number }[]>([]);
@@ -30,7 +31,7 @@ export function WalkInModal({ onClose }: { onClose: () => void }) {
   });
 
   useEffect(() => {
-    fetch("/api/admin/rooms/status").then((r) => r.json()).then((d) => {
+    apiJson("/api/admin/rooms/status").then((d) => {
       if (d.success) setRooms(d.data);
     });
   }, []);

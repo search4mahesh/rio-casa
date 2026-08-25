@@ -3,6 +3,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { Users, Star, Bath, BedDouble } from "lucide-react";
 import { getRoomCategories } from "@/lib/room-catalogue";
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const generateMetadata = () => pageMetadata("rooms");
 
 export const dynamic = "force-dynamic";
 

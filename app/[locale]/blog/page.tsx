@@ -2,6 +2,9 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { ArrowRight } from "lucide-react";
 import { BLOG_POSTS } from "@/lib/blog-posts";
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const generateMetadata = () => pageMetadata("blog");
 
 // Shared with the article route so the two cannot disagree — see lib/blog-posts.ts
 const posts = BLOG_POSTS;

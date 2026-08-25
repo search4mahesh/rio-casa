@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import { format } from "date-fns";
 import { Plus, Pencil, Trash2, X, IndianRupee } from "lucide-react";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 const CATEGORIES = [
   { value: "housekeeping", label: "Housekeeping",   color: "bg-blue-100 text-blue-700" },
@@ -56,6 +58,7 @@ export default function ExpensesPanel() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -66,14 +69,15 @@ export default function ExpensesPanel() {
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = new URLSearchParams({ month });
     if (categoryFilter !== "all") params.set("category", categoryFilter);
-    const res = await fetch(`/api/admin/expenses?${params}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/expenses?${params}`);
     if (data.success) {
       setExpenses(data.data.expenses);
       setTotal(data.data.total);
     }
+    else setLoadError(data.error);
     setLoading(false);
   }, [month, categoryFilter]);
 
@@ -121,12 +125,11 @@ export default function ExpensesPanel() {
     };
     const url = editing ? `/api/admin/expenses/${editing.id}` : "/api/admin/expenses";
     const method = editing ? "PATCH" : "POST";
-    const res = await fetch(url, {
+    const data = await apiJson(url, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
     if (data.success) {
       setModalOpen(false);
       fetchExpenses();
@@ -201,6 +204,8 @@ export default function ExpensesPanel() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-400 text-sm">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={fetchExpenses} className="p-12" />
         ) : expenses.length === 0 ? (
           <div className="p-12 text-center">
             <IndianRupee size={32} className="text-gray-200 mx-auto mb-3" />

@@ -43,7 +43,7 @@ export default function Testimonials() {
           <div className="relative bg-earth-white rounded-sm shadow-sm p-8 md:p-12">
             <Quote size={40} className="text-primary-200 mb-6" />
             <p className="font-serif text-lg md:text-xl text-earth-text leading-relaxed italic mb-6">
-              "{testimonials[active].review}"
+              &ldquo;{testimonials[active].review}&rdquo;
             </p>
             <div className="flex items-center justify-between">
               <div>

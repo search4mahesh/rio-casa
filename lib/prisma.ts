@@ -1,5 +1,6 @@
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { positiveIntParam } from "@/lib/query-params";
 
 /**
  * Prisma 7 requires a driver adapter — there is no built-in connection layer
@@ -23,7 +24,13 @@ function createClient() {
     // on the room row, so concurrent bookings for the same room queue up. The
     // node-postgres default pool (10) starves under that: waiters could not even
     // open a transaction and failed with P2028 instead of a useful message.
-    max: Number(process.env.DATABASE_POOL_MAX ?? 20),
+    // Parsed rather than `Number(...)`: `Number("abc")` is NaN, and pg-pool
+    // assigns `max = max || … || 10`, so a NaN is falsy and lands on exactly
+    // the starving default described above — silently, with no error anywhere.
+    // One typo in this variable used to undo the whole fix (B-56). The upper
+    // bound catches the other direction of the same typo; Neon's pooler will
+    // not thank anyone for thousands of connections.
+    max: positiveIntParam(process.env.DATABASE_POOL_MAX ?? null, 20, 100),
     // Don't let a waiter sit forever if the pool really is saturated.
     connectionTimeoutMillis: 15_000,
     idleTimeoutMillis: 30_000,

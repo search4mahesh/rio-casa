@@ -1,5 +1,8 @@
 import { useTranslations } from "next-intl";
 import { Waves, Flame, Wifi, Car, Dumbbell, Trees } from "lucide-react";
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const generateMetadata = () => pageMetadata("dining");
 
 const amenities = [
   { icon: Waves, name: "Swimming Pool", desc: "Temperature-controlled outdoor pool with valley views." },

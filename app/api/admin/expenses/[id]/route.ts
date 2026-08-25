@@ -3,10 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { ok, okEmpty, failValidation } from "@/lib/api-response";
-import { dateOnly } from "@/lib/dates";
+import { dateOnly, isDayString } from "@/lib/dates";
 
 const UpdateSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date: z.string().refine(isDayString, "Use a real date in YYYY-MM-DD form").optional(),
   category: z.enum(["housekeeping", "maintenance", "food", "utilities", "staff", "marketing", "other"]).optional(),
   description: z.string().min(1).optional(),
   amount: z.number().positive().optional(),

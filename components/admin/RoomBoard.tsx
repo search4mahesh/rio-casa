@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
 
 type RoomStatus = {
   occupancy: string;
@@ -71,8 +72,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
   const { toast, showToast } = useToast();
 
   async function load() {
-    const res = await fetch("/api/admin/rooms/status");
-    const data = await res.json();
+    const data = await apiJson("/api/admin/rooms/status");
     if (data.success) setRooms(data.data);
     setLoading(false);
   }
@@ -82,8 +82,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
 
   async function handleCheckin(bookingId: string) {
     setActionLoading(bookingId);
-    const res = await fetch(`/api/admin/bookings/${bookingId}/checkin`, { method: "PATCH" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/bookings/${bookingId}/checkin`, { method: "PATCH" });
     if (data.success) { showToast(data.message ?? "Checked in successfully"); await load(); }
     else showToast(data.error ?? "Check-in failed");
     setActionLoading(null);
@@ -91,8 +90,7 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
 
   async function handleCheckout(bookingId: string) {
     setActionLoading(bookingId);
-    const res = await fetch(`/api/admin/bookings/${bookingId}/checkout`, { method: "PATCH" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/bookings/${bookingId}/checkout`, { method: "PATCH" });
     if (data.success) { showToast(data.message ?? "Checked out successfully"); await load(); }
     else showToast(data.error ?? "Check-out failed");
     setActionLoading(null);
@@ -112,12 +110,11 @@ export default function RoomBoard({ canCheckIn }: { canCheckIn: boolean }) {
     if (!selected) return;
     setSaving(true);
     setMsg("");
-    const res = await fetch("/api/admin/rooms/status", {
+    const data = await apiJson("/api/admin/rooms/status", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ roomId: selected.id, ...form }),
     });
-    const data = await res.json();
     if (data.success) { setMsg("Saved!"); await load(); setSelected(null); }
     else setMsg(data.error ?? "Error saving");
     setSaving(false);

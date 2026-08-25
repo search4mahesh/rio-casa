@@ -3,10 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail, failValidation } from "@/lib/api-response";
-import { dateOnly, addMonths } from "@/lib/dates";
+import { dateOnly, addMonths, isMonthString, isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+  date: z.string().refine(isDayString, "Invalid date"),
   category: z.enum(["housekeeping", "maintenance", "food", "utilities", "staff", "marketing", "other"]),
   description: z.string().min(1),
   amount: z.number().positive(),
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // to that day: the August filter was showing a 31 July expense and hiding
     // a 31 August one. Writes already store UTC midnight, so the read bounds
     // were the half that disagreed.
-    if (!/^\d{4}-\d{2}$/.test(month)) {
+    if (!isMonthString(month)) {
       return fail("Use YYYY-MM for month", 400);
     }
     const from = dateOnly(`${month}-01`);

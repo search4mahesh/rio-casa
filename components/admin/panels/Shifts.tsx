@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 import { today, addDays, dateOnly, toDayString } from "@/lib/dates";
+import { apiJson } from "@/lib/api-client";
 
 type Staff = { id: string; name: string; role: string };
 
@@ -63,8 +64,7 @@ export default function ShiftsPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/shifts?weekStart=${toDayString(weekStart)}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/shifts?weekStart=${toDayString(weekStart)}`);
     if (data.success) { setAssignments(data.data.assignments); setStaff(data.data.staff); }
     setLoading(false);
   }, [weekStart]);
@@ -78,19 +78,17 @@ export default function ShiftsPanel() {
 
   async function saveAssignment(staffId: string, notes: string) {
     if (!editing) return;
-    const res = await fetch("/api/admin/shifts", {
+    const data = await apiJson("/api/admin/shifts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date: editing.date, slot: editing.slot, station: editing.station, staffId, notes: notes || null }),
     });
-    const data = await res.json();
     if (data.success) { showToast("Saved"); setEditing(null); load(); }
     else showToast(data.error ?? "Save failed");
   }
 
   async function deleteAssignment(id: string) {
-    const res = await fetch(`/api/admin/shifts/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/shifts/${id}`, { method: "DELETE" });
     if (data.success) { showToast("Cleared"); setEditing(null); load(); }
     else showToast(data.error ?? "Delete failed");
   }

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type Invoice = {
   id: string;
@@ -36,18 +38,20 @@ export default function InvoicesPanel() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = new URLSearchParams({ page: String(page) });
     if (search) params.set("search", search);
     if (statusFilter !== "all") params.set("status", statusFilter);
-    const res = await fetch(`/api/admin/invoices?${params}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/invoices?${params}`);
     if (data.success) { setInvoices(data.data.invoices); setTotal(data.data.total); }
+    else setLoadError(data.error);
     setLoading(false);
   }, [page, search, statusFilter]);
 
@@ -88,6 +92,8 @@ export default function InvoicesPanel() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="py-16 text-center text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
         ) : invoices.length === 0 ? (
           <div className="py-16 text-center">
             <div className="text-5xl mb-4">🧾</div>

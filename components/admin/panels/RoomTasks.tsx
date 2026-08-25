@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type Task = {
   id: string;
@@ -38,6 +40,7 @@ export default function RoomTasksPanel() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceCount, setMaintenanceCount] = useState(0);
@@ -47,21 +50,20 @@ export default function RoomTasksPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = new URLSearchParams();
     if (maintenanceMode) {
       params.set("maintenance", "true");
     } else if (statusFilter !== "all") {
       params.set("status", statusFilter);
     }
-    const [taskRes, roomRes, countRes] = await Promise.all([
-      fetch(`/api/admin/housekeeping?${params}`),
-      fetch("/api/admin/rooms/status"),
-      fetch("/api/admin/housekeeping?maintenanceCount=true"),
+    const [taskData, roomData, countData] = await Promise.all([
+      apiJson(`/api/admin/housekeeping?${params}`),
+      apiJson("/api/admin/rooms/status"),
+      apiJson("/api/admin/housekeeping?maintenanceCount=true"),
     ]);
-    const taskData = await taskRes.json();
-    const roomData = await roomRes.json();
-    const countData = await countRes.json();
     if (taskData.success) setTasks(taskData.data);
+    else setLoadError(taskData.error);
     if (roomData.success) setRooms(roomData.data);
     if (countData.success) setMaintenanceCount(countData.data);
     setLoading(false);
@@ -72,12 +74,11 @@ export default function RoomTasksPanel() {
 
   async function updateStatus(id: string, status: string) {
     setActionLoading(id + status);
-    const res = await fetch(`/api/admin/housekeeping/${id}`, {
+    const data = await apiJson(`/api/admin/housekeeping/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    const data = await res.json();
     if (data.success) { showToast("Updated"); load(); }
     else showToast(data.error ?? "Error");
     setActionLoading(null);
@@ -85,12 +86,11 @@ export default function RoomTasksPanel() {
 
   async function resolveMaintenanceFlag(id: string) {
     setActionLoading(id + "resolve");
-    const res = await fetch(`/api/admin/housekeeping/${id}`, {
+    const data = await apiJson(`/api/admin/housekeeping/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed", maintenanceFlag: false }),
     });
-    const data = await res.json();
     if (data.success) { showToast("Maintenance issue resolved"); load(); }
     else showToast(data.error ?? "Error");
     setActionLoading(null);
@@ -176,6 +176,8 @@ export default function RoomTasksPanel() {
 
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
       ) : tasks.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">{maintenanceMode ? "✓" : "✓"}</div>
@@ -343,12 +345,11 @@ function AddTaskModal({ rooms, onClose }: { rooms: Room[]; onClose: () => void }
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/admin/housekeeping", {
+    const data = await apiJson("/api/admin/housekeeping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
-    const data = await res.json();
     if (data.success) onClose();
     else setError(data.error ?? "Failed");
     setLoading(false);

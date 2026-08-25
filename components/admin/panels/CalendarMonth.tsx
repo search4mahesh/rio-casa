@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { apiJson } from "@/lib/api-client";
 
 const COL_W = 40;
 const ROW_H = 50;
@@ -69,8 +70,7 @@ export default function CalendarMonthPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/calendar?from=${dayKey(rangeStart)}&days=${RANGE_DAYS}`);
-    const d = await res.json();
+    const d = await apiJson(`/api/admin/calendar?from=${dayKey(rangeStart)}&days=${RANGE_DAYS}`);
     if (d.success) setData(d.data);
     setLoading(false);
   }, [rangeStart]);

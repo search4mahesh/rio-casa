@@ -1,5 +1,8 @@
 import { useTranslations } from "next-intl";
 import { Leaf, Heart, Mountain } from "lucide-react";
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const generateMetadata = () => pageMetadata("about");
 
 export default function AboutPage() {
   const t = useTranslations("about");
@@ -19,7 +22,7 @@ export default function AboutPage() {
             Nestled in the misty Sahyadri mountains, Rio Casa was born from a simple dream — to create a sanctuary where nature, luxury, and warm Maharashtrian hospitality come together seamlessly.
           </p>
           <p className="font-sans text-earth-text/60 leading-relaxed">
-            What started as a family retreat in the heart of Mahabaleshwar has grown into one of the hill station's most beloved boutique resorts. Every room, every corner, every meal at Rio Casa is crafted with an intent — to make you feel at home, 120 km from the city.
+            What started as a family retreat in the heart of Mahabaleshwar has grown into one of the hill station&rsquo;s most beloved boutique resorts. Every room, every corner, every meal at Rio Casa is crafted with an intent — to make you feel at home, 120 km from the city.
           </p>
         </div>
       </section>
@@ -50,7 +53,7 @@ export default function AboutPage() {
         <div className="container-resort max-w-3xl text-center">
           <h2 className="section-heading mb-6">{t("mahabaleshwarTitle")}</h2>
           <p className="font-sans text-earth-text/60 leading-relaxed mb-8">
-            Mahabaleshwar is Maharashtra's crown jewel of hill stations. Famous for its strawberry farms, viewpoints like Arthur's Seat and Elephant's Head, Venna Lake boating, and the ancient Mahabaleshwar Temple — it's a destination that calls you back every season.
+            Mahabaleshwar is Maharashtra&rsquo;s crown jewel of hill stations. Famous for its strawberry farms, viewpoints like Arthur&rsquo;s Seat and Elephant&rsquo;s Head, Venna Lake boating, and the ancient Mahabaleshwar Temple — it&rsquo;s a destination that calls you back every season.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
             {["Strawberry Farms", "Venna Lake", "Viewpoints", "Horse Riding"].map((activity) => (

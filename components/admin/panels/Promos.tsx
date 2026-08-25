@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type Promo = {
   id: string; code: string; name?: string | null;
@@ -19,6 +21,7 @@ function fmtDate(iso: string) {
 export default function PromosPanel() {
   const [promos, setPromos] = useState<Promo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Promo | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -27,9 +30,10 @@ export default function PromosPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/admin/promos");
-    const data = await res.json();
+    setLoadError(null);
+    const data = await apiJson("/api/admin/promos");
     if (data.success) setPromos(data.data);
+    else setLoadError(data.error);
     setLoading(false);
   }, []);
 
@@ -38,12 +42,11 @@ export default function PromosPanel() {
 
   async function toggleActive(promo: Promo) {
     setTogglingId(promo.id);
-    const res = await fetch(`/api/admin/promos/${promo.id}`, {
+    const data = await apiJson(`/api/admin/promos/${promo.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !promo.isActive }),
     });
-    const data = await res.json();
     if (data.success) { showToast(promo.isActive ? "Code deactivated" : "Code activated"); load(); }
     else showToast(data.error ?? "Error");
     setTogglingId(null);
@@ -51,8 +54,7 @@ export default function PromosPanel() {
 
   async function deletePromo(id: string) {
     setDeletingId(id);
-    const res = await fetch(`/api/admin/promos/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/promos/${id}`, { method: "DELETE" });
     if (data.success) { showToast("Promo code deleted"); load(); }
     else showToast(data.error ?? "Delete failed");
     setDeletingId(null);
@@ -80,6 +82,8 @@ export default function PromosPanel() {
 
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
       ) : promos.length === 0 ? (
         <div className="text-center py-16">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -220,8 +224,7 @@ function PromoModal({ promo, onClose }: { promo: Promo | null; onClose: () => vo
     }
     const url = promo ? `/api/admin/promos/${promo.id}` : "/api/admin/promos";
     const method = promo ? "PATCH" : "POST";
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = await apiJson(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (data.success) onClose();
     else setError(data.error ?? "Failed");
     setLoading(false);

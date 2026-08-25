@@ -2,7 +2,14 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifySignature } from "@/lib/razorpay";
-import { syncWithChannelManager } from "@/lib/booking-service";
+import {
+  BOOKING_TX_OPTIONS,
+  guardRoomAvailability,
+  recalcGuestTotals,
+  syncWithChannelManager,
+  withSerializableRetry,
+} from "@/lib/booking-service";
+import { today } from "@/lib/dates";
 import { Resend } from "resend";
 import { ok, fail } from "@/lib/api-response";
 
@@ -14,6 +21,174 @@ const schema = z.object({
 });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+/**
+ * What the guest is told when their money arrived but the booking could not be
+ * confirmed. The wizard shows its own "do not pay again" copy on any non-2xx,
+ * so this is what reaches logs and any other API consumer.
+ */
+const UNCONFIRMABLE_ERROR =
+  "Your payment was received but this booking is no longer held. Do not pay again — " +
+  "our team will contact you to rebook or refund you.";
+
+/** The booking projection this route works from. */
+type BookingRow = {
+  id: string;
+  bookingNumber: string;
+  status: string;
+  paymentStatus: string;
+  guestId: string | null;
+  roomId: string;
+  checkIn: Date;
+  checkOut: Date;
+  totalAmount: number;
+};
+
+/**
+ * Try to give a cancelled booking its room back, now that the guest has paid.
+ *
+ * Goes through `guardRoomAvailability` like every other path that writes a
+ * booking (see "Keep the critical section short" in CLAUDE.md): re-occupying a
+ * room is a booking decision, so it takes the same `FOR UPDATE` and the same
+ * conflict/blocked-date re-check. Reinstating with `paymentStatus: "paid"`
+ * inside the transaction also puts the row back under the
+ * `no_overlapping_bookings` exclusion constraint at commit, so Layer 1 still
+ * backstops it.
+ *
+ * Returns false — never throws — when the room has genuinely gone to someone
+ * else, the dates have since been blocked, or the stay is already in the past.
+ * The caller then records the payment for refund instead.
+ */
+async function reinstateCancelledBooking(
+  booking: BookingRow,
+  razorpayPaymentId: string
+): Promise<boolean> {
+  // A stay that has already started cannot be handed back. This is the
+  // no-show case, and a late payment against it is a refund, not a check-in.
+  if (booking.checkIn < today()) return false;
+
+  try {
+    const restored = await withSerializableRetry(() =>
+      prisma.$transaction(async (tx) => {
+        await guardRoomAvailability(tx, booking.roomId, booking.checkIn, booking.checkOut);
+
+        // Compare-and-swap on the status we read, so a manager cancelling or a
+        // second request reinstating in the meantime loses cleanly.
+        const { count } = await tx.booking.updateMany({
+          where: { id: booking.id, status: booking.status },
+          data: {
+            status: "confirmed",
+            paymentStatus: "paid",
+            razorpayPaymentId,
+            cancelledAt: null,
+            cancellationReason: null,
+          },
+        });
+        return count === 1;
+      }, BOOKING_TX_OPTIONS)
+    );
+    if (!restored) return false;
+  } catch (err) {
+    // ROOM_NOT_AVAILABLE, BLOCKED_DATE, or a serialization failure that
+    // survived every retry. All of them mean "we could not hold this room".
+    console.error(
+      `[payment/verify] could not reinstate ${booking.bookingNumber} after a late payment:`,
+      (err as Error).message
+    );
+    return false;
+  }
+
+  // Bookkeeping, after the lock is released and deliberately non-fatal — the
+  // booking is live again either way. The sweeper decremented these when it
+  // cancelled, so they have to come back up.
+  try {
+    await recalcGuestTotals(prisma, booking.guestId);
+    await prisma.auditLog.create({
+      data: {
+        userId: "system",
+        action: "booking_reinstated_after_late_payment",
+        entityType: "booking",
+        entityId: booking.id,
+        oldValue: { status: booking.status, paymentStatus: booking.paymentStatus },
+        newValue: { status: "confirmed", paymentStatus: "paid", razorpayPaymentId },
+      },
+    });
+  } catch (err) {
+    console.error(`[payment/verify] reinstatement bookkeeping failed for ${booking.bookingNumber}:`, err);
+  }
+
+  console.error(
+    `[payment/verify] ${booking.bookingNumber} was cancelled as an expired hold but the guest ` +
+      `then paid — the room was still free, so it has been reinstated and confirmed`
+  );
+  return true;
+}
+
+/**
+ * Record money that arrived for a booking we cannot confirm.
+ *
+ * The booking stays `cancelled`, so it keeps out of availability and out of
+ * every revenue report — this stay is not income, it is a refund waiting to
+ * happen. The `Payment` row is what makes the money visible at all: it shows
+ * up in Payment History on the booking page, which is where staff will look.
+ *
+ * `razorpayPaymentId` goes onto the booking too, so a retry of the same triple
+ * is recognised as a replay and does not write a second payment row.
+ */
+async function recordUnmatchedPayment(
+  booking: BookingRow,
+  triple: { razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }
+): Promise<void> {
+  console.error(
+    `[payment/verify] PAYMENT RECEIVED FOR A CANCELLED BOOKING — ${booking.bookingNumber} ` +
+      `(₹${booking.totalAmount}, razorpay payment ${triple.razorpayPaymentId}). ` +
+      `The room could not be recovered. This guest must be refunded or rebooked.`
+  );
+
+  try {
+    await prisma.$transaction([
+      prisma.payment.create({
+        data: {
+          bookingId: booking.id,
+          amount: booking.totalAmount,
+          paymentMethod: "razorpay",
+          paymentType: "full",
+          razorpayPaymentId: triple.razorpayPaymentId,
+          razorpayOrderId: triple.razorpayOrderId,
+          razorpaySignature: triple.razorpaySignature,
+          // The money did change hands — what is unresolved is the booking,
+          // not the payment.
+          status: "completed",
+          notes:
+            "Received after the booking was cancelled as an expired payment hold. " +
+            "The room could not be reinstated — refund or rebook this guest.",
+        },
+      }),
+      prisma.booking.update({
+        where: { id: booking.id },
+        data: { razorpayPaymentId: triple.razorpayPaymentId },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId: "system",
+          action: "payment_received_for_cancelled_booking",
+          entityType: "booking",
+          entityId: booking.id,
+          newValue: {
+            bookingNumber: booking.bookingNumber,
+            amount: booking.totalAmount,
+            razorpayPaymentId: triple.razorpayPaymentId,
+            needsRefund: true,
+          },
+        },
+      }),
+    ]);
+  } catch (err) {
+    // Nothing left to fall back on, but the console line above already carries
+    // everything needed to find the payment in the Razorpay dashboard.
+    console.error(`[payment/verify] could not record the orphaned payment for ${booking.bookingNumber}:`, err);
+  }
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -39,6 +214,15 @@ export async function POST(req: NextRequest) {
       razorpayOrderId: true,
       razorpayPaymentId: true,
       paymentStatus: true,
+      // `status` is what tells a live booking from one the hold sweeper (or a
+      // manager) has already cancelled. Selecting only `paymentStatus` is how
+      // a guest could be charged for a stay that no longer existed (B-38).
+      status: true,
+      guestId: true,
+      roomId: true,
+      checkIn: true,
+      checkOut: true,
+      totalAmount: true,
     },
   });
   if (!existing) return fail("Booking not found", 404);
@@ -60,8 +244,42 @@ export async function POST(req: NextRequest) {
   // Replaying a triple against its own booking is harmless but must not write a
   // second payment row — that would double-count the stay in every revenue
   // report. Answer as if we had just confirmed it.
-  if (existing.paymentStatus === "paid" && existing.razorpayPaymentId === razorpayPaymentId) {
-    return ok({ bookingId: existing.id, bookingNumber: existing.bookingNumber });
+  if (existing.razorpayPaymentId === razorpayPaymentId) {
+    if (existing.paymentStatus === "paid") {
+      return ok({ bookingId: existing.id, bookingNumber: existing.bookingNumber });
+    }
+    // Already recorded against a booking we could not confirm — the payment row
+    // and the alert below exist, so answer the same way without writing again.
+    return fail(UNCONFIRMABLE_ERROR, 409);
+  }
+
+  // ── The other half of the binding: is this booking still live? ────────
+  //
+  // `verifySignature` and the order check above both pass for a booking the
+  // hold sweeper already cancelled — the order genuinely does belong to it.
+  // The guest left the Razorpay modal open past BOOKING_HOLD_MINUTES,
+  // `expireStalePaymentHolds()` asked Razorpay, was told "unpaid" (true at
+  // that instant), voided the booking and released the room; then the guest
+  // paid. Marking that booking paid charged them for a stay that no longer
+  // existed and emailed them "Booking Confirmed!" while the confirmation page
+  // told them the opposite (B-38).
+  //
+  // The money is real, so refusing outright is not enough either. Try to give
+  // the room back first — that is almost always possible, because a hold
+  // expiring does not mean anyone else took the room in the seconds since.
+  if (existing.status === "cancelled" || existing.status === "no_show") {
+    const reinstated = await reinstateCancelledBooking(existing, razorpayPaymentId);
+    if (!reinstated) {
+      // The room really is gone (or the stay is already in the past). Record
+      // the payment so it is visible in the booking's Payment History and can
+      // be refunded, and say so plainly rather than confirming anything.
+      await recordUnmatchedPayment(existing, {
+        razorpayPaymentId,
+        razorpayOrderId,
+        razorpaySignature,
+      });
+      return fail(UNCONFIRMABLE_ERROR, 409);
+    }
   }
 
   // Update booking: mark paid, store payment ID

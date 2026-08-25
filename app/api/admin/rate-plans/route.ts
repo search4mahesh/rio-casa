@@ -4,14 +4,15 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
+import { isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(100),
   roomType: z.enum(RATE_PLAN_ROOM_TYPES),
   baseRate: z.number().positive("Base rate must be positive"),
   extraBedRate: z.number().min(0).default(0),
-  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
-  validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  validFrom: z.string().refine(isDayString, "Use YYYY-MM-DD"),
+  validTo: z.string().refine(isDayString, "Use YYYY-MM-DD"),
   weekendMarkup: z.number().min(0).max(100).default(0),
   minNights: z.number().int().min(1).default(1),
   priority: z.number().int().min(0).default(0),

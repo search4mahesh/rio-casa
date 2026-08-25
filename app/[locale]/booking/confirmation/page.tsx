@@ -3,6 +3,9 @@ import { CheckCircle, QrCode, SearchX, XCircle } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const generateMetadata = () => pageMetadata("confirmation");
 
 export const dynamic = "force-dynamic";
 

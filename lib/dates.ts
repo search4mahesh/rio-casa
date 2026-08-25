@@ -50,7 +50,29 @@ export function dateOnly(day: string): Date {
   if (!YMD.test(day)) throw new RangeError(`Expected YYYY-MM-DD, got "${day}"`);
   const d = new Date(`${day}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) throw new RangeError(`Invalid date: "${day}"`);
+  // A day that does not exist does not come back as `Invalid Date` — it rolls
+  // over. `new Date("2026-02-30T00:00:00.000Z")` is 2 March, so blocking
+  // "30 Feb" silently blocked a day in March and the caller was never told
+  // (B-45). Round-tripping is the only way to catch it.
+  if (d.toISOString().slice(0, 10) !== day) {
+    throw new RangeError(`No such date: "${day}"`);
+  }
   return d;
+}
+
+/**
+ * True when `s` is a real calendar day in "YYYY-MM-DD" form — the predicate
+ * behind `dateOnly`, without the throw.
+ *
+ * Use it in Zod schemas instead of a bare `/^\d{4}-\d{2}-\d{2}$/`. The regex
+ * alone accepts "2026-02-30" and "2026-11-31", which `dateOnly` now rejects —
+ * so a route validating with the regex and then parsing would answer with an
+ * empty 500 instead of a 400 (the B-41 shape).
+ */
+export function isDayString(s: string): boolean {
+  if (!YMD.test(s)) return false;
+  const d = new Date(`${s}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
 /** Today at the property, as a `DATE`-column value. */
@@ -112,4 +134,19 @@ export function addMonths(day: Date, n: number): Date {
   const lastDayOfTarget = new Date(Date.UTC(year, month + n + 1, 0)).getUTCDate();
 
   return new Date(Date.UTC(year, month + n, Math.min(dayOfMonth, lastDayOfTarget)));
+}
+
+/**
+ * Matches a calendar month, "YYYY-MM", with the month constrained to 01–12.
+ *
+ * A bare `/^\d{4}-\d{2}$/` accepts "2026-99", which then reaches
+ * `dateOnly("2026-99-01")`, throws a `RangeError`, and leaves the route
+ * returning an empty 500 — a blank body the admin panels cannot even parse
+ * (B-41). Four routes had the loose version; this is the one they share.
+ */
+export const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** True when `s` is a "YYYY-MM" month this codebase can actually parse. */
+export function isMonthString(s: string): boolean {
+  return MONTH_PATTERN.test(s);
 }

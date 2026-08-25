@@ -56,12 +56,22 @@ describe("Field", () => {
  * A guard, not a snapshot: the codemod that fixed ~70 call sites is easy to
  * regress one hand-written form at a time.
  */
-describe("admin forms", () => {
-  const files = execSync('grep -rl "<label" --include=*.tsx components/admin app/admin', { encoding: "utf8" })
-    .trim().split("\n").filter(Boolean);
+/**
+ * Scoped to `components/admin app/admin` for a long time, which is how the
+ * booking wizard — the one form every guest passes through — came to have
+ * eight bare labels and not a single `htmlFor` (B-49). It covers every
+ * component and page now. `components/ui/Field.tsx` is excluded because it is
+ * the primitive that emits the correct label, and it is tested directly above.
+ */
+describe("every form on the site", () => {
+  const files = execSync('grep -rl "<label" --include=*.tsx components app', { encoding: "utf8" })
+    .trim().split("\n").filter(Boolean)
+    .filter((f) => !/Field\.tsx$/.test(f));
 
-  it("finds the admin files to check", () => {
+  it("finds the files to check, on both sides of the site", () => {
     expect(files.length).toBeGreaterThan(10);
+    // Guest-facing forms are in scope now, not only admin ones.
+    expect(files.some((f) => !/admin/.test(f))).toBe(true);
   });
 
   it("has no <label> that names nothing", () => {
@@ -69,9 +79,25 @@ describe("admin forms", () => {
 
     for (const f of files) {
       const lines = readFileSync(f, "utf8").split(/\r?\n/);
+      // Prose about labels is not a label. A comment explaining *why* a
+      // control group uses `role="group"` legitimately mentions the tag, and
+      // flagging those would push people into rewording their documentation to
+      // appease a regex. Block state is tracked across lines, because the
+      // mention is usually on a continuation line rather than the opener.
+      let inComment = false;
+
       for (let i = 0; i < lines.length; i++) {
-        if (!/<label\b/.test(lines[i])) continue;
-        if (/htmlFor=/.test(lines[i])) continue;
+        const line = lines[i];
+        const opens = /\/\*/.test(line);
+        const closes = /\*\//.test(line);
+        const wasInComment = inComment;
+        if (opens && !closes) inComment = true;
+        else if (closes) inComment = false;
+        if (wasInComment || (opens && !closes)) continue;
+
+        if (!/<label\b/.test(line)) continue;
+        if (/htmlFor=/.test(line)) continue;
+        if (/^\s*\/\//.test(line)) continue;
 
         // A label may instead wrap its control — also correct.
         let buf = lines[i];

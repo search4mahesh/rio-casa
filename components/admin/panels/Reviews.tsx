@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 import { propertyDayString } from "@/lib/dates";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type Review = {
   id: string; platform: string; guestName: string; rating: number;
@@ -43,6 +45,7 @@ export default function ReviewsPanel() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [kpi, setKpi] = useState<KPI>({ total: 0, avgRating: 0, respondedPct: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState("all");
   const [respondedFilter, setRespondedFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
@@ -50,12 +53,13 @@ export default function ReviewsPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = new URLSearchParams();
     if (platformFilter !== "all") params.set("platform", platformFilter);
     if (respondedFilter !== "all") params.set("responded", respondedFilter);
-    const res = await fetch(`/api/admin/reviews?${params}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/reviews?${params}`);
     if (data.success) { setReviews(data.data.reviews); setKpi(data.data.kpi); }
+    else setLoadError(data.error);
     setLoading(false);
   }, [platformFilter, respondedFilter]);
 
@@ -63,20 +67,18 @@ export default function ReviewsPanel() {
 
 
   async function toggleResponded(id: string, current: boolean) {
-    const res = await fetch(`/api/admin/reviews/${id}`, {
+    const data = await apiJson(`/api/admin/reviews/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ responded: !current }),
     });
-    const data = await res.json();
     if (data.success) load();
     else showToast(data.error ?? "Update failed");
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this review log?")) return;
-    const res = await fetch(`/api/admin/reviews/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/reviews/${id}`, { method: "DELETE" });
     if (data.success) { showToast("Deleted"); load(); }
     else showToast(data.error ?? "Delete failed");
   }
@@ -131,6 +133,8 @@ export default function ReviewsPanel() {
       {/* Reviews list */}
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
       ) : reviews.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">⭐</div>
@@ -209,12 +213,11 @@ function AddReviewModal({ onClose }: { onClose: () => void }) {
       reviewUrl: form.reviewUrl || null,
       notes: form.notes || null,
     };
-    const res = await fetch("/api/admin/reviews", {
+    const data = await apiJson("/api/admin/reviews", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
     if (data.success) onClose();
     else setError(data.error ?? "Failed");
     setLoading(false);

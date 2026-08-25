@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import Link from "next/link";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
 
 type Booking = {
   id: string; bookingNumber: string;
@@ -71,8 +72,7 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/guests/${id}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/guests/${id}`);
     if (data.success) {
       setGuest(data.data);
       setNotes(data.data.notes ?? "");
@@ -102,12 +102,11 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
     for (const [k, v] of Object.entries(form)) {
       payload[k] = v === "" ? null : v;
     }
-    const res = await fetch(`/api/admin/guests/${id}`, {
+    const data = await apiJson(`/api/admin/guests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
     if (data.success) { showToast("Guest updated"); setEditing(false); await load(); }
     else showToast(data.error ?? "Save failed");
     setSaving(false);
@@ -115,12 +114,11 @@ export default function GuestProfilePage({ params }: { params: { id: string } })
 
   async function saveNotes() {
     setSavingNotes(true);
-    const res = await fetch(`/api/admin/guests/${id}`, {
+    const data = await apiJson(`/api/admin/guests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notes: notes || null }),
     });
-    const data = await res.json();
     if (data.success) showToast("Notes saved");
     else showToast(data.error ?? "Save failed");
     setSavingNotes(false);

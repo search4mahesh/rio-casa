@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { dateOnly, addMonths, propertyDayString, toDayString } from "@/lib/dates";
+import { dateOnly, addMonths, propertyDayString, toDayString, isMonthString } from "@/lib/dates";
 import { CHANNEL_PAID_SOURCES } from "@/lib/labels";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   // the wrong period.
   const month = searchParams.get("month") || propertyDayString().slice(0, 7);
 
-  if (!/^\d{4}-\d{2}$/.test(month)) {
+  if (!isMonthString(month)) {
     return fail("Use YYYY-MM for month", 400);
   }
 

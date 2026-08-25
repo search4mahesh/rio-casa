@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
 
 type Recipient = { guestName: string; phone: string | null; email: string | null; bookingNumber?: string; checkIn?: string; roomName?: string };
 
@@ -73,12 +74,11 @@ export default function CommunicationsPanel() {
 
   async function doPreview() {
     setLoading(true); setSendResult(null);
-    const res = await fetch("/api/admin/communications", {
+    const data = await apiJson("/api/admin/communications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "preview", channel, filter: buildFilter(), subject, body }),
     });
-    const data = await res.json();
     if (data.success) setPreview(data.data);
     else showToast(data.error ?? "Preview failed");
     setLoading(false);
@@ -88,15 +88,14 @@ export default function CommunicationsPanel() {
     if (!preview || preview.reachableCount === 0) { showToast("Run preview first"); return; }
     if (!confirm(`Send ${preview.reachableCount} ${channel} message${preview.reachableCount !== 1 ? "s" : ""}?`)) return;
     setLoading(true);
-    const res = await fetch("/api/admin/communications", {
+    const data = await apiJson("/api/admin/communications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "send", channel, filter: buildFilter(), subject, body }),
     });
-    const data = await res.json();
     if (data.success) {
-      setSendResult(data);
-      showToast(`Sent ${data.sentCount} ${channel} message${data.sentCount !== 1 ? "s" : ""}`);
+      setSendResult(data.data);
+      showToast(`Sent ${data.data.sentCount} ${channel} message${data.data.sentCount !== 1 ? "s" : ""}`);
       setPreview(null);
     } else {
       showToast(data.error ?? "Send failed");
@@ -105,8 +104,7 @@ export default function CommunicationsPanel() {
   }
 
   const loadLogs = useCallback(async () => {
-    const res = await fetch("/api/admin/communications");
-    const data = await res.json();
+    const data = await apiJson("/api/admin/communications");
     if (data.success) setLogs(data.data);
   }, []);
 

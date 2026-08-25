@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type GridBooking = {
   id: string;
@@ -48,18 +50,18 @@ export default function OccupancyGridPanel() {
   const [rooms, setRooms] = useState<GridRoom[]>([]);
   const [bookings, setBookings] = useState<GridBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = Array.from({ length: DAYS }, (_, i) => addDays(today, i));
 
   useEffect(() => {
-    fetch("/api/admin/occupancy")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) { setRooms(d.data.rooms); setBookings(d.data.bookings); }
-        setLoading(false);
-      });
+    apiJson("/api/admin/occupancy").then((d) => {
+      if (d.success) { setRooms(d.data.rooms); setBookings(d.data.bookings); }
+      else setLoadError(d.error);
+      setLoading(false);
+    });
   }, []);
 
   const byRoom: Record<string, GridBooking[]> = {};
@@ -72,6 +74,7 @@ export default function OccupancyGridPanel() {
   }
 
   if (loading) return <div className="py-16 text-center text-gray-400">Loading grid…</div>;
+  if (loadError) return <ErrorState message={loadError} className="py-16" />;
 
   const totalWidth = LABEL_W + DAYS * COL_W;
 

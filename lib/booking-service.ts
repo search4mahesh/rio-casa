@@ -104,8 +104,21 @@ export async function checkAvailability(
 
 // Check all rooms available for a date range
 export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests = 1) {
+  // Same two guards `checkAvailability` applies to a single room. Without them
+  // the room *list* answered "available" for a range `checkAvailability` and
+  // `createBooking` both refuse, so /rooms offered stays nobody could book
+  // (B-42). The list and the single-room check must agree.
+  if (checkIn >= checkOut) return [];
+  if (checkIn < todayDate()) return [];
+
   const allRooms = await prisma.room.findMany({
     where: { isActive: true, maxGuests: { gte: minGuests } },
+    // Ordered on purpose. The wizard shows one card per room type and keeps
+    // the first of each, so without this the room a guest is offered — and its
+    // price — was whatever Postgres happened to return first. Cheapest first
+    // matches how `getRoomCategories` prices a category, so /rooms and the
+    // wizard cannot quote different numbers for the same type (B-55).
+    orderBy: [{ pricePerNight: "asc" }, { roomNumber: "asc" }],
   });
 
   // Rooms with conflicting bookings
@@ -456,11 +469,18 @@ function computeDiscount(promo: PromoRow, subtotal: number): number {
  * A claim that is never spent is handed back by `releasePromoClaim`.
  */
 async function claimPromo(
-  code: string,
+  rawCode: string,
   checkIn: Date,
   nights: number,
   subtotal: number
 ): Promise<{ id: string; discount: number } | null> {
+  // Trimmed here, and in `previewPromo`, so the two cannot disagree about
+  // which string they are matching. They did: the preview route trimmed and
+  // this did not, so " SUMMER20 " — a paste, or a phone keyboard adding a
+  // trailing space — previewed as a valid discount and then failed to claim,
+  // failing the whole booking with "that promo code is no longer valid"
+  // against a code the guest had just been shown working (B-43).
+  const code = rawCode.trim();
   const day = toDayString(checkIn);
   const rows = await prisma.$queryRaw<Array<PromoRow & { id: string }>>`
     UPDATE promotions
@@ -497,11 +517,13 @@ async function claimPromo(
  * discounted total here and get charged more once claimPromo comes up empty.
  */
 export async function previewPromo(
-  code: string,
+  rawCode: string,
   checkIn: Date,
   nights: number,
   subtotal: number
 ): Promise<{ valid: boolean; discount: number; reason?: string }> {
+  // Trimmed to match `claimPromo` exactly — see the note there.
+  const code = rawCode.trim();
   const day = toDayString(checkIn);
   const rows = await prisma.$queryRaw<
     Array<
@@ -559,7 +581,10 @@ async function releasePromoClaim(id: string): Promise<void> {
  * started — the same leak `unspentPromoClaim` exists to close inside
  * `createBooking` itself, just on the other side of that boundary.
  */
-export async function releasePromoClaimByCode(code: string): Promise<void> {
+export async function releasePromoClaimByCode(rawCode: string): Promise<void> {
+  // Trimmed like `claimPromo`, or a code that was claimed as "SUMMER20" would
+  // not be found when handed back under " SUMMER20 " and the redemption leaks.
+  const code = rawCode.trim();
   await prisma.$executeRaw`
     UPDATE promotions SET used_count = used_count - 1 WHERE code = ${code} AND used_count > 0
   `;
@@ -767,7 +792,8 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
             paymentStatus: "pending",
             source: input.source ?? "website",
             sourceBookingId: input.sourceBookingId,
-            promoCode: input.promoCode,
+            // Stored as claimed, so the booking and `promotions.code` agree.
+            promoCode: input.promoCode?.trim(),
             specialRequests: input.specialRequests,
           },
           include: { room: true },
@@ -1263,11 +1289,25 @@ export async function runNightAudit() {
     await recalcGuestTotals(prisma, guestId);
   }
 
-  // Flag due check-outs
+  // Flag due check-outs.
+  //
+  // `checkOut: { lte: today }`, not `checkOut: today` — this is the departure
+  // half of B-04, which fixed exactly this for arrivals. Matching the day
+  // exactly meant a checkout the desk never pressed dropped off the list at
+  // midnight and was never mentioned again: six stays sat `checked_in` up to
+  // 91 days past departure, holding their rooms, and — because
+  // `generateInvoice` only runs from the check-out route — with no GST invoice
+  // between them (B-51).
+  //
+  // Nothing here closes them. An overdue checkout is a real stay that ended,
+  // but the guest may equally still be in the room, and only the desk knows
+  // which. This makes them visible every day until someone decides;
+  // `prisma/close-overdue-checkouts.ts` is the tool for a backlog.
   const dueCheckouts = await prisma.booking.findMany({
-    where: { checkOut: today, status: "checked_in" },
+    where: { checkOut: { lte: today }, status: "checked_in" },
     include: { room: true },
   });
+  const overdueCheckouts = dueCheckouts.filter((b) => b.checkOut < today).length;
   for (const b of dueCheckouts) {
     await prisma.roomStatus.upsert({
       where: { roomId: b.roomId },
@@ -1276,22 +1316,72 @@ export async function runNightAudit() {
     });
   }
 
-  // Flag today's arrivals
+  // Flag today's arrivals.
   const arrivals = await prisma.booking.findMany({
     where: { checkIn: today, status: "confirmed" },
   });
+
+  // `due_checkin` is a statement about *today*, so yesterday's flags are stale
+  // by definition and this re-derives them rather than adding to them.
+  //
+  // They used to accumulate with nothing able to remove them. The upsert below
+  // set `occupancy` but not `currentBookingId`, and every path that frees a
+  // room keys on exactly that column — `releaseRoomsHolding` matches
+  // `currentBookingId: { in: … }`, the cancel route matches
+  // `currentBookingId: booking.id`, and `prisma/repair-data.ts` looks for the
+  // same drift. None of them can match a NULL, so a guest who no-showed,
+  // cancelled or moved their dates left the room reading "Due Check-in" for
+  // good, and the flags piled up until every room claimed to expect someone.
+  // `/api/admin/night-audit/run` has always written `currentBookingId` here;
+  // this is the scheduled path catching up with it (B-48).
+  //
+  // Clearing is scoped to rooms this audit owns: `occupied` and
+  // `out_of_order` are somebody else's state, and a room with a guest still
+  // checked into it is never reset — a stale flag is better than hiding
+  // someone who is actually in the room.
+  const arrivalRoomIds = arrivals.map((b) => b.roomId);
+  const occupiedRoomIds = (
+    await prisma.booking.findMany({
+      where: { status: "checked_in" },
+      select: { roomId: true },
+      distinct: ["roomId"],
+    })
+  ).map((b) => b.roomId);
+
+  const staleFlags = await prisma.roomStatus.updateMany({
+    where: {
+      occupancy: "due_checkin",
+      roomId: { notIn: [...arrivalRoomIds, ...occupiedRoomIds] },
+    },
+    data: { occupancy: "vacant", currentBookingId: null, currentGuestId: null },
+  });
+
   for (const b of arrivals) {
     await prisma.roomStatus.upsert({
       where: { roomId: b.roomId },
-      create: { roomId: b.roomId, occupancy: "due_checkin" },
-      update: { occupancy: "due_checkin" },
+      // `currentBookingId` is what lets this flag be cleared again later.
+      create: {
+        roomId: b.roomId,
+        occupancy: "due_checkin",
+        currentBookingId: b.id,
+        currentGuestId: b.guestId ?? null,
+      },
+      update: {
+        occupancy: "due_checkin",
+        currentBookingId: b.id,
+        currentGuestId: b.guestId ?? null,
+      },
     });
   }
 
   return {
     noShows: noShows.count,
     dueCheckouts: dueCheckouts.length,
+    // Broken out so "3 due today" is not silently inflated by a backlog that
+    // needs a different response — see B-51.
+    overdueCheckouts,
     arrivals: arrivals.length,
+    staleFlagsCleared: staleFlags.count,
     holdsExpired: holds.expired,
     holdsRetained: holds.retained,
   };

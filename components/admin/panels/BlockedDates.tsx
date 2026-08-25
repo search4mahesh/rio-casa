@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import { useToast, Toast } from "@/components/ui/Toast";
 import { propertyDayString } from "@/lib/dates";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type BlockedDate = {
   id: string;
@@ -18,19 +20,20 @@ export default function BlockedDatesPanel() {
   const [blocked, setBlocked] = useState<BlockedDate[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [blockedRes, roomsRes] = await Promise.all([
-      fetch("/api/admin/blocked-dates"),
-      fetch("/api/admin/rooms/status"),
+    setLoadError(null);
+    const [blockedData, roomsData] = await Promise.all([
+      apiJson("/api/admin/blocked-dates"),
+      apiJson("/api/admin/rooms/status"),
     ]);
-    const blockedData = await blockedRes.json();
-    const roomsData = await roomsRes.json();
     if (blockedData.success) setBlocked(blockedData.data);
+    else setLoadError(blockedData.error);
     if (roomsData.success) setRooms(roomsData.data);
     setLoading(false);
   }, []);
@@ -40,8 +43,7 @@ export default function BlockedDatesPanel() {
 
   async function handleDelete(id: string) {
     setDeletingId(id);
-    const res = await fetch(`/api/admin/blocked-dates/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/blocked-dates/${id}`, { method: "DELETE" });
     if (data.success) { showToast("Removed"); await load(); }
     else showToast(data.error ?? "Delete failed");
     setDeletingId(null);
@@ -84,6 +86,8 @@ export default function BlockedDatesPanel() {
 
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
       ) : blocked.length === 0 ? (
         <div className="text-center py-16">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -177,7 +181,7 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/admin/blocked-dates", {
+    const data = await apiJson("/api/admin/blocked-dates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -187,7 +191,6 @@ function BlockDatesModal({ rooms, onClose }: { rooms: Room[]; onClose: () => voi
         reason: form.reason || undefined,
       }),
     });
-    const data = await res.json();
     if (data.success) onClose();
     else setError(data.error ?? "Failed to block dates");
     setLoading(false);

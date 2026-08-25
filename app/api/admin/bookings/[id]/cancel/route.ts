@@ -30,6 +30,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json().catch(() => ({}));
     const { reason, refundAmount } = CancelSchema.parse(body);
 
+    // A refund cannot exceed what the stay was worth. Unbounded, a mistyped
+    // amount — an extra zero, transposed digits — was stored as-is and shown
+    // on the booking page as fact, with nothing anywhere to catch it. Same cap
+    // and same reasoning as walk-in `amountPaid` (B-26); this is its twin.
+    if (refundAmount != null && refundAmount > booking.totalAmount) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Refund (₹${refundAmount.toLocaleString("en-IN")}) is more than the booking total (₹${booking.totalAmount.toLocaleString("en-IN")})`,
+        },
+        { status: 400 }
+      );
+    }
+
     await prisma.$transaction([
       prisma.booking.update({
         where: { id: params.id },

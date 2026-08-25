@@ -4,6 +4,7 @@ import { useEffect, useState, useId } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
 
 type BookingDetail = {
   id: string;
@@ -81,8 +82,7 @@ export default function BookingDetailPage() {
   const [showCancel, setShowCancel] = useState(false);
 
   async function load() {
-    const res = await fetch(`/api/admin/bookings/${id}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/bookings/${id}`);
     if (data.success) setBooking(data.data);
     setLoading(false);
   }
@@ -92,22 +92,20 @@ export default function BookingDetailPage() {
 
   async function doAction(action: "checkin" | "checkout", label: string) {
     setActionLoading(action);
-    const res = await fetch(`/api/admin/bookings/${id}/${action}`, { method: "PATCH" });
-    const data = await res.json();
-    if (data.success) { showToast(data.message); load(); }
+    const data = await apiJson(`/api/admin/bookings/${id}/${action}`, { method: "PATCH" });
+    if (data.success) { showToast(data.message ?? `${label} done`); load(); }
     else showToast(data.error ?? `${label} failed`);
     setActionLoading("");
   }
 
   async function doCancel() {
     setActionLoading("cancel");
-    const res = await fetch(`/api/admin/bookings/${id}/cancel`, {
+    const data = await apiJson(`/api/admin/bookings/${id}/cancel`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: cancelReason }),
     });
-    const data = await res.json();
-    if (data.success) { showToast(data.message); setShowCancel(false); load(); }
+    if (data.success) { showToast(data.message ?? "Booking cancelled"); setShowCancel(false); load(); }
     else showToast(data.error ?? "Cancel failed");
     setActionLoading("");
   }

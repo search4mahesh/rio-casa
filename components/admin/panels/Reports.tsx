@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import { ROOM_TYPE_LABEL } from "@/lib/labels";
 import { today, dateOnly, toDayString, addDays, addMonths, startOfMonth } from "@/lib/dates";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type Report = {
   from: string;
@@ -125,14 +127,16 @@ export default function ReportsPanel() {
   const fieldId = useId();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [from, setFrom] = useState(() => toDayString(addMonths(startOfMonth(today()), -11)));
   const [to, setTo] = useState(todayISO());
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/reports?from=${from}&to=${to}`);
-    const data = await res.json();
+    setLoadError(null);
+    const data = await apiJson(`/api/admin/reports?from=${from}&to=${to}`);
     if (data.success) setReport(data.data);
+    else setLoadError(data.error);
     setLoading(false);
   }, [from, to]);
 
@@ -188,6 +192,8 @@ export default function ReportsPanel() {
 
       {loading ? (
         <div className="text-center py-20 text-gray-400">Loading report…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-20" />
       ) : !report ? (
         <div className="text-center py-20 text-gray-400">No data</div>
       ) : (

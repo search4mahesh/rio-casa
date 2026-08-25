@@ -3,13 +3,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
-import { dateOnly } from "@/lib/dates";
+import { dateOnly, isDayString } from "@/lib/dates";
 
 const SLOT = z.enum(["morning", "evening", "night"]);
 const STATION = z.enum(["frontdesk", "housekeeping", "kitchen"]);
 
 const UpsertSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  date: z.string().refine(isDayString, "Use YYYY-MM-DD"),
   slot: SLOT,
   station: STATION,
   staffId: z.string().min(1),
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const weekStartParam = searchParams.get("weekStart");
 
-  if (!weekStartParam || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartParam)) {
+  if (!weekStartParam || !isDayString(weekStartParam)) {
     return NextResponse.json({ success: false, error: "weekStart (YYYY-MM-DD) is required" }, { status: 400 });
   }
 

@@ -7,6 +7,7 @@ import type { AdminPayload } from "@/lib/admin-auth";
 import { hasMinRole } from "@/lib/rbac-utils";
 import { NAV } from "@/lib/admin-nav";
 import { ROLE_LABEL } from "@/lib/labels";
+import { apiJson } from "@/lib/api-client";
 
 const ICONS: Record<string, React.ReactNode> = {
   home: (
@@ -43,10 +44,8 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
   const [maintenanceCount, setMaintenanceCount] = useState(0);
 
   useEffect(() => {
-    fetch("/api/admin/housekeeping?maintenanceCount=true")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setMaintenanceCount(d.data); })
-      .catch(() => {});
+    apiJson("/api/admin/housekeeping?maintenanceCount=true")
+      .then((d) => { if (d.success) setMaintenanceCount(d.data); });
   }, [pathname]); // refresh count when navigating
 
   async function handleLogout() {

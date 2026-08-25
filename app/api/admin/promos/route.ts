@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
+import { isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
   code: z.string().min(2).max(30).regex(/^[A-Z0-9_-]+$/, "Code must be uppercase letters, numbers, _ or -"),
@@ -10,8 +11,8 @@ const CreateSchema = z.object({
   discountType: z.enum(["percentage", "flat"]),
   discountValue: z.number().positive("Discount value must be positive"),
   maxDiscount: z.number().positive().optional(),
-  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
-  validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  validFrom: z.string().refine(isDayString, "Use YYYY-MM-DD"),
+  validTo: z.string().refine(isDayString, "Use YYYY-MM-DD"),
   minNights: z.number().int().min(1).default(1),
   minAmount: z.number().min(0).default(0),
   usageLimit: z.number().int().positive().optional(),

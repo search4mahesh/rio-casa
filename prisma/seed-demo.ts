@@ -6,6 +6,15 @@ import { ROOMS } from "./seed-rooms";
 
 const prisma = makeScriptClient();
 
+/**
+ * Remove duplicate packages and testimonials left by earlier, non-idempotent
+ * runs. Off by default — this deletes rows, and the seeds below no longer
+ * create duplicates, so the only thing it fixes is history.
+ *
+ *   npx tsx prisma/seed-demo.ts --prune
+ */
+const PRUNE = process.argv.includes("--prune");
+
 const GUESTS = [
   { firstName: "Rahul",  lastName: "Sharma",   phone: "9823456701", email: "rahul.sharma@gmail.com",  city: "Pune",       state: "Maharashtra" },
   { firstName: "Priya",  lastName: "Patel",    phone: "9812345678", email: "priya.patel@yahoo.com",   city: "Mumbai",     state: "Maharashtra" },
@@ -18,6 +27,38 @@ const GUESTS = [
   { firstName: "Suresh", lastName: "Iyer",     phone: "9210987654", email: "suresh.iyer@gmail.com",   city: "Chennai",    state: "Tamil Nadu"  },
   { firstName: "Deepa",  lastName: "Patil",    phone: "9109876543", email: "deepa.patil@gmail.com",   city: "Aurangabad", state: "Maharashtra" },
 ];
+
+/**
+ * Report — and with `--prune`, remove — rows sharing a key, keeping the oldest
+ * of each. Only reachable for the two tables this script used to duplicate.
+ */
+async function pruneDuplicates(model: "package" | "testimonial", keyField: "nameEn" | "guestName") {
+  const rows: Array<Record<string, unknown>> =
+    model === "package"
+      ? await prisma.package.findMany({ orderBy: { createdAt: "asc" } })
+      : await prisma.testimonial.findMany({ orderBy: { createdAt: "asc" } });
+
+  const seen = new Set<string>();
+  const extra: string[] = [];
+  for (const r of rows) {
+    const key = String(r[keyField]);
+    if (seen.has(key)) extra.push(String(r.id));
+    else seen.add(key);
+  }
+  if (extra.length === 0) return;
+
+  if (!PRUNE) {
+    console.log(
+      `  ! ${extra.length} duplicate ${model}(s) from earlier runs — re-run with --prune to remove them`
+    );
+    return;
+  }
+  const { count } =
+    model === "package"
+      ? await prisma.package.deleteMany({ where: { id: { in: extra } } })
+      : await prisma.testimonial.deleteMany({ where: { id: { in: extra } } });
+  console.log(`  ✓ pruned ${count} duplicate ${model}(s)`);
+}
 
 function addDays(date: Date, days: number) {
   const d = new Date(date);
@@ -249,10 +290,26 @@ async function main() {
     },
   ];
 
+  // Keyed on `nameEn` rather than blind-created. This used to be
+  // `create(...).catch(() => {})`, apparently meant to make re-runs safe — but
+  // there is no unique constraint on `nameEn`, so the insert *succeeded* and
+  // duplicated, and the `catch` only hid genuine errors. Four runs left the
+  // database holding four copies of every package (B-54). `upsert` is not
+  // available without that constraint, and a unique index cannot be added
+  // while the duplicates exist, so this matches by name explicitly.
+  let pkgCreated = 0, pkgUpdated = 0;
   for (const p of packages) {
-    await prisma.package.create({ data: p }).catch(() => {});
+    const existing = await prisma.package.findFirst({ where: { nameEn: p.nameEn } });
+    if (existing) {
+      await prisma.package.update({ where: { id: existing.id }, data: p });
+      pkgUpdated++;
+    } else {
+      await prisma.package.create({ data: p });
+      pkgCreated++;
+    }
   }
-  console.log(`  ✓ ${packages.length} packages created`);
+  console.log(`  ✓ packages: ${pkgCreated} created, ${pkgUpdated} updated`);
+  await pruneDuplicates("package", "nameEn");
 
   // ── Testimonials ───────────────────────────────────────────────
   console.log("Creating testimonials...");
@@ -265,10 +322,23 @@ async function main() {
     { guestName: "Vikram Singh",     location: "Bangalore", rating: 4, review: "Lovely property. Waking up to the forest view every morning was something special. Would have given 5 stars but the WiFi was patchy. Everything else was perfect.", isApproved: true },
   ];
 
+  // Same reasoning as packages above — matched by guest name so a re-run
+  // refreshes rather than multiplies (B-54).
+  let tstCreated = 0, tstUpdated = 0;
   for (const t of testimonials) {
-    await prisma.testimonial.create({ data: { ...t, stayDate: addDays(today, -randomInt(10, 60)) } });
+    const existing = await prisma.testimonial.findFirst({ where: { guestName: t.guestName } });
+    if (existing) {
+      await prisma.testimonial.update({ where: { id: existing.id }, data: t });
+      tstUpdated++;
+    } else {
+      await prisma.testimonial.create({
+        data: { ...t, stayDate: addDays(today, -randomInt(10, 60)) },
+      });
+      tstCreated++;
+    }
   }
-  console.log(`  ✓ ${testimonials.length} testimonials created`);
+  console.log(`  ✓ testimonials: ${tstCreated} created, ${tstUpdated} updated`);
+  await pruneDuplicates("testimonial", "guestName");
 
   // ── Expenses ───────────────────────────────────────────────────
   console.log("Creating expenses...");

@@ -3,12 +3,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation } from "@/lib/api-response";
-import { dateOnly, today as todayDate, addDays } from "@/lib/dates";
+import { dateOnly, today as todayDate, addDays, isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
   roomId: z.string().nullable().optional(),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
+  startDate: z.string().refine(isDayString, "Use YYYY-MM-DD format"),
+  endDate: z.string().refine(isDayString, "Use YYYY-MM-DD format"),
   reason: z.string().max(200).optional(),
 });
 

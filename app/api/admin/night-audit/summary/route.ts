@@ -27,8 +27,11 @@ export async function GET(req: NextRequest) {
       select: bookingSelect,
       orderBy: { checkIn: "asc" },
     }),
+    // No lower bound: a checkout the desk never pressed stays on this list
+    // instead of vanishing at midnight (B-51). The oldest sort first, because
+    // those are the ones that need a decision.
     prisma.booking.findMany({
-      where: { checkOut: { gte: today, lt: tomorrow }, status: "checked_in" },
+      where: { checkOut: { lt: tomorrow }, status: "checked_in" },
       select: bookingSelect,
       orderBy: { checkOut: "asc" },
     }),

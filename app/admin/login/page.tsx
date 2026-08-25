@@ -4,6 +4,7 @@ import { useState, useId } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { apiJson } from "@/lib/api-client";
 
 const schema = z.object({
   email: z.string().email("Invalid email"),
@@ -23,13 +24,12 @@ export default function AdminLoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/auth/login", {
+      const json = await apiJson("/api/admin/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
+      if (!json.success) {
         setError(json.error || "Login failed");
         return;
       }

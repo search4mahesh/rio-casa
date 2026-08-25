@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useToast, Toast } from "@/components/ui/Toast";
 import { WalkInModal } from "@/components/admin/WalkInModal";
+import { apiJson } from "@/lib/api-client";
 
 type Booking = {
   id: string;
@@ -77,8 +78,7 @@ export default function BookingsPage() {
     if (status !== "all") params.set("status", status);
     if (source !== "all") params.set("source", source);
     if (search) params.set("search", search);
-    const res = await fetch(`/api/admin/bookings?${params}`);
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/bookings?${params}`);
     if (data.success) {
       setBookings(data.data.bookings);
       setTotal(data.data.total);
@@ -92,10 +92,9 @@ export default function BookingsPage() {
   async function doAction(id: string, action: "checkin" | "checkout" | "cancel") {
     setActionLoading(id + action);
     try {
-      const res = await fetch(`/api/admin/bookings/${id}/${action}`, { method: "PATCH" });
-      const data = await res.json();
+      const data = await apiJson(`/api/admin/bookings/${id}/${action}`, { method: "PATCH" });
       if (data.success) {
-        showToast(data.message);
+        showToast(data.message ?? "Done");
         load();
       } else {
         showToast(data.error ?? "Action failed");

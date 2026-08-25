@@ -49,11 +49,17 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 3. Flag checked-in guests whose checkout is today as due_checkout
+  // 3. Flag checked-in guests whose checkout has arrived as due_checkout.
+  //
+  // `lt: tomorrow` with no lower bound, so a checkout the desk never pressed
+  // keeps appearing instead of dropping off the list at midnight — the
+  // departure half of B-04, and the same open-ended shape used for no-shows
+  // above (B-51). Nothing here closes them; only the desk does.
   const dueDepartures = await prisma.booking.findMany({
-    where: { checkOut: { gte: today, lt: tomorrow }, status: "checked_in" },
-    select: { id: true, roomId: true },
+    where: { checkOut: { lt: tomorrow }, status: "checked_in" },
+    select: { id: true, roomId: true, checkOut: true },
   });
+  const overdueDepartures = dueDepartures.filter((b) => b.checkOut < today).length;
 
   for (const booking of dueDepartures) {
     await prisma.roomStatus.upsert({
@@ -73,6 +79,7 @@ export async function POST(req: NextRequest) {
         noShowsMarked: noShows.count,
         arrivalsFlaged: todayArrivals.length,
         departuresFlagged: dueDepartures.length,
+        overdueDepartures,
         runAt: new Date().toISOString(),
         runBy: staff.name,
       },
@@ -83,5 +90,6 @@ export async function POST(req: NextRequest) {
       noShowsMarked: noShows.count,
       arrivalsFlagged: todayArrivals.length,
       departuresFlagged: dueDepartures.length,
+      overdueDepartures,
     });
 }

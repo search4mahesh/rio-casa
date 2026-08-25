@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import { ROOM_TYPE_FILTER_LABEL as ROOM_TYPE_LABEL, RATE_PLAN_ROOM_TYPES } from "@/lib/labels";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { apiJson } from "@/lib/api-client";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 type RatePlan = {
   id: string; name: string; roomType: string;
@@ -19,6 +21,7 @@ function fmtDate(iso: string) {
 export default function RatePlansPanel() {
   const [plans, setPlans] = useState<RatePlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<RatePlan | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -27,9 +30,10 @@ export default function RatePlansPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/admin/rate-plans");
-    const data = await res.json();
+    setLoadError(null);
+    const data = await apiJson("/api/admin/rate-plans");
     if (data.success) setPlans(data.data);
+    else setLoadError(data.error);
     setLoading(false);
   }, []);
 
@@ -38,12 +42,11 @@ export default function RatePlansPanel() {
 
   async function toggleActive(plan: RatePlan) {
     setTogglingId(plan.id);
-    const res = await fetch(`/api/admin/rate-plans/${plan.id}`, {
+    const data = await apiJson(`/api/admin/rate-plans/${plan.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !plan.isActive }),
     });
-    const data = await res.json();
     if (data.success) { showToast(plan.isActive ? "Plan deactivated" : "Plan activated"); load(); }
     else showToast(data.error ?? "Error");
     setTogglingId(null);
@@ -51,8 +54,7 @@ export default function RatePlansPanel() {
 
   async function deletePlan(id: string) {
     setDeletingId(id);
-    const res = await fetch(`/api/admin/rate-plans/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await apiJson(`/api/admin/rate-plans/${id}`, { method: "DELETE" });
     if (data.success) { showToast("Rate plan deleted"); load(); }
     else showToast(data.error ?? "Delete failed");
     setDeletingId(null);
@@ -72,6 +74,8 @@ export default function RatePlansPanel() {
 
       {loading ? (
         <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} className="py-16" />
       ) : plans.length === 0 ? (
         <div className="text-center py-16">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -209,8 +213,7 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
     };
     const url = plan ? `/api/admin/rate-plans/${plan.id}` : "/api/admin/rate-plans";
     const method = plan ? "PATCH" : "POST";
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = await apiJson(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (data.success) onClose();
     else setError(data.error ?? "Failed");
     setLoading(false);
