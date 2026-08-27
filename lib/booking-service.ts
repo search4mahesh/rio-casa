@@ -222,6 +222,100 @@ export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests
   return allRooms.filter((r) => !bookedSet.has(r.id) && !blockedSet.has(r.id) && !blockedSet.has(null));
 }
 
+/**
+ * For each room type, the first day within the horizon on which `nights`
+ * consecutive nights are free in at least one room of that type.
+ *
+ * Answers the question a guest actually has when their dates come back empty —
+ * "when could I come instead?" — so /rooms can offer a date rather than only
+ * closing the door. `null` for a type means nothing inside the horizon.
+ *
+ * One bookings query and an in-memory scan, not a query per candidate day: the
+ * horizon is sixty days across four room types, and 240 round trips to render
+ * one page is not a trade worth making.
+ *
+ * The busy set is built from the same predicate `getAvailableRooms` uses —
+ * cancelled, no-show and failed bookings do not hold a room, and a blocked date
+ * with no `roomId` closes every room. A type free on the day it is asked about
+ * simply returns that day.
+ */
+export async function nextAvailableByType(
+  nights: number,
+  from: Date,
+  horizonDays = 60
+): Promise<Record<string, string | null>> {
+  const start = from < todayDate() ? todayDate() : from;
+  const end = addDays(start, horizonDays + nights);
+
+  const rooms = await prisma.room.findMany({
+    where: { isActive: true },
+    select: { id: true, roomType: true },
+  });
+  if (rooms.length === 0 || nights < 1) return {};
+  const roomIds = rooms.map((r) => r.id);
+
+  const bookings = await prisma.booking.findMany({
+    where: {
+      roomId: { in: roomIds },
+      status: { notIn: ["cancelled", "no_show"] },
+      paymentStatus: { notIn: ["failed"] },
+      checkIn: { lt: end },
+      checkOut: { gt: start },
+    },
+    select: { roomId: true, checkIn: true, checkOut: true },
+  });
+
+  const blocked = await prisma.blockedDate.findMany({
+    where: {
+      OR: [{ roomId: { in: roomIds } }, { roomId: null }],
+      blockDate: { gte: start, lt: end },
+    },
+    select: { roomId: true, blockDate: true },
+  });
+
+  // Nights each room cannot take a guest on. A stay occupies its check-in night
+  // through the night before check-out, so the walk is half-open like every
+  // other range here — and clamped to the horizon, because a booking running
+  // from last year would otherwise be walked a day at a time to reach it.
+  const busy = new Map<string, Set<string>>();
+  const markBusy = (roomId: string, day: Date) => {
+    let set = busy.get(roomId);
+    if (!set) busy.set(roomId, (set = new Set<string>()));
+    set.add(toDayString(day));
+  };
+  for (const b of bookings) {
+    const first = b.checkIn < start ? start : b.checkIn;
+    const last = b.checkOut > end ? end : b.checkOut;
+    for (let d = first; d < last; d = addDays(d, 1)) markBusy(b.roomId, d);
+  }
+  for (const b of blocked) {
+    if (b.roomId) markBusy(b.roomId, b.blockDate);
+    else for (const id of roomIds) markBusy(id, b.blockDate);
+  }
+
+  const result: Record<string, string | null> = {};
+  for (const type of new Set(rooms.map((r) => r.roomType))) {
+    const ofType = rooms.filter((r) => r.roomType === type);
+    result[type] = null;
+    for (let offset = 0; offset < horizonDays; offset++) {
+      const day = addDays(start, offset);
+      const anyFree = ofType.some((room) => {
+        const set = busy.get(room.id);
+        if (!set) return true;
+        for (let n = 0; n < nights; n++) {
+          if (set.has(toDayString(addDays(day, n)))) return false;
+        }
+        return true;
+      });
+      if (anyFree) {
+        result[type] = toDayString(day);
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 // ─────────────────────────────────────────────
 // LAYER 3: ROW-LEVEL LOCKING + BOOKING CREATION
 // SELECT FOR UPDATE on the room row serialises concurrent requests

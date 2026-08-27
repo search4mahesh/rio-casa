@@ -10,6 +10,7 @@ import { addDays, format, differenceInCalendarDays } from "date-fns";
 import { Calendar, Users, User, CreditCard, QrCode, Check, BedDouble } from "lucide-react";
 import Image from "next/image";
 import { Field } from "@/components/ui/Field";
+import { isDayString } from "@/lib/dates";
 import { marketingFor } from "@/lib/room-marketing";
 import {
   toCategories,
@@ -115,9 +116,14 @@ const LABEL_CLASS = "font-sans text-sm text-earth-text/70 block mb-1";
 export default function BookingWizard({
   locale,
   preselectedSlug,
+  initialCheckIn,
+  initialCheckOut,
 }: {
   locale: string;
   preselectedSlug?: string;
+  /** Dates the guest already chose on /rooms, so they are not asked twice. */
+  initialCheckIn?: string;
+  initialCheckOut?: string;
 }) {
   const t = useTranslations("booking");
   // "perNight" lives in the rooms namespace, not booking.
@@ -126,8 +132,29 @@ export default function BookingWizard({
   const prefix = `/${locale}`;
 
   const today = new Date();
-  const [checkIn, setCheckIn] = useState<string>(format(addDays(today, 1), "yyyy-MM-dd"));
-  const [checkOut, setCheckOut] = useState<string>(format(addDays(today, 3), "yyyy-MM-dd"));
+  const defaultIn = format(addDays(today, 1), "yyyy-MM-dd");
+  const defaultOut = format(addDays(today, 3), "yyyy-MM-dd");
+
+  /**
+   * A date handed over in the URL, or null.
+   *
+   * Validated rather than trusted: these arrive from the query string, where
+   * `?checkIn=2026-02-30` is as easy to type as a real day. `isDayString`
+   * rejects a date that does not exist — feeding one to a `<input type="date">`
+   * blanks the control, and `differenceInCalendarDays` on it returns NaN, which
+   * disables Continue with nothing on screen to explain why.
+   */
+  const handedOver = (raw: string | undefined): string | null =>
+    raw && isDayString(raw) ? raw : null;
+
+  const givenIn = handedOver(initialCheckIn);
+  const givenOut = handedOver(initialCheckOut);
+  // Both or neither: half a range is worse than the default pair, because the
+  // one that survived silently pairs with a default two days from it.
+  const usable = givenIn && givenOut && givenOut > givenIn;
+
+  const [checkIn, setCheckIn] = useState<string>(usable ? givenIn! : defaultIn);
+  const [checkOut, setCheckOut] = useState<string>(usable ? givenOut! : defaultOut);
   const [guests, setGuests] = useState(2);
   const [availableRooms, setAvailableRooms] = useState<AvailableRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);

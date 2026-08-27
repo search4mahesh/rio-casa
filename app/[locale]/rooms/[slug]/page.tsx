@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Users, Star, ArrowLeft, Check, Bath, BedDouble, Wifi, Tv, Wind, Droplets } from "lucide-react";
 import { getRoomCategory } from "@/lib/room-catalogue";
+import { isDayString } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,15 @@ const AMENITY_ICON: Record<string, "bath" | "wind" | "wifi" | "tv" | "water" | "
   "2 Double Beds": "bed",
 };
 
-export default async function RoomDetailPage({ params }: { params: { locale: string; slug: string } }) {
+export default async function RoomDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { locale: string; slug: string };
+  // Carried from /rooms so a guest who already picked dates there is not asked
+  // again. Passed straight through to the wizard, which validates them.
+  searchParams: { checkIn?: string; checkOut?: string };
+}) {
   // Resolved against live inventory — see lib/room-catalogue.ts. This was a
   // hardcoded map, which is how /rooms/premium-room served a bookable page for
   // a room type the property does not have.
@@ -44,6 +53,16 @@ export default async function RoomDetailPage({ params }: { params: { locale: str
   const t = await getTranslations("rooms");
 
   // Up to four amenities we have an icon for, shown as quick highlights.
+  // Only a complete, real pair is forwarded. Half a range, or a day that does
+  // not exist, is left off entirely so the wizard falls back to its defaults
+  // rather than opening on a blank date input.
+  const { checkIn, checkOut } = searchParams;
+  const carryDates =
+    checkIn && checkOut && isDayString(checkIn) && isDayString(checkOut) && checkOut > checkIn;
+  const bookHref = carryDates
+    ? `/booking?room=${room.slug}&checkIn=${checkIn}&checkOut=${checkOut}`
+    : `/booking?room=${room.slug}`;
+
   const highlights = room.amenities
     .filter((a) => AMENITY_ICON[a])
     .slice(0, 4)
@@ -178,7 +197,7 @@ export default async function RoomDetailPage({ params }: { params: { locale: str
                 <span className="font-sans text-xs text-earth-text/40">+taxes</span>
               </div>
               <p className="font-sans text-xs text-earth-text/50 mb-4">Extra bed charges apply on request</p>
-              <Link href={`/booking?room=${room.slug}`} className="btn-primary w-full text-center block">
+              <Link href={bookHref} className="btn-primary w-full text-center block">
                 {t("bookRoom")}
               </Link>
             </div>

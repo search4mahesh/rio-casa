@@ -160,6 +160,35 @@ request with an empty 500 (B-41).
 into the next month. Anything downstream of user input either validates first
 with the helpers above, or wraps the parse in `try`/`catch`.
 
+## `/rooms` is date-aware
+The catalogue takes `?checkIn=&checkOut=` and, when it has them, shows what is
+actually free: a count per card, or "Not available for these dates" plus the
+next date that works. The dates ride through to the wizard on the Book link, so
+the guest is not asked for them twice. Four things this depends on:
+
+- **The counts come from `getAvailableRooms`**, not a query of the page's own.
+  The catalogue and the wizard must not be able to disagree about what is free.
+- **A booked-out card stays on the page.** It describes a room the property
+  owns; dropping it tells a visitor there is no family room at all. What changes
+  is the claim it makes and the action it offers — "See 2 Sept" instead of
+  "Book This Room".
+- **Without dates it makes no availability claim.** "Available" is meaningless
+  until there is a stay to measure against, so the page says so rather than
+  implying everything is free.
+- **`nextAvailableByType(nights, from)`** finds the first day the *whole* stay
+  fits, in one bookings query and an in-memory scan. A query per candidate day
+  would be 240 round trips to render one page.
+
+The form is a plain `<form method="get">`, so the page stays a server component
+and the result is shareable. That is also why the date inputs use explicit
+`htmlFor` ids rather than `components/ui/Field` — `Field` passes the id through
+a render prop, and a function cannot cross the server/client boundary.
+
+Dates arriving from a query string are validated with `isDayString` before use,
+in both pages and the wizard: `?checkIn=2026-02-30` parses as a `Date` but
+blanks a date input and makes `differenceInCalendarDays` return NaN, which
+disables Continue with nothing on screen to explain why.
+
 ## Room categories (`lib/room-catalogue.ts`)
 The public site groups rooms by `roomType` — guests choose a kind of room, not
 a door number — while the wizard allocates an individual room. Both read
