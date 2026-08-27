@@ -13,6 +13,12 @@ import { prisma } from "@/lib/prisma";
 import { today as todayDate, addDays, toDayString } from "@/lib/dates";
 import { fetchOrderPaymentState } from "@/lib/razorpay";
 import { Prisma } from "@/lib/generated/prisma/client";
+import {
+  allocate,
+  toCategories,
+  type Allocation,
+  type RoomSelection,
+} from "@/lib/room-capacity";
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -33,6 +39,61 @@ export interface BookingInput {
   promoCode?: string;
   specialRequests?: string;
   sourceBookingId?: string;
+}
+
+/** One room in a party, and whether it carries a rollaway. */
+export interface GroupRoomRequest {
+  roomId: string;
+  extraBed?: boolean;
+}
+
+/**
+ * A party booking one or more rooms at once.
+ *
+ * `adults`/`children` are the whole party, not the occupants of any one room —
+ * a five-person family in two rooms is `adults: 5`, and the split across rooms
+ * is the front desk's business at check-in, not the guest's at checkout.
+ */
+export interface GroupBookingInput {
+  rooms: GroupRoomRequest[];
+  checkIn: Date;
+  checkOut: Date;
+  adults: number;
+  children?: number;
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string;
+  source?: "website" | "walkin" | "phone" | "booking_com" | "mmt" | "goibibo";
+  promoCode?: string;
+  specialRequests?: string;
+  sourceBookingId?: string;
+}
+
+export interface GroupBookingResult {
+  success: boolean;
+  group?: {
+    id: string;
+    groupNumber: string;
+    totalAmount: number;
+    discountAmount: number;
+    nights: number;
+    guestName: string;
+    guestEmail: string;
+    checkIn: Date;
+    checkOut: Date;
+    bookings: Array<{
+      id: string;
+      bookingNumber: string;
+      totalAmount: number;
+      discountAmount: number;
+      cgstAmount: number;
+      sgstAmount: number;
+      extraBed: boolean;
+      room: { id: string; name: string; pricePerNight: number };
+    }>;
+  };
+  error?: string;
+  errorCode?: "ROOM_NOT_AVAILABLE" | "INVALID_DATES" | "BLOCKED_DATE" | "PROMO_INVALID" | "UNKNOWN";
 }
 
 export interface AvailabilityResult {
@@ -112,7 +173,17 @@ export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests
   if (checkIn < todayDate()) return [];
 
   const allRooms = await prisma.room.findMany({
-    where: { isActive: true, maxGuests: { gte: minGuests } },
+    // Capacity counts the rollaway. `maxGuests` is the beds already in the
+    // room; a room that takes an extra bed sleeps one more, and filtering on
+    // `maxGuests` alone is why a party of five was told a property with five
+    // empty rooms was full (B-57).
+    where: {
+      isActive: true,
+      OR: [
+        { maxGuests: { gte: minGuests } },
+        { extraBed: true, maxGuests: { gte: minGuests - 1 } },
+      ],
+    },
     // Ordered on purpose. The wizard shows one card per room type and keeps
     // the first of each, so without this the room a guest is offered — and its
     // price — was whatever Postgres happened to return first. Cheapest first
@@ -267,7 +338,14 @@ export async function withSerializableRetry<T>(run: () => Promise<T>, attempts =
 // ─────────────────────────────────────────────
 
 /** The room fields pricing actually reads. */
-export type PricedRoom = { roomType: string; pricePerNight: number };
+export type PricedRoom = {
+  roomType: string;
+  pricePerNight: number;
+  /** Whether this room can take a rollaway at all. */
+  extraBed?: boolean;
+  /** Per night, used when no rate plan covers the stay. Prisma Decimal or number. */
+  extraBedRate?: number | { toString(): string };
+};
 
 export interface StayQuote {
   nights: number;
@@ -341,22 +419,33 @@ export async function quoteStay(args: {
   });
 
   const nightlyRate = ratePlan ? Number(ratePlan.baseRate) : room.pricePerNight;
-  // NOTE: without a rate plan an extra bed is free, on both paths. That is
-  // existing behaviour carried over, not a decision made here — see the pricing
-  // notes in CLAUDE.md before changing what a bed costs.
-  const extraBedRate = extraBed && ratePlan ? Number(ratePlan.extraBedRate) : 0;
+
+  // What the rollaway costs. The room carries the tariff so a property with no
+  // rate plan still charges for it — reading the rate only from a rate plan is
+  // how every extra bed was billed at ₹0 (B-57). A plan may override it, but
+  // only by naming a non-zero figure: `RatePlan.extraBedRate` defaults to 0, so
+  // treating 0 as "free" would mean the first plan a manager created silently
+  // gave the beds away again. A genuinely free bed is a promo, not a tariff.
+  const roomBedRate = room.extraBed === false ? 0 : Number(room.extraBedRate ?? 0);
+  const planBedRate = ratePlan ? Number(ratePlan.extraBedRate) : 0;
+  const extraBedRate = extraBed ? (planBedRate > 0 ? planBedRate : roomBedRate) : 0;
 
   // Weekend markup (Fri + Sat). Walk the stay in UTC — these are calendar days,
   // and `setDate`/`getDay` would ask the server's timezone which day it is.
   // See lib/dates.ts.
+  //
+  // The markup lifts the room rate only. An extra bed is a flat add-on — a
+  // mattress, linen and a breakfast cover — and none of that costs more on a
+  // Saturday. (The markup used to multiply the combined rate; it never showed,
+  // because the bed was always zero.)
   let subtotal = 0;
   for (let i = 0; i < nights; i++) {
     const night = addDays(checkIn, i).getUTCDay();
-    let rate = nightlyRate + extraBedRate;
+    let rate = nightlyRate;
     if (ratePlan && (night === 5 || night === 6)) {
       rate *= 1 + Number(ratePlan.weekendMarkup) / 100;
     }
-    subtotal += rate;
+    subtotal += rate + extraBedRate;
   }
 
   return {
@@ -661,8 +750,39 @@ export async function guardRoomAvailability(
   checkIn: Date,
   checkOut: Date
 ): Promise<void> {
-  // Any other booking for this room blocks here until we commit.
-  await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${roomId} FOR UPDATE`;
+  return guardRoomsAvailability(tx, [roomId], checkIn, checkOut);
+}
+
+/**
+ * The same guard for a party taking several rooms at once.
+ *
+ * **Lock order is the whole point.** Two groups that overlap on rooms — one
+ * taking {101, 105}, the other {105, 101} — deadlock if each locks in the order
+ * its guest happened to pick. `ORDER BY id` inside the `FOR UPDATE` gives every
+ * transaction in the system one order, so the second group waits instead.
+ * Postgres locks at the `LockRows` node above the sort, so the ordering is the
+ * locking order and not merely the order rows are returned in.
+ *
+ * Still one round trip for the re-check, however many rooms: the critical
+ * section grows with the party, and the Nth guest queued for any of these rooms
+ * is waiting on all of it (see "Keep the critical section short" in CLAUDE.md).
+ */
+export async function guardRoomsAvailability(
+  tx: Prisma.TransactionClient,
+  roomIds: string[],
+  checkIn: Date,
+  checkOut: Date
+): Promise<void> {
+  if (roomIds.length === 0) throw new Error("NO_ROOMS_SELECTED");
+
+  // A party must not take the same room twice — it would pass the conflict
+  // re-check (nothing is committed yet) and then die on the exclusion
+  // constraint at commit, reported to the guest as "something went wrong".
+  const ids = [...new Set(roomIds)];
+  if (ids.length !== roomIds.length) throw new Error("DUPLICATE_ROOM");
+
+  // Any other booking for these rooms blocks here until we commit.
+  await tx.$queryRaw`SELECT id FROM rooms WHERE id = ANY(${ids}::text[]) ORDER BY id FOR UPDATE`;
 
   // One round trip for both halves. The predicate mirrors the
   // `no_overlapping_bookings` exclusion constraint in
@@ -675,7 +795,7 @@ export async function guardRoomAvailability(
     SELECT
       (SELECT b.booking_number
          FROM bookings b
-        WHERE b.room_id        = ${roomId}
+        WHERE b.room_id        = ANY(${ids}::text[])
           AND b.status         NOT IN ('cancelled', 'no_show')
           AND b.payment_status <> 'failed'
           AND b.check_in       < ${checkOutDay}::date
@@ -683,7 +803,7 @@ export async function guardRoomAvailability(
         LIMIT 1) AS conflict,
       EXISTS (SELECT 1
                 FROM blocked_dates d
-               WHERE (d.room_id = ${roomId} OR d.room_id IS NULL)
+               WHERE (d.room_id = ANY(${ids}::text[]) OR d.room_id IS NULL)
                  AND d.block_date >= ${checkInDay}::date
                  AND d.block_date <  ${checkOutDay}::date) AS blocked
   `;
@@ -691,11 +811,186 @@ export async function guardRoomAvailability(
   if (guard.blocked) throw new Error("BLOCKED_DATE");
 }
 
-export async function createBooking(input: BookingInput): Promise<BookingResult> {
+/**
+ * Turn "two standards and a family room" into the actual rooms that will be
+ * booked, with the extra beds the headcount requires.
+ *
+ * The guest picks *categories* — they never see a door number, and the wizard
+ * has no business choosing one. Beds are derived here rather than sent by the
+ * client for the same reason totals are: a browser that can say "no extra bed"
+ * for a party of five books a room nobody sets a bed up in, and the guest finds
+ * out on arrival. See "No total is ever computed in the browser" in CLAUDE.md —
+ * this is that rule applied to occupancy.
+ *
+ * Rooms come back in `getAvailableRooms` order (cheapest, then room number), so
+ * a category's quota is filled with its cheapest rooms and the guest gets the
+ * price the category advertised.
+ */
+export async function resolveSelection(
+  checkIn: Date,
+  checkOut: Date,
+  selection: RoomSelection,
+  guests: number
+): Promise<{ rooms: GroupRoomRequest[]; allocation: Allocation } | null> {
+  const free = await getAvailableRooms(checkIn, checkOut, 1);
+  if (free.length === 0) return null;
+
+  const cats = toCategories(free);
+  const allocation = allocate(selection, cats, guests);
+  if (allocation.totalRooms === 0) return null;
+
+  // A type that sold out under the guest is refused, never quietly substituted.
+  // `allocate` has to clamp each line to the rooms that exist, so a request for
+  // three standards when two are free comes back as a perfectly valid plan for
+  // two — with rollaways making up the heads, so even the capacity check passes.
+  // The guest booked three keys and arrives to two (B-58). The overshoot is only
+  // visible in `shortRooms`; testing what came back cannot see it.
+  //
+  // Reachable without a hand-made request: availability is fetched once, on
+  // "Continue to Room Selection", so a guest who picks three while three are
+  // free and continues after someone takes one sends `standard:3` against two.
+  if (allocation.shortRooms > 0) return null;
+
+  const rooms: GroupRoomRequest[] = [];
+  for (const line of allocation.lines) {
+    const ofType = free.filter((r) => r.roomType === line.roomType).slice(0, line.rooms);
+    ofType.forEach((room, i) => {
+      // Beds go to the first rooms of the type. Which room of a type carries
+      // the rollaway is arbitrary — they are interchangeable to the guest — but
+      // it must be decided once, here, so the price the guest agreed to and the
+      // rooms housekeeping is told to prepare cannot disagree.
+      rooms.push({ roomId: room.id, extraBed: i < line.extraBeds });
+    });
+  }
+  return { rooms, allocation };
+}
+
+/** Round to paise. Money summed from shares must land on the group total exactly. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * What a set of rooms costs before any discount or tax.
+ *
+ * Shared by `/api/booking/quote` and `createGroupBooking` so the figure the
+ * guest agrees to is produced by the same code that charges them. The wizard
+ * used to price client-side and the server used `quoteStay` → `applyGst`; the
+ * guest approved one number and Razorpay opened for another (B-02). A party
+ * taking several rooms is more of that surface, not less.
+ *
+ * Each room is priced on its own. GST follows the *room's* nightly rate, not
+ * the party's total: the slab belongs to the tariff per room per night, so a
+ * family in three ₹4,500 rooms stays at 12% rather than being pushed to 18% by
+ * a ₹13,500 sum.
+ *
+ * Returns null when a room in the request no longer exists.
+ */
+export async function priceRooms(
+  requests: GroupRoomRequest[],
+  checkIn: Date,
+  checkOut: Date
+): Promise<{
+  nights: number;
+  subtotal: number;
+  lines: Array<{
+    req: GroupRoomRequest;
+    nights: number;
+    subtotal: number;
+    /** The full quote, so callers can show the nightly rate a rate plan set. */
+    quote: StayQuote;
+    room: { id: string; name: string; roomType: string; pricePerNight: number };
+  }>;
+} | null> {
+  const roomIds = requests.map((r) => r.roomId);
+  const rooms = await prisma.room.findMany({
+    where: { id: { in: roomIds }, isActive: true },
+    select: {
+      id: true, name: true, roomType: true, pricePerNight: true,
+      // `quoteStay` reads both. Selecting the room without them prices every
+      // rollaway at ₹0 — the exact shape of the bug this feature fixed.
+      extraBed: true, extraBedRate: true,
+    },
+  });
+  if (rooms.length !== new Set(roomIds).size) return null;
+  const roomById = new Map(rooms.map((r) => [r.id, r]));
+
+  // Sequential on purpose — `Promise.all` here takes a pool connection per room
+  // and starving the pool is what made contention surface as P2028.
+  const lines = [];
+  for (const req of requests) {
+    const room = roomById.get(req.roomId)!;
+    const quote = await quoteStay({ room, checkIn, checkOut, extraBed: req.extraBed });
+    lines.push({
+      req,
+      nights: quote.nights,
+      subtotal: quote.subtotal,
+      quote,
+      room: { id: room.id, name: room.name, roomType: room.roomType, pricePerNight: room.pricePerNight },
+    });
+  }
+
+  return {
+    nights: lines[0].nights,
+    subtotal: round2(lines.reduce((s, l) => s + l.subtotal, 0)),
+    lines,
+  };
+}
+
+/**
+ * Share one discount across a party's rooms, and tax each room on its own.
+ *
+ * Proportional to what each room costs, with the rounding remainder on the last
+ * so the parts sum to the whole exactly — a group whose rows do not add up to
+ * what Razorpay was charged is a reconciliation problem that surfaces months
+ * later.
+ *
+ * GST is applied per room because the slab belongs to the tariff per room per
+ * night: a family in three ₹4,500 rooms stays at 12% rather than being pushed
+ * to 18% by a ₹13,500 sum.
+ *
+ * Shared with /api/booking/promo/preview so the discounted total a guest is
+ * shown is produced by the code that charges them. The wizard showing one
+ * number while the server computed another is B-02; a promo split across rooms
+ * is the same trap with more arithmetic in it.
+ */
+export function splitDiscountAcrossRooms<T extends { subtotal: number }>(
+  rooms: T[],
+  discount: number,
+  nights: number
+): { lines: Array<T & { discount: number } & StayTotals>; total: number } {
+  const subtotal = round2(rooms.reduce((s, r) => s + r.subtotal, 0));
+
+  let allocated = 0;
+  const lines = rooms.map((r, i) => {
+    const share = i === rooms.length - 1
+      ? round2(discount - allocated)
+      // A zero subtotal would make the ratio NaN, and NaN survives every
+      // comparison downstream to land in the database as the amount charged.
+      : round2(subtotal > 0 ? discount * (r.subtotal / subtotal) : 0);
+    allocated = round2(allocated + share);
+    return { ...r, discount: share, ...applyGst(r.subtotal, share, nights) };
+  });
+
+  return { lines, total: round2(lines.reduce((s, l) => s + l.totalAmount, 0)) };
+}
+
+/**
+ * Book a party into one or more rooms as a single reservation.
+ *
+ * This is the only implementation. `createBooking` is a one-room wrapper over
+ * it, so a walk-in, an OTA import and a family taking three rooms all price,
+ * lock and commit through the same code — the two booking paths that drifted
+ * apart on pricing (see CLAUDE.md) started life as two functions that looked
+ * alike.
+ */
+export async function createGroupBooking(input: GroupBookingInput): Promise<GroupBookingResult> {
+  if (input.rooms.length === 0) {
+    return { success: false, error: "Select at least one room", errorCode: "INVALID_DATES" };
+  }
   if (input.checkIn >= input.checkOut) {
     return { success: false, error: "Check-out must be after check-in", errorCode: "INVALID_DATES" };
   }
-
   if (input.checkIn < todayDate()) {
     return { success: false, error: "Check-in date cannot be in the past", errorCode: "INVALID_DATES" };
   }
@@ -705,43 +1000,28 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
 
   try {
     // ══ Before the transaction ════════════════════════════════════════
-    // Pricing is a pure function of the room, the rate plan and the dates.
-    // None of it can be invalidated by a competing booking, so none of it
-    // needs the room lock. Kept sequential on purpose: fanning these out with
+    // Pricing is a pure function of the rooms, the rate plan and the dates.
+    // None of it can be invalidated by a competing booking, so none of it needs
+    // the room lock. Kept sequential on purpose: fanning these out with
     // Promise.all would take two pool connections per in-flight request, and
-    // starving the pool is what made contention surface as P2028 in the first
-    // place.
-
-    // Release any abandoned checkout still holding *this* room before deciding
-    // whether it is free. Scoped to one room because that is the only hold that
-    // can affect this booking, and the sweep costs a Razorpay round trip per
-    // candidate — usually there are none. Non-fatal: a sweep that fails leaves
-    // the room held, which is the status quo, not a reason to refuse a booking.
-    await expireStalePaymentHolds({ roomId: input.roomId }).catch((err) =>
+    // starving the pool is what made contention surface as P2028.
+    const roomIds = input.rooms.map((r) => r.roomId);
+    await expireStalePaymentHolds({ roomIds }).catch((err) =>
       console.error("[booking-service] stale-hold sweep failed:", err)
     );
 
-    const room = await prisma.room.findUniqueOrThrow({ where: { id: input.roomId } });
+    const pricing = await priceRooms(input.rooms, input.checkIn, input.checkOut);
+    if (!pricing) {
+      return { success: false, error: "One of the selected rooms no longer exists", errorCode: "UNKNOWN" };
+    }
+    const { nights, lines: priced, subtotal: groupSubtotal } = pricing;
 
-    const { nights, subtotal } = await quoteStay({
-      room,
-      checkIn: input.checkIn,
-      checkOut: input.checkOut,
-      extraBed: input.extraBed,
-    });
-
-    // Promo code — claimed up front, because the claim is what enforces the
-    // usage cap and it must not be repeated if the transaction below retries.
-    //
-    // A code the guest supplied that fails to claim (expired, exhausted,
-    // stopped qualifying between the wizard's preview and this call) fails
-    // the whole booking rather than silently falling back to full price —
-    // the wizard shows a discounted total before the guest confirms, and
-    // charging more than that number is exactly the mismatch B-02 fixed for
-    // GST, just via a different door.
-    let discount = 0;
+    // Promo — claimed once for the whole party, against the whole subtotal.
+    // Claiming per room would spend N redemptions on one reservation, so a code
+    // capped at 50 uses could be exhausted by seventeen families.
+    let groupDiscount = 0;
     if (input.promoCode) {
-      const claim = await claimPromo(input.promoCode, input.checkIn, nights, subtotal);
+      const claim = await claimPromo(input.promoCode, input.checkIn, nights, groupSubtotal);
       if (!claim) {
         return {
           success: false,
@@ -750,54 +1030,84 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         };
       }
       unspentPromoClaim = claim.id;
-      discount = claim.discount;
+      groupDiscount = claim.discount;
     }
 
-    const { cgstAmount, sgstAmount, totalAmount } = applyGst(subtotal, discount, nights);
+    const { lines, total: groupTotal } = splitDiscountAcrossRooms(priced, groupDiscount, nights);
 
-    const bookingNumber = await nextBookingNumber(input.checkIn);
+    // One number for the party, whatever it costs in rooms. The desk and the
+    // guest quote this; the child rows hang `/1`, `/2` off it so a single room
+    // in the group is still identifiable on a housekeeping sheet.
+    const groupNumber = await nextBookingNumber(input.checkIn);
+    const bookingNumberFor = (i: number) =>
+      lines.length === 1 ? groupNumber : `${groupNumber}/${i + 1}`;
 
-    const booking = await withSerializableRetry(() => prisma.$transaction(
+    const created = await withSerializableRetry(() => prisma.$transaction(
       async (tx) => {
         // ── Inside the transaction, before the lock ────────────────────
-        // The guest lookup needs the transaction's isolation — two
-        // simultaneous bookings from one phone number must not each create a
-        // directory entry, and SERIALIZABLE is what stops that — but it does
-        // not need the *room*, so it runs before the lock is taken. Time spent
-        // here is not time the next guest for this room spends waiting.
+        // The guest lookup needs the transaction's isolation — two simultaneous
+        // bookings from one phone number must not each create a directory entry
+        // — but it does not need the rooms, so it runs before the lock. Time
+        // spent here is not time the next guest for these rooms spends waiting.
         const guestId = await resolveGuest(tx, input);
 
         // ══ Critical section begins ═══════════════════════════════════
-        await guardRoomAvailability(tx, input.roomId, input.checkIn, input.checkOut);
+        // Every room in one ordered pass, so two parties that overlap on rooms
+        // queue rather than deadlock.
+        await guardRoomsAvailability(tx, roomIds, input.checkIn, input.checkOut);
 
-        return await tx.booking.create({
+        const group = await tx.bookingGroup.create({
           data: {
-            bookingNumber,
+            groupNumber,
             guestId,
-            guestName: input.guestName,
-            guestEmail: input.guestEmail,
-            guestPhone: input.guestPhone,
-            roomId: input.roomId,
-            checkIn: input.checkIn,
-            checkOut: input.checkOut,
-            nights,
+            totalAmount: groupTotal,
+            discountAmount: groupDiscount,
             adults: input.adults,
             children: input.children ?? 0,
-            extraBed: input.extraBed ?? false,
-            totalAmount,
-            discountAmount: discount,
-            cgstAmount,
-            sgstAmount,
-            status: "confirmed",
-            paymentStatus: "pending",
-            source: input.source ?? "website",
-            sourceBookingId: input.sourceBookingId,
-            // Stored as claimed, so the booking and `promotions.code` agree.
             promoCode: input.promoCode?.trim(),
-            specialRequests: input.specialRequests,
+            source: input.source ?? "website",
           },
-          include: { room: true },
         });
+
+        // `createMany` cannot return the rows, and the caller needs their ids
+        // to build the confirmation. N is the number of rooms a party takes —
+        // at most five in this property — so the round trips are bounded.
+        const bookings = [];
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          bookings.push(await tx.booking.create({
+            data: {
+              bookingNumber: bookingNumberFor(i),
+              groupId: group.id,
+              guestId,
+              guestName: input.guestName,
+              guestEmail: input.guestEmail,
+              guestPhone: input.guestPhone,
+              roomId: line.req.roomId,
+              checkIn: input.checkIn,
+              checkOut: input.checkOut,
+              nights,
+              // Headcount lives on the group; a child row cannot say how many
+              // people are in the party, only that this room is part of it.
+              adults: input.adults,
+              children: input.children ?? 0,
+              extraBed: line.req.extraBed ?? false,
+              totalAmount: line.totalAmount,
+              discountAmount: line.discount,
+              cgstAmount: line.cgstAmount,
+              sgstAmount: line.sgstAmount,
+              status: "confirmed",
+              paymentStatus: "pending",
+              source: input.source ?? "website",
+              sourceBookingId: input.sourceBookingId,
+              // Stored as claimed, so the booking and `promotions.code` agree.
+              promoCode: input.promoCode?.trim(),
+              specialRequests: input.specialRequests,
+            },
+            include: { room: true },
+          }));
+        }
+        return { group, bookings, guestId };
         // ══ Critical section ends — lock released on commit ═══════════
       },
       BOOKING_TX_OPTIONS
@@ -807,51 +1117,58 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     unspentPromoClaim = null;
 
     // ══ After the commit ══════════════════════════════════════════════
-    // Bookkeeping, not booking. Neither of these can change whether the room
-    // is held, and both used to run with the lock still down. If one fails the
-    // booking still stands, which is the right trade: guest totals are derived
-    // state that `prisma/repair-data.ts` reports and repairs, and no audit row
-    // is worth voiding a stay the guest is about to pay for.
+    // Bookkeeping, not booking. Neither of these can change whether the rooms
+    // are held. If one fails the booking still stands, which is the right
+    // trade: guest totals are derived state that prisma/repair-data.ts reports
+    // and repairs, and no audit row is worth voiding a stay about to be paid.
     try {
-      await recalcGuestTotals(prisma, booking.guestId);
+      await recalcGuestTotals(prisma, created.guestId);
       await prisma.auditLog.create({
         data: {
           userId: "system",
           action: "booking_created",
-          entityType: "booking",
-          entityId: booking.id,
-          newValue: { bookingNumber, roomId: input.roomId, totalAmount, source: input.source ?? "website" },
+          entityType: "booking_group",
+          entityId: created.group.id,
+          newValue: {
+            groupNumber,
+            rooms: created.bookings.map((b) => ({ roomId: b.roomId, bookingNumber: b.bookingNumber })),
+            totalAmount: groupTotal,
+            source: input.source ?? "website",
+          },
         },
       });
     } catch (err) {
-      console.error(`[booking-service] post-commit bookkeeping failed for ${bookingNumber}:`, err);
+      console.error(`[booking-service] post-commit bookkeeping failed for ${groupNumber}:`, err);
     }
 
     return {
       success: true,
-      booking: {
-        id: booking.id,
-        bookingNumber: booking.bookingNumber,
-        totalAmount: booking.totalAmount,
-        discountAmount: booking.discountAmount,
-        cgstAmount: booking.cgstAmount ?? 0,
-        sgstAmount: booking.sgstAmount ?? 0,
-        nights: booking.nights,
-        room: {
-          id: booking.room.id,
-          name: booking.room.name,
-          pricePerNight: booking.room.pricePerNight,
-        },
-        guestName: booking.guestName,
-        guestEmail: booking.guestEmail,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
+      group: {
+        id: created.group.id,
+        groupNumber,
+        totalAmount: groupTotal,
+        discountAmount: groupDiscount,
+        nights,
+        guestName: input.guestName,
+        guestEmail: input.guestEmail,
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
+        bookings: created.bookings.map((b) => ({
+          id: b.id,
+          bookingNumber: b.bookingNumber,
+          totalAmount: b.totalAmount,
+          discountAmount: b.discountAmount,
+          cgstAmount: b.cgstAmount ?? 0,
+          sgstAmount: b.sgstAmount ?? 0,
+          extraBed: b.extraBed,
+          room: { id: b.room.id, name: b.room.name, pricePerNight: b.room.pricePerNight },
+        })),
       },
     };
   } catch (err: unknown) {
     const error = err as Error & { code?: string; message?: string };
 
-    // The promo was consumed before we knew the room was still free, so a
+    // The promo was consumed before we knew the rooms were still free, so a
     // booking that never committed has to give the use back — otherwise a code
     // capped at 50 redemptions is burnt down by guests who lost a race.
     if (unspentPromoClaim) {
@@ -863,7 +1180,9 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     if (error.message === "ROOM_NOT_AVAILABLE") {
       return {
         success: false,
-        error: "Sorry, this room was just booked. Please choose another room or different dates.",
+        error: input.rooms.length > 1
+          ? "One of those rooms was just booked. Please choose again or try different dates."
+          : "Sorry, this room was just booked. Please choose another room or different dates.",
         errorCode: "ROOM_NOT_AVAILABLE",
       };
     }
@@ -878,7 +1197,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     if (error.code === "P2002" || (error.message && error.message.includes("no_overlapping_bookings"))) {
       return {
         success: false,
-        error: "This room was just booked by someone else. Please choose another room.",
+        error: "One of those rooms was just booked by someone else. Please choose again.",
         errorCode: "ROOM_NOT_AVAILABLE",
       };
     }
@@ -887,7 +1206,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     // happen, so say so plainly rather than leaving the guest unsure whether
     // they have a room — and never imply they should pay again.
     if (isTransientTxError(error)) {
-      console.error("[booking-service] createBooking exhausted retries:", error.code, error.message);
+      console.error("[booking-service] createGroupBooking exhausted retries:", error.code, error.message);
       return {
         success: false,
         error: "We are handling a lot of bookings right now and could not complete yours. Nothing was charged — please try again in a moment.",
@@ -895,9 +1214,57 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
       };
     }
 
-    console.error("[booking-service] createBooking failed:", error);
+    console.error("[booking-service] createGroupBooking failed:", error);
     return { success: false, error: "Something went wrong. Please try again.", errorCode: "UNKNOWN" };
   }
+}
+
+/**
+ * One room, one booking — the walk-in and OTA shape.
+ *
+ * A thin adapter over `createGroupBooking` rather than a second implementation.
+ * Such a booking still gets a group of one, so nothing downstream needs an "is
+ * this a group?" branch, and its `bookingNumber` stays the plain
+ * `BK-YYYYMMDD-NNN` these callers have always issued.
+ */
+export async function createBooking(input: BookingInput): Promise<BookingResult> {
+  const result = await createGroupBooking({
+    rooms: [{ roomId: input.roomId, extraBed: input.extraBed }],
+    checkIn: input.checkIn,
+    checkOut: input.checkOut,
+    adults: input.adults,
+    children: input.children,
+    guestName: input.guestName,
+    guestEmail: input.guestEmail,
+    guestPhone: input.guestPhone,
+    source: input.source,
+    promoCode: input.promoCode,
+    specialRequests: input.specialRequests,
+    sourceBookingId: input.sourceBookingId,
+  });
+
+  if (!result.success || !result.group) {
+    return { success: false, error: result.error, errorCode: result.errorCode };
+  }
+
+  const only = result.group.bookings[0];
+  return {
+    success: true,
+    booking: {
+      id: only.id,
+      bookingNumber: only.bookingNumber,
+      totalAmount: only.totalAmount,
+      discountAmount: only.discountAmount,
+      cgstAmount: only.cgstAmount,
+      sgstAmount: only.sgstAmount,
+      nights: result.group.nights,
+      room: only.room,
+      guestName: result.group.guestName,
+      guestEmail: result.group.guestEmail,
+      checkIn: result.group.checkIn,
+      checkOut: result.group.checkOut,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -1163,73 +1530,116 @@ export interface HoldSweepResult {
  *               worth spending a round trip on is the one blocking this guest.
  */
 export async function expireStalePaymentHolds(
-  opts: { roomId?: string; now?: Date } = {}
+  opts: { roomId?: string; roomIds?: string[]; now?: Date } = {}
 ): Promise<HoldSweepResult> {
   const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - BOOKING_HOLD_MINUTES * 60_000);
 
+  const scopedRooms = opts.roomIds ?? (opts.roomId ? [opts.roomId] : null);
+
   const candidates = await prisma.booking.findMany({
     where: {
-      ...(opts.roomId ? { roomId: opts.roomId } : {}),
+      ...(scopedRooms ? { roomId: { in: scopedRooms } } : {}),
       status: "confirmed",
       paymentStatus: "pending",
       source: "website",
       razorpayPaymentId: null,
       createdAt: { lt: cutoff },
     },
-    select: { id: true, bookingNumber: true, guestId: true, razorpayOrderId: true },
+    select: { id: true, bookingNumber: true, guestId: true, razorpayOrderId: true, groupId: true },
     take: HOLD_SWEEP_LIMIT,
   });
+
+  // A party's rooms expire together or not at all. Releasing two rooms of three
+  // leaves a family holding one room against an order for all three — and the
+  // scan above can see only one of them when it is scoped to the room someone
+  // else is trying to book. So each candidate is widened to its whole group
+  // before anything is cancelled.
+  const groupIds = [...new Set(candidates.map((b) => b.groupId).filter((id): id is string => !!id))];
+  const siblings = groupIds.length
+    ? await prisma.booking.findMany({
+        where: { groupId: { in: groupIds }, status: "confirmed", paymentStatus: "pending" },
+        select: { id: true, bookingNumber: true, guestId: true, razorpayOrderId: true, groupId: true },
+      })
+    : [];
+
+  // One unit per reservation: a group, or a lone booking that has none.
+  const units = new Map<string, typeof candidates>();
+  for (const b of [...candidates, ...siblings]) {
+    const key = b.groupId ?? b.id;
+    const unit = units.get(key) ?? [];
+    if (!unit.some((x) => x.id === b.id)) unit.push(b);
+    units.set(key, unit);
+  }
 
   const voided: string[] = [];
   const guestIds = new Set<string>();
   let retained = 0;
 
-  for (const booking of candidates) {
+  for (const unit of units.values()) {
+    const lead = unit[0];
+
     // No order was ever created — /api/booking/create failed between the commit
     // and `createOrder`, and its own catch could not run. There is nothing for
-    // the guest to have paid.
-    if (booking.razorpayOrderId) {
-      const state = await fetchOrderPaymentState(booking.razorpayOrderId);
+    // the guest to have paid. Every room in a party shares one order, so one
+    // question to Razorpay answers for the whole unit.
+    const orderId = unit.find((b) => b.razorpayOrderId)?.razorpayOrderId ?? null;
+    if (orderId) {
+      const state = await fetchOrderPaymentState(orderId);
       if (state !== "unpaid") {
-        retained++;
+        retained += unit.length;
         console.error(
-          `[hold-sweep] ${booking.bookingNumber} is unpaid in our records but Razorpay says "${state}" ` +
-            `for order ${booking.razorpayOrderId} — keeping the room and leaving it for staff to reconcile`
+          `[hold-sweep] ${lead.bookingNumber} is unpaid in our records but Razorpay says "${state}" ` +
+            `for order ${orderId} — keeping the room and leaving it for staff to reconcile`
         );
         continue;
       }
     }
 
-    // Compare-and-swap. The guest may have paid in the moments since the read
-    // above, in which case /api/payment/verify has already moved the row off
-    // `pending` and this matches nothing.
-    const { count } = await prisma.booking.updateMany({
-      where: { id: booking.id, status: "confirmed", paymentStatus: "pending" },
-      data: {
-        status: "cancelled",
-        paymentStatus: "failed",
-        cancelledAt: now,
-        cancellationReason: `Payment not completed within ${BOOKING_HOLD_MINUTES} minutes`,
-      },
-    });
-    if (count === 0) {
-      retained++;
+    // Compare-and-swap, all rooms or none. The guest may have paid in the
+    // moments since the read above, in which case /api/payment/verify has
+    // already moved the rows off `pending`. Cancelling the siblings anyway
+    // would take rooms away from a party that has just paid for them, so a
+    // short count rolls the whole unit back.
+    const ids = unit.map((b) => b.id);
+    let cancelled = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const { count } = await tx.booking.updateMany({
+          where: { id: { in: ids }, status: "confirmed", paymentStatus: "pending" },
+          data: {
+            status: "cancelled",
+            paymentStatus: "failed",
+            cancelledAt: now,
+            cancellationReason: `Payment not completed within ${BOOKING_HOLD_MINUTES} minutes`,
+          },
+        });
+        if (count !== ids.length) throw new Error("HOLD_RACE");
+      });
+      cancelled = true;
+    } catch (err) {
+      if ((err as Error).message !== "HOLD_RACE") throw err;
+    }
+
+    if (!cancelled) {
+      retained += unit.length;
       continue;
     }
 
-    voided.push(booking.id);
-    if (booking.guestId) guestIds.add(booking.guestId);
+    for (const b of unit) {
+      voided.push(b.id);
+      if (b.guestId) guestIds.add(b.guestId);
+    }
 
     await prisma.auditLog.create({
       data: {
         userId: "system",
         action: "booking_hold_expired",
-        entityType: "booking",
-        entityId: booking.id,
+        entityType: lead.groupId ? "booking_group" : "booking",
+        entityId: lead.groupId ?? lead.id,
         newValue: {
-          bookingNumber: booking.bookingNumber,
-          razorpayOrderId: booking.razorpayOrderId,
+          bookingNumbers: unit.map((b) => b.bookingNumber),
+          razorpayOrderId: orderId,
           heldForMinutes: BOOKING_HOLD_MINUTES,
         },
       },

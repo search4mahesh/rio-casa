@@ -58,6 +58,8 @@ were intended, and a hardcoded page cannot expire one.
 
 | ID | Severity | Summary | Fixed in |
 |---|---|---|---|
+| B-58 | Medium | A request for more rooms of a type than are free was silently reduced: a party that selected 3 standard rooms was quoted and booked 2, with rollaways covering the heads | `allocate()` in `lib/room-capacity.ts`, `resolveSelection()` in `lib/booking-service.ts` |
+| B-57 | High | A party of 5 was told "No rooms available" on dates when every room stood free — no single room sleeps more than 4, and one booking could hold only one room | `lib/room-capacity.ts`, `createGroupBooking()`, `BookingWizard.tsx`, migrations `6_room_extra_bed_rate` + `7_booking_groups` |
 | B-51 | High | 6 stays sat `checked_in` up to 91 days past departure, holding their rooms and with no tax invoice | `prisma/close-overdue-checkouts.ts`, `backfill-invoices.ts`, `repair-data.ts` (all run 2026-08-25) |
 | B-55 | Medium | `/rooms` advertised every amenity in a category, so a forest view on 1 of 4 standard rooms was sold to all of them | `lib/room-catalogue.ts`, `getAvailableRooms()`, `app/[locale]/rooms/[slug]/page.tsx` |
 | B-56 | Low | A non-numeric `DATABASE_POOL_MAX` silently reverted the pool to 10, undoing the fix for booking-contention `P2028` | `lib/prisma.ts` |
@@ -764,3 +766,88 @@ Notes on the rest:
   will confirm a transfer within 15 minutes. Distinguishing them properly means
   threading the chosen payment method through `/api/booking/create`. Raise the
   env var if staff routinely take longer.
+
+**B-58.** `allocate` clamped each line to what was free, and nothing downstream
+could see that it had:
+
+```ts
+.map((c) => ({ cat: c, rooms: Math.min(selection[c.roomType], c.count) }));
+```
+
+`resolveSelection` read as though it caught the overshoot —
+`if (ofType.length < line.rooms) return null; // asked for more than exist` —
+but `line.rooms` was already clamped to `cat.count`, and `cat.count` counted the
+very list `ofType` was filtered from. The guard could not fire.
+
+**The failure.** Two standard rooms free, party of six, `rooms=standard:3`:
+`/api/booking/quote` returned **200** with `totalRooms: 2, extraBeds: 2`, and
+`/api/booking/create` committed two bookings and charged for two rooms plus two
+rollaways. The party sleeps, so no check anywhere had anything to complain
+about — they booked three keys and would have arrived to two. A second form of
+the same fault was worse: `{ standard: 1, deluxe: 1 }` with no deluxe free
+dropped the deluxe line from `lines` entirely, so two couples wanting separate
+rooms were booked into one.
+
+Reachable from the wizard without a hand-made request. Availability is fetched
+once, on "Continue to Room Selection", so a guest who selects three standards
+while three are free and continues after someone else takes one sends
+`standard:3` against two; `setRoomCount` clamps to the counts the browser last
+saw, which is exactly the stale number.
+
+**The fix.** Clamping stays — it is the only honest allocation — but the
+`Allocation` now reports what it could not fill: `shortRooms` across the whole
+selection, and `requested` alongside `rooms` per line. Counting over the
+selection rather than over the resulting lines is what catches the sold-out
+type, which has no line to inspect. `resolveSelection` refuses on
+`shortRooms > 0`, so both forms now answer 409 "Those rooms are no longer
+available" — the same answer the endpoint already gave when a type had nothing
+free. The unreachable guard is gone.
+
+The guest is not stranded: the wizard clears the total and shows "We could not
+calculate the price for these dates. Please go back and try again.", and
+checkout stays disabled without a quote. Going back and continuing refetches
+availability and resets the selection.
+
+Covered by `__tests__/unit/lib/resolve-selection.test.ts` (new — the function
+had none) and four cases in `room-capacity.test.ts`, including one asserting
+`suggestAllocation` never proposes a plan the new guard would reject.
+
+**B-57.** Two independent gaps, both reachable from the same guest counter.
+
+**Capacity ignored the extra bed.** Every room carries `extraBed: true`, but
+availability filtered on `maxGuests` alone, so the family room (sleeps 4) was
+never offered to a party of 5. `getAvailableRooms` now matches
+`maxGuests >= n OR (extraBed AND maxGuests >= n - 1)`.
+
+**And the bed was free.** `quoteStay` read `extraBedRate` only from a rate plan;
+no rate plan exists in this database, so every rollaway was billed at ₹0. The
+tariff now lives on the room (`rooms.extra_bed_rate`, backfilled to ₹1,000) and
+a rate plan may override it only by naming a non-zero figure — treating a plan's
+default 0 as "free" would have re-opened the same hole the first time a manager
+created one. The Fri/Sat markup lifts the room rate only; a rollaway is a flat
+add-on.
+
+**One booking could hold only one room.** `Booking.roomId` is a single FK, so a
+party needing two rooms could not be expressed at all. `booking_groups` now owns
+what rooms share — the Razorpay order, the promo claim, the number the guest
+quotes — while each room stays its own `bookings` row, leaving the exclusion
+constraint, the night audit, housekeeping and every report untouched. Every
+website booking gets a group, a single-room stay included; `createBooking` is a
+one-room adapter over `createGroupBooking`, so there is no second path to drift.
+
+Three things that needed care and are worth not undoing:
+- **Lock order.** `guardRoomsAvailability` takes every room in one
+  `ORDER BY id ... FOR UPDATE`. Two parties overlapping on rooms deadlock if
+  each locks in the order its guest happened to pick.
+- **GST stays per room.** The slab follows each room's nightly rate, so a family
+  in three ₹4,500 rooms stays at 12% rather than being pushed to 18% by a
+  ₹13,500 sum. The promo discount is split across rooms in proportion, with the
+  rounding remainder on the last, so the parts sum to what Razorpay was charged.
+- **A party expires and reinstates whole.** `expireStalePaymentHolds` widens each
+  candidate to its group and rolls back on a short count; `/api/payment/verify`
+  settles every room on the one order. Releasing two rooms of three leaves a
+  family holding a booking they cannot sleep in.
+
+Extra beds are never a guest toggle — the server derives them from the headcount
+in `resolveSelection`, for the same reason no total is computed in the browser.
+

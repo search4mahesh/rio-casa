@@ -7,8 +7,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addDays, format, differenceInCalendarDays } from "date-fns";
-import { Calendar, Users, User, CreditCard, QrCode, Check } from "lucide-react";
+import { Calendar, Users, User, CreditCard, QrCode, Check, BedDouble } from "lucide-react";
+import Image from "next/image";
 import { Field } from "@/components/ui/Field";
+import { marketingFor } from "@/lib/room-marketing";
+import {
+  toCategories,
+  allocate,
+  suggestAllocation,
+  selectionFromAllocation,
+  formatSelection,
+  largestSingleRoom,
+  totalCapacity,
+  type RoomSelection,
+} from "@/lib/room-capacity";
 
 const guestSchema = z.object({
   guestName: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,8 +39,23 @@ interface AvailableRoom {
   maxGuests: number;
   roomType: string;
   extraBed: boolean;
+  extraBedRate: number;
   amenities: string[];
 }
+
+/**
+ * The largest party the counter will go to.
+ *
+ * Deliberately not the property's capacity, even though the counter now sits on
+ * the room step where that number is known: stopping the guest at it would
+ * replace "We can sleep 9 guests on these dates, and there are 10 in your
+ * party — call us" with a button that silently refuses to go further. A party
+ * too large to house should be told so, and told who to ring.
+ *
+ * The old cap of 8 was arbitrary in the other direction: with five rooms and a
+ * rollaway in each, seventeen guests genuinely fit.
+ */
+const MAX_PARTY = 20;
 
 const STEPS = ["dates", "room", "details", "payment"] as const;
 type Step = (typeof STEPS)[number];
@@ -49,6 +76,20 @@ interface Quote {
   sgstAmount: number;
   taxAmount: number;
   totalAmount: number;
+  /** Rooms booked, and how many carry a rollaway. Both decided by the server. */
+  totalRooms?: number;
+  extraBeds?: number;
+  lines?: Array<{
+    roomType: string;
+    roomName: string;
+    rooms: number;
+    extraBeds: number;
+    /** Rooms alone and beds alone, split by the server — see the quote route. */
+    roomsSubtotal: number;
+    bedsSubtotal: number;
+    subtotal: number;
+    totalAmount: number;
+  }>;
 }
 
 /**
@@ -91,7 +132,14 @@ export default function BookingWizard({
   const [availableRooms, setAvailableRooms] = useState<AvailableRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [roomsError, setRoomsError] = useState("");
-  const [selectedRoom, setSelectedRoom] = useState<AvailableRoom | undefined>(undefined);
+  // How many rooms of each type the party is taking. Extra beds are *not* in
+  // here — the server derives them from the headcount, so a browser cannot book
+  // five people into four beds. See `allocate` in lib/room-capacity.ts.
+  const [selection, setSelection] = useState<RoomSelection>({});
+  // True while the guest is still on the combination we picked for them. Turned
+  // off by the first stepper press, so the "we chose this" note does not keep
+  // claiming credit for a selection the guest has since changed.
+  const [selectionIsSuggested, setSelectionIsSuggested] = useState(false);
   const [step, setStep] = useState<Step>("dates");
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "upi">("razorpay");
   const [loading, setLoading] = useState(false);
@@ -101,6 +149,7 @@ export default function BookingWizard({
   const [quoteLoading, setQuoteLoading] = useState(false);
 
   const guestsLabelId = useId();
+  const roomCountLabelId = useId();
   const [promoCode, setPromoCode] = useState("");
   const [promoPreview, setPromoPreview] = useState<PromoPreview | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
@@ -110,11 +159,33 @@ export default function BookingWizard({
 
   const nights = differenceInCalendarDays(new Date(checkOut), new Date(checkIn));
 
-  // Re-price whenever the room or the dates change. Clearing the old quote
-  // first matters: a stale total from the previously selected room is worse
+  // The categories a guest chooses between, folded out of the free-room list.
+  // Same function the server uses, so the capacity and price shown here are the
+  // ones the booking is actually made at.
+  const categories = toCategories(availableRooms);
+  const plan = allocate(selection, categories, guests);
+  const selectedRooms = plan.totalRooms;
+  // The party is housed only when the chosen rooms sleep everyone. Continue
+  // stays disabled until then — this is the check that used to be missing
+  // entirely, because one room was all a guest could pick.
+  const partyHoused = selectedRooms > 0 && plan.capacity >= guests;
+  const propertyCapacity = totalCapacity(categories);
+  const biggestRoom = largestSingleRoom(categories);
+
+  // Serialised for the API. A stable string is also what the effects below
+  // depend on — a fresh object every render would re-fetch forever.
+  const selectionParam = formatSelection(selection);
+
+  // Re-price whenever the rooms, the party or the dates change. Clearing the
+  // old quote first matters: a stale total from a previous selection is worse
   // than no total, because it still reads as authoritative.
   useEffect(() => {
-    if (!selectedRoom || nights <= 0) {
+    // Only once the chosen rooms actually sleep the party. Mid-edit — a guest
+    // has removed the family room and added the first of two standards — the
+    // selection is legitimately short, and the server rightly refuses to price
+    // it. Asking anyway spends a round trip to be told so and logs a 400 the
+    // guest did nothing wrong to earn.
+    if (!selectionParam || !partyHoused || nights <= 0) {
       setQuote(null);
       return;
     }
@@ -123,7 +194,12 @@ export default function BookingWizard({
     setQuote(null);
     setQuoteLoading(true);
 
-    const params = new URLSearchParams({ roomId: selectedRoom.id, checkIn, checkOut });
+    const params = new URLSearchParams({
+      rooms: selectionParam,
+      guests: String(guests),
+      checkIn,
+      checkOut,
+    });
     fetch(`/api/booking/quote?${params}`)
       .then(async (res) => {
         const data = await res.json().catch(() => null);
@@ -143,7 +219,7 @@ export default function BookingWizard({
     return () => {
       cancelled = true;
     };
-  }, [selectedRoom, checkIn, checkOut, nights]);
+  }, [selectionParam, partyHoused, guests, checkIn, checkOut, nights]);
 
   // A promo's discount depends on the subtotal and nights, both of which just
   // changed. A stale "applied" preview would show a total that no longer
@@ -152,16 +228,22 @@ export default function BookingWizard({
   useEffect(() => {
     setPromoPreview(null);
     setAppliedPromoCode(null);
-  }, [selectedRoom, checkIn, checkOut]);
+  }, [selectionParam, guests, checkIn, checkOut]);
 
   async function applyPromo() {
     const code = promoCode.trim();
-    if (!code || !selectedRoom) return;
+    if (!code || !selectionParam) return;
     setPromoChecking(true);
     setPromoPreview(null);
     setAppliedPromoCode(null);
     try {
-      const params = new URLSearchParams({ code, roomId: selectedRoom.id, checkIn, checkOut });
+      const params = new URLSearchParams({
+        code,
+        rooms: selectionParam,
+        guests: String(guests),
+        checkIn,
+        checkOut,
+      });
       const res = await fetch(`/api/booking/promo/preview?${params}`);
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
@@ -197,30 +279,95 @@ export default function BookingWizard({
   async function fetchAvailableRooms() {
     setRoomsLoading(true);
     setRoomsError("");
-    setSelectedRoom(undefined);
+    setSelection({});
+    setSelectionIsSuggested(false);
     try {
       const params = new URLSearchParams({ checkIn, checkOut, guests: String(guests) });
       const res = await fetch(`/api/booking/availability?${params}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to load rooms");
+
+      // Every free room, not one per type: a party of five may need two of the
+      // same kind, so the count per category is part of the answer now.
       const fetched: AvailableRoom[] = data.data;
-      // Deduplicate by roomType — show one option per type, use the first available room's ID
-      const seen = new Set<string>();
-      const deduplicated = fetched.filter((r) => {
-        if (seen.has(r.roomType)) return false;
-        seen.add(r.roomType);
-        return true;
-      });
-      setAvailableRooms(deduplicated);
+      setAvailableRooms(fetched);
+
+      const cats = toCategories(fetched);
+
+      // Start the guest on the cheapest combination that sleeps the party, so
+      // the common case is one press of Continue. They can still change it.
+      const suggested = suggestAllocation(cats, guests);
+      if (suggested) {
+        setSelection(selectionFromAllocation(suggested));
+        setSelectionIsSuggested(true);
+      }
+
+      // Arriving from a room page: honour that choice over the suggestion, then
+      // top it up with whatever else the party needs.
       if (preselectedSlug) {
-        const match = deduplicated.find((r) => r.slug.startsWith(preselectedSlug));
-        if (match) setSelectedRoom(match);
+        const match = fetched.find((r) => r.slug.startsWith(preselectedSlug));
+        if (match) {
+          const pinned = { [match.roomType]: 1 };
+          const topUp = suggestAllocation(
+            cats.map((c) =>
+              c.roomType === match.roomType ? { ...c, count: c.count - 1 } : c
+            ),
+            Math.max(0, guests - (match.maxGuests + (match.extraBed ? 1 : 0)))
+          );
+          if (topUp) {
+            for (const line of topUp.lines) {
+              pinned[line.roomType] = (pinned[line.roomType] ?? 0) + line.rooms;
+            }
+          }
+          setSelection(pinned);
+          setSelectionIsSuggested(false); // the guest's own choice, not ours
+        }
       }
     } catch (err) {
       setRoomsError(err instanceof Error ? err.message : "Could not load rooms");
     } finally {
       setRoomsLoading(false);
     }
+  }
+
+  /**
+   * Change the party size from the room step.
+   *
+   * The counter sits beside the cards rather than on the date step, because
+   * every line it governs is here: "Sleeps 2 (+1 with an extra bed, ₹1,000)",
+   * the combination we suggest, the running "sleeps 5 of 6" tally and the
+   * price. A guest who sets it a step earlier has to remember what they typed
+   * to make sense of any of them.
+   *
+   * Availability is deliberately *not* refetched. Party size stopped being a
+   * filter on the room list with B-57 — a party of five may want two standards
+   * rather than the family room, so the list is every free room and the party
+   * is composed from it. Only the suggestion depends on the headcount.
+   *
+   * Re-suggesting is guarded on `selectionIsSuggested`: while the guest is
+   * still on the combination we picked, the counter re-picks it, but the first
+   * time they change a room themselves the selection becomes theirs and a
+   * later counter press must not throw it away.
+   */
+  function setPartySize(next: number) {
+    const clamped = Math.max(1, Math.min(MAX_PARTY, next));
+    setGuests(clamped);
+    if (!selectionIsSuggested) return;
+    const suggested = suggestAllocation(categories, clamped);
+    setSelection(suggested ? selectionFromAllocation(suggested) : {});
+  }
+
+  /** Add or remove one room of a type, clamped to what is free. */
+  function setRoomCount(roomType: string, next: number) {
+    setSelectionIsSuggested(false);
+    const cat = categories.find((c) => c.roomType === roomType);
+    const clamped = Math.max(0, Math.min(next, cat?.count ?? 0));
+    setSelection((prev) => {
+      const updated = { ...prev };
+      if (clamped === 0) delete updated[roomType];
+      else updated[roomType] = clamped;
+      return updated;
+    });
   }
 
   const {
@@ -240,7 +387,7 @@ export default function BookingWizard({
   const stepIndex = STEPS.indexOf(step);
 
   async function handlePayment(formData: GuestForm) {
-    if (!selectedRoom) return;
+    if (!partyHoused) return;
     setLoading(true);
     setError("");
 
@@ -249,7 +396,9 @@ export default function BookingWizard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          roomId: selectedRoom.id,
+          // Room *types* and counts. Which physical rooms, and which of them
+          // get a rollaway, is the server's decision — see resolveSelection.
+          rooms: selection,
           checkIn: new Date(checkIn).toISOString(),
           checkOut: new Date(checkOut).toISOString(),
           guests,
@@ -393,17 +542,8 @@ export default function BookingWizard({
               )}
             </Field>
           </div>
-          <div className="mb-6">
-            {/* A pair of buttons is a group, not a labelled control: a
-                `<label>` here names nothing, so this is a `<span id>` the
-                container points at with `aria-labelledby`. See CLAUDE.md. */}
-            <span id={guestsLabelId} className={LABEL_CLASS}>{t("guests")}</span>
-            <div className="flex items-center gap-3" role="group" aria-labelledby={guestsLabelId}>
-              <button type="button" aria-label={t("guestsDecrease")} onClick={() => setGuests(Math.max(1, guests - 1))} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50">−</button>
-              <div className="flex items-center gap-2 font-sans text-earth-text"><Users size={16} className="text-primary" />{guests}</div>
-              <button type="button" aria-label={t("guestsIncrease")} onClick={() => setGuests(Math.min(8, guests + 1))} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50">+</button>
-            </div>
-          </div>
+          {/* The party size lives on the room step, next to the capacity it
+              governs — see the note on `setPartySize`. */}
           {nights > 0 && (
             <p className="font-sans text-sm text-primary-600 mb-6">
               {nights} {nights === 1 ? "night" : "nights"} selected
@@ -419,68 +559,287 @@ export default function BookingWizard({
         </div>
       )}
 
-      {/* Step 2 — Room */}
+      {/* Step 2 — Rooms */}
       {step === "room" && (
         <div className="bg-earth-white rounded-sm shadow-sm p-6">
-          <h2 className="font-serif text-2xl mb-6">{t("selectRoom")}</h2>
+          <h2 className="font-serif text-2xl mb-2">{t("selectRoom")}</h2>
+          <p className="font-sans text-sm text-earth-text/60 mb-4">
+            {nights} {nights === 1 ? "night" : "nights"}
+            {guests > biggestRoom && biggestRoom > 0 && (
+              <>
+                {" — "}
+                <span className="text-accent">
+                  our largest room sleeps {biggestRoom}, so this party needs more than one
+                </span>
+              </>
+            )}
+          </p>
+
+          {/* The headcount, next to the rooms it has to fit into. A pair of
+              buttons is a group, not a labelled control: a `<label>` here names
+              nothing, so this is a `<span id>` the container points at with
+              `aria-labelledby`. See CLAUDE.md. */}
+          <div className="flex items-center justify-between gap-4 border border-primary-200 rounded-sm px-4 py-3 mb-6">
+            <span id={guestsLabelId} className="font-sans text-sm text-earth-text/70">
+              {t("guests")}
+            </span>
+            <div className="flex items-center gap-3" role="group" aria-labelledby={guestsLabelId}>
+              <button type="button" aria-label={t("guestsDecrease")} onClick={() => setPartySize(guests - 1)} disabled={guests <= 1} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30">−</button>
+              <div className="flex items-center gap-2 font-sans text-earth-text"><Users size={16} className="text-primary" />{guests}</div>
+              <button type="button" aria-label={t("guestsIncrease")} onClick={() => setPartySize(guests + 1)} disabled={guests >= MAX_PARTY} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30">+</button>
+            </div>
+          </div>
+
           {roomsLoading && (
             <p className="font-sans text-sm text-earth-text/50 text-center py-8">Checking availability…</p>
           )}
           {roomsError && (
             <p className="font-sans text-sm text-red-500 mb-4">{roomsError}</p>
           )}
-          {!roomsLoading && availableRooms.length === 0 && !roomsError && (
-            <p className="font-sans text-sm text-earth-text/50 text-center py-8">No rooms available for the selected dates.</p>
+
+          {/* The property genuinely has nothing free. Distinct from "nothing
+              sleeps five on its own", which used to render this same line and
+              tell a party the resort was full while every room stood empty
+              (B-57). */}
+          {!roomsLoading && categories.length === 0 && !roomsError && (
+            <p className="font-sans text-sm text-earth-text/50 text-center py-8">
+              No rooms available for the selected dates.
+            </p>
           )}
-          <div className="space-y-3 mb-6">
-            {availableRooms.map((room) => (
-              <button
-                key={room.id}
-                onClick={() => setSelectedRoom(room)}
-                className={`w-full text-left border rounded-sm p-4 transition-colors ${
-                  selectedRoom?.id === room.id
-                    ? "border-primary bg-primary-50"
-                    : "border-primary-200 hover:border-primary-400"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-serif text-lg text-earth-text">{room.name}</p>
-                    <p className="font-sans text-xs text-earth-text/50 mt-0.5">
-                      Up to {room.maxGuests} guests
-                      {room.extraBed && " · Extra bed available"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-serif text-xl text-primary">₹{room.pricePerNight.toLocaleString("en-IN")}</p>
-                    <p className="font-sans text-xs text-earth-text/50">{tRooms("perNight")}</p>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-          {selectedRoom && (
-            <div className="bg-primary-50 rounded-sm px-4 py-3 mb-4 font-sans text-sm text-primary">
-              {quoteLoading && t("priceLoading")}
-              {!quoteLoading && quote && (
-                <>
-                  {nights} {nights === 1 ? "night" : "nights"} ·{" "}
-                  <strong>₹{quote.totalAmount.toLocaleString("en-IN")}</strong>{" "}
-                  <span className="text-primary/70">{t("taxNote")}</span>
-                </>
-              )}
-              {!quoteLoading && !quote && t("priceUnavailable")}
+
+          {/* A party bigger than the whole property cannot be housed by
+              choosing differently, so say so instead of leaving them to add
+              rooms that will never add up. */}
+          {!roomsLoading && categories.length > 0 && guests > propertyCapacity && (
+            <div className="border border-accent/40 bg-accent/5 rounded-sm p-4 mb-6 font-sans text-sm">
+              <p className="text-earth-text">
+                We can sleep {propertyCapacity} guests on these dates, and there are {guests} in
+                your party.
+              </p>
+              <p className="text-earth-text/70 mt-1">
+                Call us on{" "}
+                <a href="tel:+919876543210" className="text-primary underline">+91 98765 43210</a>{" "}
+                and we will see what we can arrange.
+              </p>
             </div>
           )}
+
+          {/* Why a card is already selected. Without this the guest cannot tell
+              whether they picked it, we did, or it is simply the only option —
+              and a suggestion nobody knows is a suggestion reads as a decision
+              already taken. */}
+          {!roomsLoading && selectionIsSuggested && partyHoused && (
+            <p className="font-sans text-sm text-primary bg-primary-50 rounded-sm px-4 py-2.5 mb-4">
+              We have picked the best-value rooms for {guests} guests. Change
+              anything below.
+            </p>
+          )}
+
+          <div className="space-y-3 mb-6">
+            {categories.map((cat) => {
+              const taken = selection[cat.roomType] ?? 0;
+              const line = plan.lines.find((l) => l.roomType === cat.roomType);
+              const beds = line?.extraBeds ?? 0;
+              return (
+                <div
+                  key={cat.roomType}
+                  className={`border rounded-sm p-4 transition-colors ${
+                    taken > 0 ? "border-primary bg-primary-50" : "border-primary-200"
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    {/* The same curated hero /rooms uses, so a guest recognises
+                        the room they were just looking at. `marketingFor` falls
+                        back for an unknown type, and the DB `images` array is
+                        deliberately not used here — coverage is patchy, and a
+                        card with a photo on one room type and a blank on the
+                        next is worse than none. */}
+                    <div className="relative w-24 h-20 sm:w-32 sm:h-24 shrink-0 rounded-sm overflow-hidden bg-primary-50">
+                      <Image
+                        src={marketingFor(cat.roomType).heroImage}
+                        alt={marketingFor(cat.roomType).heroAlt}
+                        fill
+                        className="object-cover"
+                        sizes="128px"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-serif text-lg text-earth-text">{cat.name}</p>
+                        <p className="font-sans text-xs text-earth-text/50 mt-0.5">
+                          Sleeps {cat.maxGuests}
+                          {cat.extraBed && ` (+1 with an extra bed, ₹${cat.extraBedRate.toLocaleString("en-IN")})`}
+                        </p>
+                        {/* Scarcity only when it is real. "1 room left" on every
+                            card reads as a sales tactic and stops being read. */}
+                        {cat.count <= 2 && (
+                          <p className="font-sans text-xs text-accent mt-0.5">
+                            Only {cat.count} left for these dates
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-serif text-xl text-primary">
+                          ₹{cat.pricePerNight.toLocaleString("en-IN")}
+                        </p>
+                        <p className="font-sans text-xs text-earth-text/50">{tRooms("perNight")}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-primary-200/60">
+                    {/* A row of buttons is a group, not a labelled control —
+                        see the note on the guest counter and CLAUDE.md. */}
+                    {/* The control's own label stays "Rooms" on every card —
+                        it names the −/+ pair, and a label that changes meaning
+                        card to card is announced differently by a screen reader
+                        each time. The bed is a separate statement. */}
+                    <span className="font-sans text-xs text-earth-text/60 flex items-center gap-2">
+                      <span id={`${roomCountLabelId}-${cat.roomType}`}>Rooms</span>
+                      {beds > 0 && (
+                        <span className="text-primary bg-primary-50 border border-primary-200 rounded-full px-2 py-0.5">
+                          +{beds} extra {beds === 1 ? "bed" : "beds"}
+                        </span>
+                      )}
+                    </span>
+                    <div
+                      className="flex items-center gap-3"
+                      role="group"
+                      aria-labelledby={`${roomCountLabelId}-${cat.roomType}`}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`One fewer ${cat.name}`}
+                        onClick={() => setRoomCount(cat.roomType, taken - 1)}
+                        disabled={taken === 0}
+                        className="w-8 h-8 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30"
+                      >
+                        −
+                      </button>
+                      <span className="font-sans text-earth-text w-4 text-center">{taken}</span>
+                      <button
+                        type="button"
+                        aria-label={`One more ${cat.name}`}
+                        onClick={() => setRoomCount(cat.roomType, taken + 1)}
+                        disabled={taken >= cat.count}
+                        className="w-8 h-8 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* The tally, the total and the action, pinned to the bottom of the
+              viewport on a phone.
+              
+              In flow, these sit below four room cards — so tapping "+" on the
+              first one put the "sleeps 3 of 5" answer about 500px off-screen,
+              and the guest had to scroll to find out whether the thing they
+              just did was enough. `sticky` rather than `fixed` so it releases
+              at the end of the card instead of sitting over the footer for the
+              rest of the page. Full width via negative margins that undo the
+              card's padding, then put it back inside. */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-3 pb-6 bg-earth-white border-t border-primary-200/60 sm:static sm:mx-0 sm:mb-0 sm:px-0 sm:pt-0 sm:pb-0 sm:bg-transparent sm:border-0">
+          {/* Where the party stands. Shown whenever anything is selected, so a
+              guest who removes a room sees the shortfall rather than a
+              Continue button that has quietly stopped working. */}
+          {selectedRooms > 0 && (
+            <div
+              className={`rounded-sm px-4 py-3 mb-4 font-sans text-sm ${
+                partyHoused ? "bg-primary-50 text-primary" : "border border-accent/40 bg-accent/5 text-earth-text"
+              }`}
+            >
+              <p className="flex items-center gap-2">
+                <BedDouble size={15} className="shrink-0" />
+                {selectedRooms} {selectedRooms === 1 ? "room" : "rooms"}
+                {plan.totalExtraBeds > 0 && (
+                  <> · {plan.totalExtraBeds} extra {plan.totalExtraBeds === 1 ? "bed" : "beds"}</>
+                )}
+                {" · "}
+                sleeps {plan.capacity} of {guests}
+              </p>
+
+              {!partyHoused && (
+                <p className="mt-1 text-earth-text/70">
+                  Add {guests - plan.capacity} more{" "}
+                  {guests - plan.capacity === 1 ? "space" : "spaces"} to continue.
+                </p>
+              )}
+
+              {partyHoused && (
+                <div className="mt-2">
+                  {quoteLoading && <p>{t("priceLoading")}</p>}
+                  {!quoteLoading && !quote && <p>{t("priceUnavailable")}</p>}
+
+                  {/* Itemised so the total is checkable against the per-night
+                      prices above it. Every figure here is the server's — see
+                      the note in the quote route about why the browser must not
+                      multiply the nightly rate to bridge the gap. */}
+                  {!quoteLoading && quote?.lines && (
+                    <div className="space-y-1 pt-2 border-t border-primary/15">
+                      {quote.lines.map((line) => (
+                        <div key={line.roomType}>
+                          <div className="flex justify-between gap-3">
+                            <span>
+                              {line.rooms > 1 ? `${line.rooms} × ` : ""}{line.roomName}
+                              <span className="text-primary/60">
+                                {" "}· {nights} {nights === 1 ? "night" : "nights"}
+                              </span>
+                            </span>
+                            <span>₹{line.roomsSubtotal.toLocaleString("en-IN")}</span>
+                          </div>
+                          {line.extraBeds > 0 && (
+                            <div className="flex justify-between gap-3 text-primary/70">
+                              <span>
+                                {line.extraBeds > 1 ? `${line.extraBeds} × ` : ""}extra bed
+                              </span>
+                              <span>₹{line.bedsSubtotal.toLocaleString("en-IN")}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {displayTotals && displayTotals.discountAmount > 0 && (
+                        <div className="flex justify-between gap-3 text-accent">
+                          <span>Promo discount</span>
+                          <span>−₹{displayTotals.discountAmount.toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between gap-3 text-primary/70">
+                        <span>GST</span>
+                        <span>
+                          ₹{(displayTotals?.taxAmount ?? quote.taxAmount).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between gap-3 pt-1.5 mt-1 border-t border-primary/15 font-semibold">
+                        <span>Total</span>
+                        <span>
+                          ₹{(displayTotals?.totalAmount ?? quote.totalAmount).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={() => setStep("dates")} className="btn-outline flex-1">← Back</button>
             <button
               onClick={() => setStep("details")}
-              disabled={!selectedRoom}
+              disabled={!partyHoused}
               className="btn-primary flex-1 disabled:opacity-50"
             >
               Continue →
             </button>
+          </div>
           </div>
         </div>
       )}
@@ -541,10 +900,27 @@ export default function BookingWizard({
 
             {/* Summary */}
             <div className="bg-primary-50 rounded-sm p-4 mb-6 space-y-1.5 font-sans text-sm">
-              <div className="flex justify-between"><span className="text-earth-text/60">Room</span><span className="font-semibold">{selectedRoom?.name}</span></div>
+              {/* One line per room type, with the extra beds named. A party
+                  paying for a rollaway has to be able to see it before they
+                  agree to the total, not discover it on the invoice. */}
+              {plan.lines.map((line) => (
+                <div key={line.roomType} className="flex justify-between">
+                  <span className="text-earth-text/60">
+                    {line.rooms > 1 ? `${line.rooms} × ` : ""}{line.name}
+                  </span>
+                  <span className="font-semibold text-right">
+                    {line.extraBeds > 0 && (
+                      <span className="block text-xs font-normal text-earth-text/60">
+                        + {line.extraBeds} extra {line.extraBeds === 1 ? "bed" : "beds"}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              ))}
               <div className="flex justify-between"><span className="text-earth-text/60">Check-in</span><span>{format(new Date(checkIn), "dd MMM yyyy")}</span></div>
               <div className="flex justify-between"><span className="text-earth-text/60">Check-out</span><span>{format(new Date(checkOut), "dd MMM yyyy")}</span></div>
               <div className="flex justify-between"><span className="text-earth-text/60">Guests</span><span>{guests}</span></div>
+              <div className="flex justify-between"><span className="text-earth-text/60">Rooms</span><span>{selectedRooms}{plan.totalExtraBeds > 0 ? ` (+${plan.totalExtraBeds} extra ${plan.totalExtraBeds === 1 ? "bed" : "beds"})` : ""}</span></div>
 
               {/* Room charges and GST are itemised so the total is checkable
                   against what Razorpay opens for, rather than a bare number
@@ -606,7 +982,7 @@ export default function BookingWizard({
                     <button
                       type="button"
                       onClick={applyPromo}
-                      disabled={promoChecking || !promoCode.trim() || !selectedRoom}
+                      disabled={promoChecking || !promoCode.trim() || !partyHoused}
                       className="btn-outline text-sm px-4 disabled:opacity-50"
                     >
                       {promoChecking ? t("promoChecking") : t("promoApply")}

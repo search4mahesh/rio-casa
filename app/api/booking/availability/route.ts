@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAvailability, getAvailableRooms } from "@/lib/booking-service";
 import { ok } from "@/lib/api-response";
-import { positiveIntParam } from "@/lib/query-params";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const checkIn = searchParams.get("checkIn");
   const checkOut = searchParams.get("checkOut");
   const roomId = searchParams.get("roomId");
-  // `parseInt("abc")` is NaN, which reached `maxGuests: { gte: NaN }` and died
-  // as an empty 500 — a blank body the wizard cannot parse (B-41).
-  const guests = positiveIntParam(searchParams.get("guests"), 1, 20);
 
   if (!checkIn || !checkOut) {
     return NextResponse.json(
@@ -38,8 +34,20 @@ export async function GET(req: NextRequest) {
     return ok(result);
   }
 
-  // All available rooms for the date range
-  const rooms = await getAvailableRooms(checkInDate, checkOutDate, guests);
+  // Every free room for the date range — the whole catalogue, not the subset
+  // that sleeps the party on its own.
+  //
+  // Party size shapes the *selection*, not the list. A party of five fits in
+  // the family room with a rollaway, but it may equally want two standards, and
+  // narrowing to rooms that individually fit hides that second option
+  // completely. Narrowing all the way was worse still: no single room sleeps
+  // six, so the list came back empty and the wizard told a party the resort was
+  // full while five rooms stood free (B-57).
+  //
+  // The wizard still sends `guests`; it is simply not a filter any more, so it
+  // is not read here. `lib/room-capacity.ts` composes the party from this list.
+  const rooms = await getAvailableRooms(checkInDate, checkOutDate, 1);
+
   return ok(rooms.map((r) => ({
       id: r.id,
       name: r.name,
@@ -50,5 +58,6 @@ export async function GET(req: NextRequest) {
       images: r.images,
       roomType: r.roomType,
       extraBed: r.extraBed,
+      extraBedRate: Number(r.extraBedRate),
     })));
 }

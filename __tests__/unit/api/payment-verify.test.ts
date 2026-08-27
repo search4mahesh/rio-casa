@@ -14,10 +14,17 @@ import { NextRequest } from "next/server";
 
 const {
   mockFindUnique, mockUpdate, mockPaymentCreate, mockAuditCreate, mockResendSend,
-  mockTxUpdateMany, mockGuard, mockRecalcTotals,
+  mockTxUpdateMany, mockGuard, mockRecalcTotals, mockUpdateMany, mockFindMany,
+  mockAggregate, mockGroupUpdate,
 } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
+  // The email re-read. The paying write is `updateMany` — one statement for
+  // every room in the party.
   mockUpdate: vi.fn(),
+  mockUpdateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  mockFindMany: vi.fn().mockResolvedValue([]),
+  mockAggregate: vi.fn().mockResolvedValue({ _sum: { cgstAmount: 660, sgstAmount: 660 } }),
+  mockGroupUpdate: vi.fn().mockResolvedValue({}),
   mockPaymentCreate: vi.fn().mockResolvedValue({}),
   mockAuditCreate: vi.fn().mockResolvedValue({}),
   mockResendSend: vi.fn().mockResolvedValue({ data: { id: "msg_1" }, error: null }),
@@ -30,7 +37,14 @@ const {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    booking: { findUnique: mockFindUnique, update: mockUpdate },
+    booking: {
+      findUnique: mockFindUnique,
+      findUniqueOrThrow: mockUpdate,
+      findMany: mockFindMany,
+      updateMany: mockUpdateMany,
+      aggregate: mockAggregate,
+    },
+    bookingGroup: { update: mockGroupUpdate },
     payment: { create: mockPaymentCreate },
     auditLog: { create: mockAuditCreate },
     // Callback form for the reinstatement transaction, array form for the
@@ -53,7 +67,7 @@ vi.mock("@/lib/razorpay", () => ({
 
 vi.mock("@/lib/booking-service", () => ({
   syncWithChannelManager: vi.fn().mockResolvedValue(undefined),
-  guardRoomAvailability: mockGuard,
+  guardRoomsAvailability: mockGuard,
   recalcGuestTotals: mockRecalcTotals,
   BOOKING_TX_OPTIONS: {},
   // The real one only retries transient failures; here it is transparent so a
@@ -107,6 +121,9 @@ function booking(over: Record<string, unknown> = {}) {
     paymentStatus: "pending",
     status: "confirmed",
     guestId: "guest_1",
+    // A lone booking, not one room of a party. A group id sends the route to
+    // fetch the siblings and settle all of them together.
+    groupId: null,
     roomId: "room_1",
     checkIn: new Date("2027-03-10T00:00:00.000Z"),
     checkOut: new Date("2027-03-12T00:00:00.000Z"),
@@ -118,6 +135,10 @@ function booking(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   mockFindUnique.mockReset();
   mockUpdate.mockReset();
+  mockUpdateMany.mockReset().mockResolvedValue({ count: 1 });
+  mockFindMany.mockReset().mockResolvedValue([]);
+  mockAggregate.mockReset().mockResolvedValue({ _sum: { cgstAmount: 660, sgstAmount: 660 } });
+  mockGroupUpdate.mockClear();
   mockPaymentCreate.mockClear();
   mockAuditCreate.mockClear();
   mockResendSend.mockReset();
@@ -156,7 +177,7 @@ describe("POST /api/payment/verify — order/booking binding", () => {
     const body = await res.json();
     expect(body.success).toBe(false);
     // Nothing may be written — this is the whole point.
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
     expect(mockPaymentCreate).not.toHaveBeenCalled();
   });
 
@@ -166,7 +187,7 @@ describe("POST /api/payment/verify — order/booking binding", () => {
     const res = await POST(post({ ...VALID, razorpayOrderId: "order_target" }));
     expect(res.status).toBe(200);
 
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ paymentStatus: "paid" }),
       })
@@ -179,7 +200,7 @@ describe("POST /api/payment/verify — order/booking binding", () => {
 
     const res = await POST(post({ ...VALID, razorpayOrderId: "order_target" }));
     expect(res.status).toBe(403);
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
   it("returns 404 for an unknown bookingId rather than throwing", async () => {
@@ -187,7 +208,7 @@ describe("POST /api/payment/verify — order/booking binding", () => {
 
     const res = await POST(post(VALID));
     expect(res.status).toBe(404);
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
   it("still rejects a forged signature before looking anything up", async () => {
@@ -212,7 +233,7 @@ describe("POST /api/payment/verify — replay of a booking's own triple", () => 
     expect(body.success).toBe(true);
     expect(body.data.bookingNumber).toBe("BK-20260815-001");
 
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
     expect(mockPaymentCreate).not.toHaveBeenCalled();
   });
 
@@ -295,7 +316,9 @@ describe("POST /api/payment/verify — payment lands after the hold expired (B-3
     // It went through the same room lock + availability re-check every other
     // booking path uses, rather than just flipping the row back.
     expect(mockGuard).toHaveBeenCalledTimes(1);
-    expect(mockGuard.mock.calls[0][1]).toBe("room_1");
+    // An array: reinstatement takes every room in the party in one ordered
+    // pass, so a party comes back whole or not at all.
+    expect(mockGuard.mock.calls[0][1]).toEqual(["room_1"]);
 
     // Brought back as a live, paid booking — compare-and-swap on the status we
     // read, so a concurrent change loses.
@@ -324,7 +347,7 @@ describe("POST /api/payment/verify — payment lands after the hold expired (B-3
     expect(res.status).toBe(409);
     expect(body.success).toBe(false);
     // The bug: this used to be a 200 with the booking marked paid.
-    expect(mockUpdate).not.toHaveBeenCalledWith(
+    expect(mockUpdateMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ paymentStatus: "paid" }) })
     );
     // ...and the guest used to be told their stay was confirmed.

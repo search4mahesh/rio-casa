@@ -346,8 +346,28 @@ because incremental updates silently fell out of sync:
 fixes it. Idempotent and safe to re-run.
 
 ## Booking Flow
-1. User picks dates + guests → `/api/booking/availability?roomId=&checkIn=&checkOut=`
-2. User selects room → clicks "Book Now" → `GET /api/booking/quote` prices it
+1. User picks dates → `/api/booking/availability?roomId=&checkIn=&checkOut=`
+2. User sets the party size and composes it from the free rooms →
+   `GET /api/booking/quote` prices it.
+
+   **The guest counter lives on this step, not the date step.** Everything it
+   governs is here — the per-card "Sleeps 2 (+1 with an extra bed)", the
+   combination `suggestAllocation` picks, the "sleeps 5 of 6" tally and the
+   price — and a number set a step earlier has to be remembered to make sense
+   of any of them. Two things this depends on:
+   - **It does not refetch availability.** Party size stopped being a filter on
+     the room list with B-57 (a party of five may want two standards rather
+     than the family room), so the list is every free room and only the
+     suggestion depends on the headcount.
+   - **Re-suggesting stops once the guest picks rooms themselves.**
+     `setPartySize` re-runs `suggestAllocation` only while
+     `selectionIsSuggested`; after the guest touches a card the selection is
+     theirs, and a later counter press must not discard it.
+
+   `MAX_PARTY` stays above the property's capacity on purpose. Capping the
+   counter at what the dates can sleep would replace "We can sleep 9 guests on
+   these dates, and there are 10 in your party — call us" with a button that
+   silently stops.
 3. Fill guest details form (React Hook Form + Zod) — the step-3 "Continue"
    button must `trigger()` validation before advancing. Errors render inside
    the step-3 markup, so advancing with invalid input unmounts them and step 4
@@ -358,6 +378,45 @@ fixes it. Idempotent and safe to re-run.
 6. On success → POST `/api/payment/verify` → verify signature **and that the
    order belongs to the booking** → update status to "paid"
 7. Redirect to `/booking/confirmation?id=...` + Resend email
+
+### A party can take several rooms — `createGroupBooking`
+No room in the property sleeps more than five (four, plus a rollaway), so a
+larger party books several. `booking_groups` owns only what those rooms share:
+the Razorpay order, the promo claim, and the number the guest quotes. Each room
+stays its own `bookings` row, so the exclusion constraint, the night audit,
+housekeeping, the calendar and every report need no knowledge of groups.
+
+**Every website booking gets a group, a single-room stay included.**
+`createBooking` is a one-room adapter over `createGroupBooking` — a
+"is this a group?" branch is exactly how the two pricing paths and the two
+counter allocators drifted apart before. A group of one keeps the plain
+`BK-YYYYMMDD-NNN`; a party hangs `/1`, `/2` off it.
+
+- **The guest picks room *types* and counts; the server picks the rooms.**
+  `resolveSelection` turns `{ standard: 2, family: 1 }` into door numbers and
+  decides which of them carry an extra bed. Beds follow from the headcount and
+  are never a client field — a browser that could say "no extra bed" for a party
+  of five books a room nobody sets a bed up in. Same rule as totals, below.
+- **GST is per room, not per party.** The slab belongs to the tariff per room per
+  night, so three ₹4,500 rooms stay at 12% rather than being pushed to 18% by a
+  ₹13,500 sum. A promo discount is split across rooms in proportion to what each
+  costs, with the rounding remainder on the last, so the parts sum to exactly
+  what Razorpay was charged.
+- **One order for the party.** Charging per room opens Razorpay N times for one
+  reservation and leaves a family half-paid if they close the modal partway.
+- **A party expires and reinstates whole.** `expireStalePaymentHolds` widens each
+  candidate to its group and rolls the unit back on a short count;
+  `/api/payment/verify` settles every room against the one order. Releasing two
+  rooms of three leaves a family holding a booking they cannot sleep in.
+
+Verify with `npx tsx prisma/verify-availability.ts` — books its way through the
+whole property on far-future dates and asserts a booked room is never offered
+again: not for an overlapping window, not to a party small enough to fit it, and
+back on the listing the moment the booking is cancelled. It also walks every
+party size from one to past the property's capacity, which is the case unit
+tests keep proving against a mocked room list. Run it after touching
+`getAvailableRooms`, `toCategories`, the allocator, or anything that decides
+what a guest is shown. Cleans up after itself; safe to re-run.
 
 **No total is ever computed in the browser.** Step 2 and step 4 both render
 figures from `/api/booking/quote`, and the "Confirm Booking" button is disabled
@@ -467,9 +526,26 @@ code buys depends on the subtotal, so `quoteStay` → `claimPromo` → `applyGst
   The public site displays `pricePerNight`; pricing off the other column could
   charge a guest more than the page quoted them. `baseRate` is still stored and
   editable in the admin panel but no longer feeds pricing.
-- **Without a rate plan an extra bed is free**, on both paths — `extraBedRate`
-  lives only on the rate plan. That is inherited behaviour, not a decision. The
-  walk-in form collects `extraBed` and bills ₹0 for it today.
+- **An extra bed is priced from the room**, not only from a rate plan.
+  `rooms.extra_bed_rate` (₹1,000 as seeded) is the tariff; a rate plan overrides
+  it *only* by naming a non-zero `extraBedRate`, because that column defaults to
+  0 and treating 0 as "free" is how every rollaway was billed at ₹0 with no rate
+  plan in the database (B-57). A genuinely free bed is a promo, not a tariff.
+- **The weekend markup lifts the room rate only.** A rollaway is a flat add-on —
+  a mattress, linen and a breakfast cover — and none of it costs more on a
+  Saturday.
+- **A room sleeps `maxGuests + 1` when `extraBed` is set.** Capacity, pricing and
+  availability all have to agree on that; filtering availability on `maxGuests`
+  alone told a party of five the property was full while five rooms stood empty.
+
+  **One rollaway per room is a deliberate cap, 105 included.** `Room.extraBed`
+  and `Booking.extraBed` are booleans on purpose — a second bed in any room is
+  unrepresentable end to end, and `allocate` assigns at most one per room. The
+  question was put to the owner for room 105 specifically, which physically has
+  two beds sleeping 4 and could take a second rollaway; the answer was to keep
+  it at one. So 105 sleeps 5, the property sleeps 29, and a party of six takes
+  two rooms. That is the property's decision, not a gap to close — do not
+  "correct" it into `maxExtraBeds: 2` without asking first.
 - **The GST slab follows the discounted amount**, so a promo can move a stay
   from 18% to 12%.
 
@@ -566,6 +642,13 @@ length of the request, is what sets the tail latency.** Twelve concurrent
 bookings for one room took ~22s when the transaction did all of its work under
 the lock; the same test now runs ~12s with every loser cleanly rejected.
 
+**A party locks every room in one ordered pass.** `guardRoomsAvailability` takes
+them with `ORDER BY id … FOR UPDATE`, and that ordering is the point: two
+parties overlapping on rooms — one taking {101, 105}, the other {105, 101} —
+deadlock if each locks in the order its guest happened to pick. Postgres locks
+at the `LockRows` node above the sort, so the sort order *is* the lock order.
+`guardRoomAvailability` is the one-room wrapper over it.
+
 **Every path that writes a booking goes through `guardRoomAvailability(tx, …)`**
 — it takes the `FOR UPDATE` and re-checks conflicts *and* blocked dates in one
 round trip. It is a shared function because the admin walk-in route used to
@@ -650,6 +733,8 @@ applied, not replayed. The migrations are:
 | `2_booking_counter` | `booking_counters`, backfilled from the highest `BK-` suffix already issued per date |
 | `3_blocked_dates_unique` | Two **partial** unique indexes on `blocked_dates` — `room_id` is nullable and means "every room", and a plain `UNIQUE` treats NULLs as distinct |
 | `4_daily_counters` | `daily_counters` (`scope`, `day`), replacing `booking_counters`; laundry sequences backfilled |
+| `6_room_extra_bed_rate` | `rooms.extra_bed_rate`, backfilled to ₹1,000 for every room that takes one |
+| `7_booking_groups` | `booking_groups` and `bookings.group_id` — one reservation, several rooms |
 
 **`\d` does not work in this database's regex operator.** `'LB-20260727-01' ~
 '^LB-\d{8}-\d+$'` evaluates *false* on Neon while the `[0-9]` form is true, so

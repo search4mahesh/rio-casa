@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifySignature } from "@/lib/razorpay";
 import {
   BOOKING_TX_OPTIONS,
-  guardRoomAvailability,
+  guardRoomsAvailability,
   recalcGuestTotals,
   syncWithChannelManager,
   withSerializableRetry,
@@ -38,6 +38,7 @@ type BookingRow = {
   status: string;
   paymentStatus: string;
   guestId: string | null;
+  groupId: string | null;
   roomId: string;
   checkIn: Date;
   checkOut: Date;
@@ -59,10 +60,14 @@ type BookingRow = {
  * else, the dates have since been blocked, or the stay is already in the past.
  * The caller then records the payment for refund instead.
  */
-async function reinstateCancelledBooking(
-  booking: BookingRow,
+async function reinstateCancelledBookings(
+  unit: BookingRow[],
   razorpayPaymentId: string
 ): Promise<boolean> {
+  const dead = unit.filter((b) => b.status === "cancelled" || b.status === "no_show");
+  if (dead.length === 0) return true;
+
+  const booking = unit[0];
   // A stay that has already started cannot be handed back. This is the
   // no-show case, and a late payment against it is a refund, not a check-in.
   if (booking.checkIn < today()) return false;
@@ -70,21 +75,36 @@ async function reinstateCancelledBooking(
   try {
     const restored = await withSerializableRetry(() =>
       prisma.$transaction(async (tx) => {
-        await guardRoomAvailability(tx, booking.roomId, booking.checkIn, booking.checkOut);
+        // All of the party's rooms, in one ordered pass. A party is reinstated
+        // whole or not at all: handing back two rooms of three leaves a family
+        // holding a booking they cannot sleep in, against a payment for all
+        // three.
+        await guardRoomsAvailability(
+          tx,
+          dead.map((b) => b.roomId),
+          booking.checkIn,
+          booking.checkOut
+        );
 
-        // Compare-and-swap on the status we read, so a manager cancelling or a
-        // second request reinstating in the meantime loses cleanly.
-        const { count } = await tx.booking.updateMany({
-          where: { id: booking.id, status: booking.status },
-          data: {
-            status: "confirmed",
-            paymentStatus: "paid",
-            razorpayPaymentId,
-            cancelledAt: null,
-            cancellationReason: null,
-          },
-        });
-        return count === 1;
+        // Compare-and-swap on the statuses we read, so a manager cancelling or
+        // a second request reinstating in the meantime loses cleanly. A short
+        // count throws, which rolls back every room in the party.
+        let restoredCount = 0;
+        for (const b of dead) {
+          const { count } = await tx.booking.updateMany({
+            where: { id: b.id, status: b.status },
+            data: {
+              status: "confirmed",
+              paymentStatus: "paid",
+              razorpayPaymentId,
+              cancelledAt: null,
+              cancellationReason: null,
+            },
+          });
+          restoredCount += count;
+        }
+        if (restoredCount !== dead.length) throw new Error("REINSTATE_RACE");
+        return true;
       }, BOOKING_TX_OPTIONS)
     );
     if (!restored) return false;
@@ -107,9 +127,9 @@ async function reinstateCancelledBooking(
       data: {
         userId: "system",
         action: "booking_reinstated_after_late_payment",
-        entityType: "booking",
-        entityId: booking.id,
-        oldValue: { status: booking.status, paymentStatus: booking.paymentStatus },
+        entityType: booking.groupId ? "booking_group" : "booking",
+        entityId: booking.groupId ?? booking.id,
+        oldValue: { bookingNumbers: dead.map((b) => b.bookingNumber), statuses: dead.map((b) => b.status) },
         newValue: { status: "confirmed", paymentStatus: "paid", razorpayPaymentId },
       },
     });
@@ -118,8 +138,9 @@ async function reinstateCancelledBooking(
   }
 
   console.error(
-    `[payment/verify] ${booking.bookingNumber} was cancelled as an expired hold but the guest ` +
-      `then paid — the room was still free, so it has been reinstated and confirmed`
+    `[payment/verify] ${dead.map((b) => b.bookingNumber).join(", ")} ` +
+      `${dead.length > 1 ? "were" : "was"} cancelled as an expired hold but the guest then paid — ` +
+      `the ${dead.length > 1 ? "rooms were" : "room was"} still free, so it has been reinstated and confirmed`
   );
   return true;
 }
@@ -136,47 +157,57 @@ async function reinstateCancelledBooking(
  * is recognised as a replay and does not write a second payment row.
  */
 async function recordUnmatchedPayment(
-  booking: BookingRow,
+  unit: BookingRow[],
   triple: { razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }
 ): Promise<void> {
+  const lead = unit[0];
+  const total = unit.reduce((s, b) => s + b.totalAmount, 0);
+  const numbers = unit.map((b) => b.bookingNumber).join(", ");
+
   console.error(
-    `[payment/verify] PAYMENT RECEIVED FOR A CANCELLED BOOKING — ${booking.bookingNumber} ` +
-      `(₹${booking.totalAmount}, razorpay payment ${triple.razorpayPaymentId}). ` +
-      `The room could not be recovered. This guest must be refunded or rebooked.`
+    `[payment/verify] PAYMENT RECEIVED FOR A CANCELLED BOOKING — ${numbers} ` +
+      `(₹${total}, razorpay payment ${triple.razorpayPaymentId}). ` +
+      `The ${unit.length > 1 ? "rooms" : "room"} could not be recovered. ` +
+      `This guest must be refunded or rebooked.`
   );
 
   try {
     await prisma.$transaction([
-      prisma.payment.create({
-        data: {
-          bookingId: booking.id,
-          amount: booking.totalAmount,
-          paymentMethod: "razorpay",
-          paymentType: "full",
-          razorpayPaymentId: triple.razorpayPaymentId,
-          razorpayOrderId: triple.razorpayOrderId,
-          razorpaySignature: triple.razorpaySignature,
-          // The money did change hands — what is unresolved is the booking,
-          // not the payment.
-          status: "completed",
-          notes:
-            "Received after the booking was cancelled as an expired payment hold. " +
-            "The room could not be reinstated — refund or rebook this guest.",
-        },
-      }),
-      prisma.booking.update({
-        where: { id: booking.id },
+      // One row per room, each for what that room cost, so the parts still sum
+      // to what Razorpay took and no single room is credited with the party's
+      // whole payment.
+      ...unit.map((b) =>
+        prisma.payment.create({
+          data: {
+            bookingId: b.id,
+            amount: b.totalAmount,
+            paymentMethod: "razorpay",
+            paymentType: "full",
+            razorpayPaymentId: triple.razorpayPaymentId,
+            razorpayOrderId: triple.razorpayOrderId,
+            razorpaySignature: triple.razorpaySignature,
+            // The money did change hands — what is unresolved is the booking,
+            // not the payment.
+            status: "completed",
+            notes:
+              "Received after the booking was cancelled as an expired payment hold. " +
+              "The room could not be reinstated — refund or rebook this guest.",
+          },
+        })
+      ),
+      prisma.booking.updateMany({
+        where: { id: { in: unit.map((b) => b.id) } },
         data: { razorpayPaymentId: triple.razorpayPaymentId },
       }),
       prisma.auditLog.create({
         data: {
           userId: "system",
           action: "payment_received_for_cancelled_booking",
-          entityType: "booking",
-          entityId: booking.id,
+          entityType: lead.groupId ? "booking_group" : "booking",
+          entityId: lead.groupId ?? lead.id,
           newValue: {
-            bookingNumber: booking.bookingNumber,
-            amount: booking.totalAmount,
+            bookingNumbers: unit.map((b) => b.bookingNumber),
+            amount: total,
             razorpayPaymentId: triple.razorpayPaymentId,
             needsRefund: true,
           },
@@ -186,7 +217,7 @@ async function recordUnmatchedPayment(
   } catch (err) {
     // Nothing left to fall back on, but the console line above already carries
     // everything needed to find the payment in the Razorpay dashboard.
-    console.error(`[payment/verify] could not record the orphaned payment for ${booking.bookingNumber}:`, err);
+    console.error(`[payment/verify] could not record the orphaned payment for ${numbers}:`, err);
   }
 }
 
@@ -219,6 +250,7 @@ export async function POST(req: NextRequest) {
       // a guest could be charged for a stay that no longer existed (B-38).
       status: true,
       guestId: true,
+      groupId: true,
       roomId: true,
       checkIn: true,
       checkOut: true,
@@ -267,13 +299,31 @@ export async function POST(req: NextRequest) {
   // The money is real, so refusing outright is not enough either. Try to give
   // the room back first — that is almost always possible, because a hold
   // expiring does not mean anyone else took the room in the seconds since.
-  if (existing.status === "cancelled" || existing.status === "no_show") {
-    const reinstated = await reinstateCancelledBooking(existing, razorpayPaymentId);
+  // ── The party, not just the room the wizard happened to name ──────────
+  //
+  // One Razorpay order covers every room a party booked, so this one payment
+  // settles all of them. Confirming only `bookingId` would leave the other
+  // rooms `pending`, and the hold sweeper would then cancel rooms the guest has
+  // already paid for.
+  const unit: BookingRow[] = existing.groupId
+    ? await prisma.booking.findMany({
+        where: { groupId: existing.groupId },
+        select: {
+          id: true, bookingNumber: true, status: true, paymentStatus: true,
+          guestId: true, groupId: true, roomId: true, checkIn: true,
+          checkOut: true, totalAmount: true,
+        },
+        orderBy: { bookingNumber: "asc" },
+      })
+    : [existing];
+
+  if (unit.some((b) => b.status === "cancelled" || b.status === "no_show")) {
+    const reinstated = await reinstateCancelledBookings(unit, razorpayPaymentId);
     if (!reinstated) {
       // The room really is gone (or the stay is already in the past). Record
       // the payment so it is visible in the booking's Payment History and can
       // be refunded, and say so plainly rather than confirming anything.
-      await recordUnmatchedPayment(existing, {
+      await recordUnmatchedPayment(unit, {
         razorpayPaymentId,
         razorpayOrderId,
         razorpaySignature,
@@ -282,50 +332,86 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Update booking: mark paid, store payment ID
-  const booking = await prisma.booking.update({
+  // Mark every room in the party paid, and record one payment row per room for
+  // what that room cost — the parts sum to what Razorpay took, and no single
+  // room is credited with the whole party's money in a revenue report.
+  await prisma.$transaction([
+    prisma.booking.updateMany({
+      where: { id: { in: unit.map((b) => b.id) } },
+      data: { paymentStatus: "paid", razorpayPaymentId },
+    }),
+    ...unit.map((b) =>
+      prisma.payment.create({
+        data: {
+          bookingId: b.id,
+          amount: b.totalAmount,
+          paymentMethod: "razorpay",
+          paymentType: "full",
+          razorpayPaymentId,
+          razorpayOrderId,
+          razorpaySignature,
+          status: "completed",
+        },
+      })
+    ),
+    ...(existing.groupId
+      ? [prisma.bookingGroup.update({
+          where: { id: existing.groupId },
+          data: { razorpayPaymentId },
+        })]
+      : []),
+    prisma.auditLog.create({
+      data: {
+        userId: "system",
+        action: "payment_received",
+        entityType: existing.groupId ? "booking_group" : "booking",
+        entityId: existing.groupId ?? existing.id,
+        newValue: {
+          paymentStatus: "paid",
+          razorpayPaymentId,
+          totalAmount: unit.reduce((s, b) => s + b.totalAmount, 0),
+          bookingNumbers: unit.map((b) => b.bookingNumber),
+        },
+      },
+    }),
+  ]);
+
+  // Re-read for the confirmation email, which needs the room and guest fields.
+  const booking = await prisma.booking.findUniqueOrThrow({
     where: { id: bookingId },
-    data: {
-      paymentStatus: "paid",
-      razorpayPaymentId,
-    },
     include: { room: true },
   });
+  const partyRooms = existing.groupId
+    ? await prisma.booking.findMany({
+        where: { groupId: existing.groupId },
+        select: { bookingNumber: true, extraBed: true, room: { select: { name: true } } },
+        orderBy: { bookingNumber: "asc" },
+      })
+    : [{ bookingNumber: booking.bookingNumber, extraBed: booking.extraBed, room: { name: booking.room.name } }];
 
-  // Record in payments table
-  await prisma.payment.create({
-    data: {
-      bookingId: booking.id,
-      amount: booking.totalAmount,
-      paymentMethod: "razorpay",
-      paymentType: "full",
-      razorpayPaymentId,
-      razorpayOrderId,
-      razorpaySignature,
-      status: "completed",
-    },
-  });
-
-  // Audit log
-  await prisma.auditLog.create({
-    data: {
-      userId: "system",
-      action: "payment_received",
-      entityType: "booking",
-      entityId: booking.id,
-      newValue: { paymentStatus: "paid", razorpayPaymentId, totalAmount: booking.totalAmount },
-    },
-  });
-
-  // Channel manager sync (fire-and-forget)
-  syncWithChannelManager(booking.id).catch(console.error);
+  // Channel manager sync (fire-and-forget), one per room.
+  for (const b of unit) syncWithChannelManager(b.id).catch(console.error);
 
   // Booking confirmation email
   if (process.env.RESEND_API_KEY) {
-    const gstLine =
-      booking.cgstAmount && booking.sgstAmount
-        ? `<tr><td style="padding:4px 0;color:#6b7280;">CGST + SGST</td><td style="padding:4px 0;">₹${(booking.cgstAmount + booking.sgstAmount).toLocaleString("en-IN")}</td></tr>`
-        : "";
+    // Totals across the party, not the one room the wizard named — the guest
+    // paid once, for all of it.
+    const partyTotal = unit.reduce((sum, b) => sum + b.totalAmount, 0);
+    const partyTax = (await prisma.booking.aggregate({
+      where: { id: { in: unit.map((b) => b.id) } },
+      _sum: { cgstAmount: true, sgstAmount: true },
+    }))._sum;
+    const taxTotal = (partyTax.cgstAmount ?? 0) + (partyTax.sgstAmount ?? 0);
+
+    const gstLine = taxTotal > 0
+      ? `<tr><td style="padding:4px 0;color:#6b7280;">CGST + SGST</td><td style="padding:4px 0;">₹${taxTotal.toLocaleString("en-IN")}</td></tr>`
+      : "";
+
+    // "Family Room (+ extra bed), Standard Room" — a party must be able to see
+    // it got everything it booked.
+    const roomsLine = partyRooms
+      .map((r) => `${r.room.name}${r.extraBed ? " (+ extra bed)" : ""}`)
+      .join("<br/>");
 
     // Non-fatal. The payment is already recorded, so a Resend outage must not
     // turn a confirmed booking into a 500 — the wizard reads that as "we could
@@ -339,16 +425,16 @@ export async function POST(req: NextRequest) {
       const { error: sendError } = await resend.emails.send({
         from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
         to: booking.guestEmail,
-        subject: `Booking Confirmed — ${booking.bookingNumber} | Rio Casa`,
+        subject: `Booking Confirmed — ${partyRooms.length > 1 ? booking.bookingNumber.split("/")[0] : booking.bookingNumber} | Rio Casa`,
         html: `
           <div style="font-family:Georgia,serif;max-width:600px;margin:auto;padding:24px;color:#2C2416;">
             <h1 style="color:#4A6741;font-size:26px;margin-bottom:4px;">Booking Confirmed!</h1>
-            <p style="color:#6b7280;font-size:13px;margin-top:0;">${booking.bookingNumber}</p>
+            <p style="color:#6b7280;font-size:13px;margin-top:0;">${partyRooms.length > 1 ? booking.bookingNumber.split("/")[0] : booking.bookingNumber}</p>
             <p>Dear ${booking.guestName},</p>
             <p>Your stay at <strong>Rio Casa, Mahabaleshwar</strong> is confirmed. We look forward to welcoming you!</p>
             <hr style="border-color:#e5e7eb;margin:20px 0;" />
             <table style="width:100%;border-collapse:collapse;font-size:14px;">
-              <tr><td style="padding:6px 0;color:#6b7280;">Room</td><td style="padding:6px 0;font-weight:bold;">${booking.room.name}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">${partyRooms.length > 1 ? "Rooms" : "Room"}</td><td style="padding:6px 0;font-weight:bold;">${roomsLine}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Check-in</td><td style="padding:6px 0;">${new Date(booking.checkIn).toDateString()}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Check-out</td><td style="padding:6px 0;">${new Date(booking.checkOut).toDateString()}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Nights</td><td style="padding:6px 0;">${booking.nights}</td></tr>
@@ -356,7 +442,7 @@ export async function POST(req: NextRequest) {
               ${gstLine}
               <tr style="border-top:1px solid #e5e7eb;">
                 <td style="padding:8px 0;font-weight:bold;color:#4A6741;">Total Paid</td>
-                <td style="padding:8px 0;font-weight:bold;color:#4A6741;font-size:16px;">₹${booking.totalAmount.toLocaleString("en-IN")}</td>
+                <td style="padding:8px 0;font-weight:bold;color:#4A6741;font-size:16px;">₹${partyTotal.toLocaleString("en-IN")}</td>
               </tr>
             </table>
             <hr style="border-color:#e5e7eb;margin:20px 0;" />

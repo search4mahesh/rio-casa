@@ -69,24 +69,6 @@ describe("booking wizard — step 1 controls are named (B-49)", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("Check-out Date"));
   });
 
-  it("names the guest counter as a group rather than mislabelling a button", () => {
-    render(<BookingWizard locale="en" />);
-
-    // A `<label>` over a pair of buttons names nothing at all — CLAUDE.md calls
-    // for a `<span id>` plus role/aria-labelledby, which is what this asserts.
-    const group = screen.getByRole("group", { name: "Number of Guests" });
-    expect(within(group).getAllByRole("button")).toHaveLength(2);
-  });
-
-  it("gives the counter buttons their own accessible names", () => {
-    render(<BookingWizard locale="en" />);
-
-    const group = screen.getByRole("group", { name: "Number of Guests" });
-    // "−" and "+" are punctuation to a screen reader without these.
-    expect(within(group).getByRole("button", { name: /fewer/i })).toBeTruthy();
-    expect(within(group).getByRole("button", { name: /more/i })).toBeTruthy();
-  });
-
   it("leaves no unlabelled control anywhere on the step", () => {
     const { container } = render(<BookingWizard locale="en" />);
 
@@ -97,5 +79,39 @@ describe("booking wizard — step 1 controls are named (B-49)", () => {
     });
 
     expect(unnamed.map((e) => e.getAttribute("name") ?? e.getAttribute("type"))).toEqual([]);
+  });
+});
+
+describe("booking wizard — the guest counter is named on the room step", () => {
+  /** The counter moved off step 1 to sit beside the rooms it has to fit into. */
+  async function toRoomStep() {
+    const user = userEvent.setup();
+    render(<BookingWizard locale="en" />);
+    await user.click(screen.getByRole("button", { name: /Continue to Room Selection/ }));
+    await screen.findByRole("group", { name: "Number of Guests" });
+    return user;
+  }
+
+  it("names it as a group rather than mislabelling a button", async () => {
+    await toRoomStep();
+
+    // A `<label>` over a pair of buttons names nothing at all — CLAUDE.md calls
+    // for a `<span id>` plus role/aria-labelledby, which is what this asserts.
+    const group = screen.getByRole("group", { name: "Number of Guests" });
+    expect(within(group).getAllByRole("button")).toHaveLength(2);
+  });
+
+  it("gives the counter buttons their own accessible names", async () => {
+    await toRoomStep();
+
+    const group = screen.getByRole("group", { name: "Number of Guests" });
+    // "−" and "+" are punctuation to a screen reader without these.
+    expect(within(group).getByRole("button", { name: /fewer/i })).toBeTruthy();
+    expect(within(group).getByRole("button", { name: /more/i })).toBeTruthy();
+  });
+
+  it("is gone from the date step", () => {
+    render(<BookingWizard locale="en" />);
+    expect(screen.queryByRole("group", { name: "Number of Guests" })).toBeNull();
   });
 });

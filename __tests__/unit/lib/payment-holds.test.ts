@@ -21,14 +21,19 @@ const { mockFindMany, mockUpdateMany, mockAuditCreate, mockRoomStatusUpdateMany,
     mockFetchOrderState: vi.fn(),
   }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     booking: { findMany: mockFindMany, updateMany: mockUpdateMany, aggregate: mockAggregate },
     roomStatus: { updateMany: mockRoomStatusUpdateMany },
     guest: { update: mockGuestUpdate },
     auditLog: { create: mockAuditCreate },
-  },
-}));
+    // The cancelling write runs in a transaction so a party's rooms are voided
+    // all together or not at all — a short count throws and rolls the unit
+    // back. The callback form is the only one the sweeper uses.
+    $transaction: (fn: (tx: unknown) => unknown) => Promise.resolve(fn(client)),
+  };
+  return { prisma: client };
+});
 
 vi.mock("@/lib/razorpay", () => ({
   fetchOrderPaymentState: mockFetchOrderState,
@@ -41,6 +46,8 @@ const stale = {
   bookingNumber: "BK-20260815-001",
   guestId: "g1",
   razorpayOrderId: "order_1",
+  // A lone website booking, not one room of a party.
+  groupId: null,
 };
 
 beforeEach(() => {
@@ -93,7 +100,19 @@ describe("expireStalePaymentHolds — what it cancels", () => {
 
   it("scopes to one room when asked", async () => {
     await expireStalePaymentHolds({ roomId: "room_7" });
-    expect(mockFindMany.mock.calls[0][0].where.roomId).toBe("room_7");
+    expect(mockFindMany.mock.calls[0][0].where.roomId).toEqual({ in: ["room_7"] });
+  });
+
+  it("scopes to every room a party is booking", async () => {
+    // `createGroupBooking` sweeps all the rooms it is about to take, so a guest
+    // is never blocked by a dead hold on the second room of their party.
+    await expireStalePaymentHolds({ roomIds: ["room_7", "room_8"] });
+    expect(mockFindMany.mock.calls[0][0].where.roomId).toEqual({ in: ["room_7", "room_8"] });
+  });
+
+  it("scans every room when given no scope", async () => {
+    await expireStalePaymentHolds();
+    expect(mockFindMany.mock.calls[0][0].where.roomId).toBeUndefined();
   });
 });
 
@@ -141,9 +160,12 @@ describe("expireStalePaymentHolds — what it must never cancel", () => {
     mockFindMany.mockResolvedValueOnce([stale]);
     await expireStalePaymentHolds();
 
+    // `id: { in: [...] }` because a party's rooms are voided in one statement,
+    // all or nothing. The compare-and-swap on status/paymentStatus is the part
+    // that matters: a payment landing mid-sweep must not be undone.
     expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "bk1", status: "confirmed", paymentStatus: "pending" },
+        where: { id: { in: ["bk1"] }, status: "confirmed", paymentStatus: "pending" },
       })
     );
   });

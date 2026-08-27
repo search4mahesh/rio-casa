@@ -23,6 +23,16 @@ const RATE = {
   family: 7500,
 } as const;
 
+/**
+ * What a rollaway costs per night, for a stay no rate plan covers.
+ *
+ * Kept here *and* in prisma/migrations/6_room_extra_bed_rate — change both
+ * together, or a re-seed silently reverts a rate edited in the database. It
+ * lives on the room because pricing it only from a rate plan meant every extra
+ * bed was billed at ₹0 (B-57), and there is no rate plan in this database.
+ */
+const EXTRA_BED_RATE = 1000;
+
 const BASE_AMENITIES = ["AC", "WiFi", "TV", "Hot Water", "Room Service", "Extra Bed Available"];
 
 const DESC = {
@@ -61,6 +71,7 @@ function standard(roomNumber: string, floor: number, extraAmenities: string[] = 
     floor,
     maxGuests: 2,
     extraBed: true,
+    extraBedRate: EXTRA_BED_RATE,
     pricePerNight: RATE.standard,
     baseRate: RATE.standard,
     amenities: [...BASE_AMENITIES, ...extraAmenities],
@@ -77,6 +88,7 @@ function deluxe(roomNumber: string, floor: number) {
     floor,
     maxGuests: 2,
     extraBed: true,
+    extraBedRate: EXTRA_BED_RATE,
     pricePerNight: RATE.deluxe,
     baseRate: RATE.deluxe,
     amenities: [...BASE_AMENITIES, "Balcony"],
@@ -93,6 +105,7 @@ function luxury(roomNumber: string, floor: number) {
     floor,
     maxGuests: 2,
     extraBed: true,
+    extraBedRate: EXTRA_BED_RATE,
     pricePerNight: RATE.luxury,
     baseRate: RATE.luxury,
     amenities: [...BASE_AMENITIES, "Bathtub", "Premium Toiletries"],
@@ -114,6 +127,7 @@ const ROOMS = [
     floor: 1,
     maxGuests: 4,
     extraBed: true,
+    extraBedRate: EXTRA_BED_RATE,
     pricePerNight: RATE.family,
     baseRate: RATE.family,
     amenities: [...BASE_AMENITIES, "2 Double Beds", "Seating Area"],

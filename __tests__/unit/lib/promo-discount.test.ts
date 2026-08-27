@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   executeRaw: vi.fn().mockResolvedValue(1),
-  roomFindUniqueOrThrow: vi.fn(),
+  roomFindMany: vi.fn(),
   ratePlanFindFirst: vi.fn(),
   bookingFindMany: vi.fn(),
   bookingAggregate: vi.fn(),
@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   auditCreate: vi.fn(),
   transaction: vi.fn(),
   txBookingCreate: vi.fn(),
+  txGroupCreate: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -27,7 +28,7 @@ vi.mock("@/lib/prisma", () => ({
     $queryRaw: h.queryRaw,
     $executeRaw: h.executeRaw,
     $transaction: h.transaction,
-    room: { findUniqueOrThrow: h.roomFindUniqueOrThrow },
+    room: { findMany: h.roomFindMany },
     ratePlan: { findFirst: h.ratePlanFindFirst },
     booking: { findMany: h.bookingFindMany, aggregate: h.bookingAggregate, updateMany: vi.fn() },
     guest: { update: h.guestUpdate },
@@ -46,13 +47,17 @@ function rawCall(call: unknown[]) {
   return { sql: Array.from(strings).join("?"), values };
 }
 
-const room = { id: "r1", name: "Deluxe", roomType: "deluxe", pricePerNight: 4000 };
+const room = {
+  id: "r1", name: "Deluxe", roomType: "deluxe", pricePerNight: 4000,
+  // `quoteStay` reads both; without them every rollaway prices at ₹0.
+  extraBed: true, extraBedRate: 1000,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
 
   h.bookingFindMany.mockResolvedValue([]); // no stale holds
-  h.roomFindUniqueOrThrow.mockResolvedValue(room);
+  h.roomFindMany.mockResolvedValue([room]);
   h.ratePlanFindFirst.mockResolvedValue(null); // price off room.pricePerNight
   h.bookingAggregate.mockResolvedValue({ _count: { _all: 1 }, _sum: { totalAmount: 0 } });
   h.guestUpdate.mockResolvedValue({});
@@ -78,11 +83,16 @@ beforeEach(() => {
     room,
   });
 
+  h.txGroupCreate.mockResolvedValue({ id: "grp1", groupNumber: "BK-20260901-001" });
+
   h.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       guest: { findFirst: vi.fn().mockResolvedValue({ id: "g1" }), create: vi.fn() },
       // The room lock, then the availability re-check: both raw, both clear.
       $queryRaw: vi.fn().mockResolvedValue([{ conflict: null, blocked: false }]),
+      // Every booking is a group, a single room included — there is no
+      // "is this a group?" branch anywhere.
+      bookingGroup: { create: h.txGroupCreate },
       booking: { create: h.txBookingCreate },
     })
   );
@@ -129,7 +139,7 @@ describe("discount is clamped to the stay (B-06)", () => {
   it("a flat code worth more than the booking zeroes it rather than inverting it", async () => {
     // ₹2,000 off a single ₹4,000 night is fine; make the stay cheaper than the
     // code so the clamp is what is being measured.
-    h.roomFindUniqueOrThrow.mockResolvedValue({ ...room, pricePerNight: 1800 });
+    h.roomFindMany.mockResolvedValue([{ ...room, pricePerNight: 1800 }]);
 
     await createBooking({ ...input, promoCode: "FLAT2000" });
 

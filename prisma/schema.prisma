@@ -22,9 +22,9 @@ model Room {
   // Website display fields
   name          String
   slug          String   @unique
-  descriptionEn String   @db.Text @map("description_en")
-  descriptionHi String   @db.Text @map("description_hi")
-  descriptionMr String   @db.Text @map("description_mr")
+  descriptionEn String   @map("description_en") @db.Text
+  descriptionHi String   @map("description_hi") @db.Text
+  descriptionMr String   @map("description_mr") @db.Text
   maxGuests     Int      @map("max_guests")
   pricePerNight Float    @map("price_per_night")
   images        String[]
@@ -34,6 +34,10 @@ model Room {
   roomType      String   @default("standard") @map("room_type")
   floor         Int?
   extraBed      Boolean  @default(false) @map("extra_bed")
+  // What the extra bed costs per night when no rate plan covers the stay. A
+  // rate plan with a non-zero `extraBedRate` overrides it; one that leaves it
+  // at 0 has no opinion, so creating a plan cannot silently make beds free.
+  extraBedRate  Decimal  @default(0) @map("extra_bed_rate") @db.Decimal(10, 2)
   baseRate      Decimal  @default(0) @map("base_rate") @db.Decimal(10, 2)
   photos        Json     @default("[]")
   status        String   @default("available")
@@ -55,29 +59,30 @@ model Room {
 // ─────────────────────────────────────────────
 
 model Guest {
-  id            String   @id @default(cuid())
-  firstName     String   @map("first_name")
-  lastName      String   @map("last_name")
+  id            String  @id @default(cuid())
+  firstName     String  @map("first_name")
+  lastName      String  @map("last_name")
   email         String?
   phone         String
-  altPhone      String?  @map("alt_phone")
-  address       String?  @db.Text
+  altPhone      String? @map("alt_phone")
+  address       String? @db.Text
   city          String?
   state         String?
-  country       String   @default("India")
+  country       String  @default("India")
   pincode       String?
-  idProofType   String?  @map("id_proof_type")
-  idProofNumber String?  @map("id_proof_number")
-  nationality   String   @default("Indian")
+  idProofType   String? @map("id_proof_type")
+  idProofNumber String? @map("id_proof_number")
+  nationality   String  @default("Indian")
   gstin         String?
-  companyName   String?  @map("company_name")
-  notes         String?  @db.Text
-  totalStays    Int      @default(0) @map("total_stays")
-  totalRevenue  Decimal  @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  companyName   String? @map("company_name")
+  notes         String? @db.Text
+  totalStays    Int     @default(0) @map("total_stays")
+  totalRevenue  Decimal @default(0) @map("total_revenue") @db.Decimal(12, 2)
 
-  bookings     Booking[]
-  invoices     Invoice[]
-  currentRooms RoomStatus[] @relation("CurrentGuest")
+  bookings      Booking[]
+  invoices      Invoice[]
+  currentRooms  RoomStatus[]   @relation("CurrentGuest")
+  bookingGroups BookingGroup[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -105,6 +110,12 @@ model Booking {
   guestPhone String  @map("guest_phone")
 
   roomId String @map("room_id")
+
+  // Set when this room is one of several booked as a single reservation. The
+  // group owns the payment, the promo claim and the number; each room stays its
+  // own Booking row so housekeeping, check-in, the calendar, the exclusion
+  // constraint and every report keep working unchanged.
+  groupId String? @map("group_id")
 
   // Dates
   checkIn        DateTime  @map("check_in") @db.Date
@@ -138,8 +149,8 @@ model Booking {
   source          String  @default("website")
   sourceBookingId String? @map("source_booking_id")
 
-  promoCode       String?  @map("promo_code")
-  specialRequests String?  @map("special_requests") @db.Text
+  promoCode       String? @map("promo_code")
+  specialRequests String? @map("special_requests") @db.Text
 
   // Cancellation
   cancelledAt        DateTime? @map("cancelled_at")
@@ -151,6 +162,7 @@ model Booking {
 
   room            Room             @relation(fields: [roomId], references: [id])
   guest           Guest?           @relation(fields: [guestId], references: [id])
+  group           BookingGroup?    @relation(fields: [groupId], references: [id])
   payments        Payment[]
   invoices        Invoice[]
   channelSyncLogs ChannelSyncLog[]
@@ -158,7 +170,52 @@ model Booking {
 
   @@index([checkIn, checkOut])
   @@index([guestEmail])
+  @@index([groupId])
   @@map("bookings")
+}
+
+// ─────────────────────────────────────────────
+// BOOKING GROUPS (one reservation, several rooms)
+// ─────────────────────────────────────────────
+
+/// A party too large for one room books several, and pays once.
+///
+/// The group owns only what is genuinely shared: the Razorpay order, the promo
+/// claim and the number the guest quotes on the phone. Occupancy stays on the
+/// child `Booking` rows, so nothing downstream — the exclusion constraint, the
+/// night audit, housekeeping, the calendar, every revenue report — needs to
+/// know groups exist.
+///
+/// Every website booking gets one, including a party that fits in a single
+/// room. A single-room special case is how the two pricing paths and the two
+/// counter allocators drifted apart before.
+model BookingGroup {
+  id          String @id @default(cuid())
+  groupNumber String @unique @map("group_number")
+
+  guestId String? @map("guest_id")
+
+  /// Sum of the child bookings' `totalAmount` — what Razorpay was asked for.
+  totalAmount    Float @map("total_amount")
+  discountAmount Float @default(0) @map("discount_amount")
+
+  /// The whole party's headcount, which no single child row can state.
+  adults   Int @default(1)
+  children Int @default(0)
+
+  razorpayOrderId   String? @map("razorpay_order_id")
+  razorpayPaymentId String? @map("razorpay_payment_id")
+
+  promoCode String? @map("promo_code")
+  source    String  @default("website")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bookings Booking[]
+  guest    Guest?    @relation(fields: [guestId], references: [id])
+
+  @@map("booking_groups")
 }
 
 // Allocates the trailing `-NNN` of any document numbered per day —
@@ -237,11 +294,11 @@ model Invoice {
   sgstAmount    Decimal? @map("sgst_amount") @db.Decimal(10, 2)
   totalAmount   Decimal  @map("total_amount") @db.Decimal(12, 2)
 
-  lineItems   Json     @map("line_items")
-  invoiceDate DateTime @map("invoice_date") @db.Date
+  lineItems   Json      @map("line_items")
+  invoiceDate DateTime  @map("invoice_date") @db.Date
   dueDate     DateTime? @map("due_date") @db.Date
-  status      String   @default("generated")
-  pdfUrl      String?  @map("pdf_url")
+  status      String    @default("generated")
+  pdfUrl      String?   @map("pdf_url")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -256,10 +313,10 @@ model Invoice {
 // ─────────────────────────────────────────────
 
 model RoomStatus {
-  id               String @id @default(cuid())
-  roomId           String @unique @map("room_id")
-  occupancy        String @default("vacant")
-  housekeeping     String @default("clean")
+  id               String  @id @default(cuid())
+  roomId           String  @unique @map("room_id")
+  occupancy        String  @default("vacant")
+  housekeeping     String  @default("clean")
   currentGuestId   String? @map("current_guest_id")
   currentBookingId String? @map("current_booking_id")
 
@@ -282,10 +339,10 @@ model RoomStatus {
 // ─────────────────────────────────────────────
 
 model HousekeepingLog {
-  id         String @id @default(cuid())
-  roomId     String @map("room_id")
-  taskType   String @map("task_type")
-  status     String @default("pending")
+  id         String  @id @default(cuid())
+  roomId     String  @map("room_id")
+  taskType   String  @map("task_type")
+  status     String  @default("pending")
   assignedTo String? @map("assigned_to")
 
   startedAt       DateTime? @map("started_at")
@@ -310,8 +367,8 @@ model RatePlan {
   name     String
   roomType String @map("room_type")
 
-  baseRate      Decimal @map("base_rate") @db.Decimal(10, 2)
-  extraBedRate  Decimal @default(0) @map("extra_bed_rate") @db.Decimal(10, 2)
+  baseRate      Decimal  @map("base_rate") @db.Decimal(10, 2)
+  extraBedRate  Decimal  @default(0) @map("extra_bed_rate") @db.Decimal(10, 2)
   validFrom     DateTime @map("valid_from") @db.Date
   validTo       DateTime @map("valid_to") @db.Date
   weekendMarkup Decimal  @default(0) @map("weekend_markup") @db.Decimal(5, 2)
@@ -329,8 +386,8 @@ model Promotion {
   code String  @unique
   name String?
 
-  discountType  String  @map("discount_type")
-  discountValue Decimal @map("discount_value") @db.Decimal(10, 2)
+  discountType  String   @map("discount_type")
+  discountValue Decimal  @map("discount_value") @db.Decimal(10, 2)
   maxDiscount   Decimal? @map("max_discount") @db.Decimal(10, 2)
 
   validFrom DateTime @map("valid_from") @db.Date
@@ -446,7 +503,7 @@ model LaundryBatchItem {
 model Expense {
   id            String   @id @default(cuid())
   date          DateTime @db.Date
-  category      String   // housekeeping | maintenance | food | utilities | staff | marketing | other
+  category      String // housekeeping | maintenance | food | utilities | staff | marketing | other
   description   String
   amount        Decimal  @db.Decimal(10, 2)
   paymentMethod String   @map("payment_method") // cash | bank | upi | cheque
@@ -504,14 +561,14 @@ model AuditLog {
 // ─────────────────────────────────────────────
 
 model Staff {
-  id           String  @id @default(cuid())
+  id           String    @id @default(cuid())
   name         String
-  email        String  @unique
+  email        String    @unique
   phone        String?
   role         String
-  passwordHash String  @map("password_hash")
-  permissions  Json    @default("[]")
-  isActive     Boolean @default(true) @map("is_active")
+  passwordHash String    @map("password_hash")
+  permissions  Json      @default("[]")
+  isActive     Boolean   @default(true) @map("is_active")
   lastLogin    DateTime? @map("last_login")
 
   shiftAssignments ShiftAssignment[]
@@ -526,25 +583,25 @@ model Staff {
 // ─────────────────────────────────────────────
 
 model CommunicationLog {
-  id         String   @id @default(cuid())
-  channel    String   // email | whatsapp
+  id         String  @id @default(cuid())
+  channel    String // email | whatsapp
   subject    String?
-  body       String   @db.Text
+  body       String  @db.Text
   recipients Int
-  sentBy     String   @map("sent_by")
+  sentBy     String  @map("sent_by")
   filter     String
 
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("communication_log")
 }
 
 model ReviewLog {
   id          String    @id @default(cuid())
-  platform    String    // google | booking_com | tripadvisor | mmt | other
+  platform    String // google | booking_com | tripadvisor | mmt | other
   guestName   String    @map("guest_name")
   rating      Int
-  reviewText  String    @db.Text @map("review_text")
+  reviewText  String    @map("review_text") @db.Text
   reviewUrl   String?   @map("review_url")
   datePosted  DateTime  @map("date_posted") @db.Date
   responded   Boolean   @default(false)
@@ -557,12 +614,12 @@ model ReviewLog {
 }
 
 model ShiftAssignment {
-  id        String   @id @default(cuid())
-  date      DateTime @db.Date
-  slot      String   // morning | evening | night
-  station   String   // frontdesk | housekeeping | kitchen
-  staffId   String   @map("staff_id")
-  notes     String?
+  id      String   @id @default(cuid())
+  date    DateTime @db.Date
+  slot    String // morning | evening | night
+  station String // frontdesk | housekeeping | kitchen
+  staffId String   @map("staff_id")
+  notes   String?
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -577,19 +634,19 @@ model ShiftAssignment {
 // ─────────────────────────────────────────────
 
 model Package {
-  id        String @id @default(cuid())
-  nameEn    String @map("name_en")
-  nameHi    String @map("name_hi")
-  nameMr    String @map("name_mr")
-  descEn    String @db.Text @map("desc_en")
-  descHi    String @db.Text @map("desc_hi")
-  descMr    String @db.Text @map("desc_mr")
-  price     Float
+  id         String    @id @default(cuid())
+  nameEn     String    @map("name_en")
+  nameHi     String    @map("name_hi")
+  nameMr     String    @map("name_mr")
+  descEn     String    @map("desc_en") @db.Text
+  descHi     String    @map("desc_hi") @db.Text
+  descMr     String    @map("desc_mr") @db.Text
+  price      Float
   inclusions String[]
-  imageUrl  String?  @map("image_url")
-  validFrom DateTime? @map("valid_from")
-  validTo   DateTime? @map("valid_to")
-  isActive  Boolean  @default(true) @map("is_active")
+  imageUrl   String?   @map("image_url")
+  validFrom  DateTime? @map("valid_from")
+  validTo    DateTime? @map("valid_to")
+  isActive   Boolean   @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -616,9 +673,9 @@ model BlogPost {
   titleHi     String?   @map("title_hi")
   titleMr     String?   @map("title_mr")
   slug        String    @unique
-  bodyEn      String    @db.Text @map("body_en")
-  bodyHi      String?   @db.Text @map("body_hi")
-  bodyMr      String?   @db.Text @map("body_mr")
+  bodyEn      String    @map("body_en") @db.Text
+  bodyHi      String?   @map("body_hi") @db.Text
+  bodyMr      String?   @map("body_mr") @db.Text
   coverImage  String?   @map("cover_image")
   isPublished Boolean   @default(false) @map("is_published")
   publishedAt DateTime? @map("published_at")

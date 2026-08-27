@@ -221,12 +221,20 @@ describe("getAvailableRooms", () => {
     expect(rooms).toHaveLength(2);
   });
 
-  it("filters by minGuests capacity", async () => {
-    // room.findMany is called with maxGuests >= minGuests — but our mock returns all three
-    // Check that the DB query was called with the right filter
+  it("filters by minGuests capacity, counting the extra bed", async () => {
+    // A room sleeps `maxGuests`, or one more if it takes a rollaway. Filtering
+    // on `maxGuests` alone told a party of 5 the property was full while five
+    // rooms sat empty (B-57), so the predicate is an OR over both.
     await getAvailableRooms(tomorrow, nextWeek, 4);
     expect(mockPrisma.room.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ maxGuests: { gte: 4 } }) })
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { maxGuests: { gte: 4 } },
+            { extraBed: true, maxGuests: { gte: 3 } },
+          ],
+        }),
+      })
     );
   });
 });

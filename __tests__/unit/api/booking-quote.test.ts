@@ -8,14 +8,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockRoomFindUnique, mockRatePlanFindFirst } = vi.hoisted(() => ({
-  mockRoomFindUnique: vi.fn(),
+// The route prices through `priceRooms`, which reads the rooms with `findMany`
+// — a party takes several, and asking for them one at a time would be a pool
+// connection each.
+const { mockRoomFindMany, mockRatePlanFindFirst } = vi.hoisted(() => ({
+  mockRoomFindMany: vi.fn(),
   mockRatePlanFindFirst: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    room: { findUnique: mockRoomFindUnique },
+    room: { findMany: mockRoomFindMany },
     ratePlan: { findFirst: mockRatePlanFindFirst },
   },
 }));
@@ -38,10 +41,14 @@ const room = {
   roomType: "deluxe",
   pricePerNight: 5000,
   isActive: true,
+  extraBed: true,
+  // The room's own tariff, used when no rate plan covers the stay. Selecting a
+  // room without it prices every rollaway at ₹0 (B-57).
+  extraBedRate: 1200,
 };
 
 beforeEach(() => {
-  mockRoomFindUnique.mockReset().mockResolvedValue(room);
+  mockRoomFindMany.mockReset().mockResolvedValue([room]);
   mockRatePlanFindFirst.mockReset().mockResolvedValue(null);
 });
 
@@ -65,7 +72,7 @@ describe("GET /api/booking/quote", () => {
   });
 
   it("applies the 18% slab above ₹7,500 a night", async () => {
-    mockRoomFindUnique.mockResolvedValueOnce({ ...room, pricePerNight: 9000 });
+    mockRoomFindMany.mockResolvedValueOnce([{ ...room, pricePerNight: 9000 }]);
 
     const res = await GET(get({ roomId: "r1", checkIn: "2026-08-17", checkOut: "2026-08-18" }));
     const { data } = await res.json();
@@ -121,13 +128,15 @@ describe("GET /api/booking/quote", () => {
   });
 
   it("returns 404 for an unknown room", async () => {
-    mockRoomFindUnique.mockResolvedValueOnce(null);
+    mockRoomFindMany.mockResolvedValueOnce([]);
     const res = await GET(get({ roomId: "nope", checkIn: "2026-08-17", checkOut: "2026-08-19" }));
     expect(res.status).toBe(404);
   });
 
   it("returns 404 for a deactivated room", async () => {
-    mockRoomFindUnique.mockResolvedValueOnce({ ...room, isActive: false });
+    // `priceRooms` filters on isActive in the query, so a deactivated room simply
+    // is not returned.
+    mockRoomFindMany.mockResolvedValueOnce([]);
     const res = await GET(get({ roomId: "r1", checkIn: "2026-08-17", checkOut: "2026-08-19" }));
     expect(res.status).toBe(404);
   });
