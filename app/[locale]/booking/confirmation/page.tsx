@@ -107,12 +107,12 @@ export default async function BookingConfirmationPage({
               <div className="w-48 h-48 bg-primary-100 flex items-center justify-center text-primary-400 text-sm mx-auto">
                 UPI QR Code
               </div>
-              <p className="font-sans text-sm text-earth-text/60 mt-3">UPI ID: riocasa@paytm</p>
+              <p className="font-sans text-sm text-earth-text/70 mt-3">UPI ID: riocasa@paytm</p>
               <p className="font-serif text-lg text-primary mt-1">
                 Amount: ₹{amount.toLocaleString("en-IN")}
               </p>
             </div>
-            <p className="font-sans text-sm text-earth-text/50 mb-8">
+            <p className="font-sans text-sm text-earth-text/70 mb-8">
               After payment, WhatsApp us the screenshot at +91 98765 43210 and we will confirm your booking within 15 minutes.
             </p>
           </>
@@ -160,7 +160,7 @@ export default async function BookingConfirmationPage({
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4">
-      <span className="text-earth-text/60">{label}</span>
+      <span className="text-earth-text/70">{label}</span>
       <span className="text-earth-text text-right">{value}</span>
     </div>
   );

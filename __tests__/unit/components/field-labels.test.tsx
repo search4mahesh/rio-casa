@@ -117,18 +117,51 @@ describe("every form on the site", () => {
     ).toEqual([]);
   });
 
+  /**
+   * Prose about ids is not an id, for the same reason prose about labels is
+   * not a label — the `<label>` check above already strips comments and says
+   * why. A comment explaining a past id bug legitimately quotes the broken
+   * template, and flagging that pushes people into rewording documentation to
+   * appease a regex.
+   */
+  function stripComments(src: string): string {
+    return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  }
+
+  /**
+   * Every id-bearing template literal in a file, as [holder, suffix] — so
+   * `${roleFieldId}-role` and `${fieldId}-role` are counted apart.
+   *
+   * Matches any identifier rather than the literal name `fieldId`: a component
+   * with two id sources has to name one of them something else, and a guard
+   * that only knows one name silently stops covering the file the moment it is
+   * renamed.
+   *
+   * `aria-labelledby` counts as a referrer alongside `htmlFor`. A *group* of
+   * controls — a radio set, a row of buttons — is named by a `<span id>` and
+   * `role="radiogroup"`, not by a `<label>` (see CLAUDE.md), so requiring
+   * `htmlFor` there would fail the pattern this file exists to encourage.
+   */
+  function templateIds(src: string): Array<[string, string]> {
+    const pattern = /(?:id|htmlFor|aria-labelledby|aria-describedby)=\{`\$\{(\w+)\}-([a-z0-9-]+)`\}/g;
+    return [...stripComments(src).matchAll(pattern)].map((m) => [m[1], m[2]] as [string, string]);
+  }
+
   it("pairs every generated id with exactly one control", () => {
     const unpaired: string[] = [];
 
     for (const f of files) {
-      const s = readFileSync(f, "utf8");
       const counts: Record<string, number> = {};
-      for (const m of s.matchAll(/\$\{fieldId\}-([a-z0-9-]+)`/g)) {
-        counts[m[1]] = (counts[m[1]] ?? 0) + 1;
+      for (const [holder, suffix] of templateIds(readFileSync(f, "utf8"))) {
+        const key = `${holder}-${suffix}`;
+        counts[key] = (counts[key] ?? 0) + 1;
       }
       for (const [id, n] of Object.entries(counts)) {
-        // Exactly two: the label's htmlFor and the control's id. Three would
-        // mean two controls fighting over one label.
+        // Exactly two: the control's id, and the one thing that points at it
+        // (a label's htmlFor, or a group's aria-labelledby). Three would
+        // mean two controls fighting over one label — and one shared across
+        // four is how every field in the Add Staff modal came to point at the
+        // Name input (B-65).
         if (n !== 2) unpaired.push(`${f}: ${id} appears ${n}×`);
       }
     }
@@ -140,10 +173,17 @@ describe("every form on the site", () => {
     const missing: string[] = [];
 
     for (const f of files) {
-      const s = readFileSync(f, "utf8");
-      if (!/\$\{fieldId\}/.test(s)) continue;
-      if (!/const fieldId = useId\(\)/.test(s)) missing.push(`${f}: uses fieldId without declaring it`);
-      if (!/\buseId\b[^\n]*from "react"/.test(s)) missing.push(`${f}: useId not imported`);
+      const src = readFileSync(f, "utf8");
+      const bare = stripComments(src);
+      const holders = new Set(templateIds(src).map(([holder]) => holder));
+      if (holders.size === 0) continue;
+
+      for (const holder of holders) {
+        if (!new RegExp(`const ${holder} = useId\(\)`).test(bare)) {
+          missing.push(`${f}: uses ${holder} without declaring it with useId()`);
+        }
+      }
+      if (!/\buseId\b[^\n]*from "react"/.test(bare)) missing.push(`${f}: useId not imported`);
     }
 
     expect(missing, missing.join("\n")).toEqual([]);

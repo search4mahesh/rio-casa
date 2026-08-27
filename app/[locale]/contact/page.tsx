@@ -62,7 +62,7 @@ export default function ContactPage() {
         <div className="text-center mb-12">
           <p className="section-subheading mb-2">{t("subtitle")}</p>
           <h1 className="section-heading">{t("title")}</h1>
-          <p className="font-sans text-earth-text/60 max-w-xl mx-auto mt-4">{t("intro")}</p>
+          <p className="font-sans text-earth-text/70 max-w-xl mx-auto mt-4">{t("intro")}</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-10 max-w-5xl mx-auto">
@@ -74,7 +74,7 @@ export default function ContactPage() {
                   <Icon size={18} className="text-primary" />
                 </div>
                 <div>
-                  <p className="font-serif text-sm text-earth-text/50">{label}</p>
+                  <p className="font-serif text-sm text-earth-text/70">{label}</p>
                   {href ? (
                     <a href={href} className="font-sans text-earth-text hover:text-primary transition-colors">{value}</a>
                   ) : (

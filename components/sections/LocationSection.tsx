@@ -47,7 +47,7 @@ export default function LocationSection() {
               {distances.map((d) => (
                 <div key={d.from} className="bg-earth-white rounded-sm p-4 shadow-sm">
                   <p className="font-serif text-lg text-primary mb-1">{d.from}</p>
-                  <div className="flex items-center gap-3 text-sm text-earth-text/60">
+                  <div className="flex items-center gap-3 text-sm text-earth-text/70">
                     <span>{d.km}</span>
                     <span>·</span>
                     <div className="flex items-center gap-1">

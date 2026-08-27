@@ -90,7 +90,9 @@
     "subtitle": "Special experiences crafted just for you",
     "includes": "Package Includes",
     "bookPackage": "Book This Package",
-    "validity": "Valid"
+    "validity": "Valid",
+    "none": "No packages are on offer just now — please get in touch and we will put something together.",
+    "loadError": "We could not load our packages just now. Please refresh, or get in touch and we will help."
   },
   "dining": {
     "title": "Dining & Amenities",
@@ -120,7 +122,9 @@
     "title": "Travel Blog",
     "subtitle": "Stories from the hills",
     "readMore": "Read More",
-    "backToBlog": "Back to Blog"
+    "backToBlog": "Back to Blog",
+    "none": "No posts yet — check back soon.",
+    "loadError": "We could not load the journal just now. Please refresh."
   },
   "contactPage": {
     "title": "Contact Us",
@@ -197,5 +201,18 @@
       "title": "Privacy Policy",
       "description": "How Rio Casa collects, uses and protects your personal information."
     }
+  },
+  "error": {
+    "title": "Something went wrong",
+    "body": "This page could not be loaded. It is usually temporary — trying again often works.",
+    "retry": "Try again",
+    "home": "Back to home",
+    "bookingTitle": "We could not load the booking form",
+    "bookingBody": "Your card has not been charged. Please try again, or call or WhatsApp us and we will book the room for you.",
+    "bookingCall": "Call the resort",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The page you are looking for does not exist, or has moved.",
+    "notFoundRooms": "Browse our rooms",
+    "reference": "Reference"
   }
 }

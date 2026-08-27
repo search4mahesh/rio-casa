@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminToken, ADMIN_COOKIE, type AdminPayload } from "@/lib/admin-auth";
+import { resolveActiveStaff, ADMIN_COOKIE, type AdminPayload } from "@/lib/admin-auth";
 import { hasMinRole, forbidden, type Role } from "@/lib/rbac";
 import { fail } from "@/lib/api-response";
 
@@ -33,8 +33,11 @@ export type AuthResult =
  * a straight line of early returns.
  */
 export async function requireRole(req: NextRequest, min: Role): Promise<AuthResult> {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
+  // `resolveActiveStaff`, not `verifyAdminToken`: the role and the account's
+  // very existence are re-read from the database rather than taken from the
+  // 12-hour-old token, so a deactivation or a demotion takes effect on the
+  // next request instead of whenever the token happens to expire (B-60).
+  const staff = await resolveActiveStaff(req.cookies.get(ADMIN_COOKIE)?.value);
 
   if (!staff) {
     // `{ success: false }` with no `error` used to go out here, which breaks the
@@ -42,6 +45,9 @@ export async function requireRole(req: NextRequest, min: Role): Promise<AuthResu
     // because clients render it directly. A panel doing
     // `setMessage(data.error)` showed the staff member nothing at all when
     // their session expired — the click just appeared to do nothing (B-40).
+    // Covers a deactivated account as well as an expired token. They are told
+    // apart deliberately loosely: someone whose access was just revoked does
+    // not need to be told which of the two it was.
     return { ok: false, response: fail("Your session has expired — please sign in again.", 401) };
   }
   if (!hasMinRole(staff.role, min)) {

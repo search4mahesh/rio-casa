@@ -590,7 +590,7 @@ export default function BookingWizard({
       {step === "room" && (
         <div className="bg-earth-white rounded-sm shadow-sm p-6">
           <h2 className="font-serif text-2xl mb-2">{t("selectRoom")}</h2>
-          <p className="font-sans text-sm text-earth-text/60 mb-4">
+          <p className="font-sans text-sm text-earth-text/70 mb-4">
             {nights} {nights === 1 ? "night" : "nights"}
             {guests > biggestRoom && biggestRoom > 0 && (
               <>
@@ -618,7 +618,7 @@ export default function BookingWizard({
           </div>
 
           {roomsLoading && (
-            <p className="font-sans text-sm text-earth-text/50 text-center py-8">Checking availability…</p>
+            <p className="font-sans text-sm text-earth-text/70 text-center py-8">Checking availability…</p>
           )}
           {roomsError && (
             <p className="font-sans text-sm text-red-500 mb-4">{roomsError}</p>
@@ -629,7 +629,7 @@ export default function BookingWizard({
               tell a party the resort was full while every room stood empty
               (B-57). */}
           {!roomsLoading && categories.length === 0 && !roomsError && (
-            <p className="font-sans text-sm text-earth-text/50 text-center py-8">
+            <p className="font-sans text-sm text-earth-text/70 text-center py-8">
               No rooms available for the selected dates.
             </p>
           )}
@@ -693,7 +693,7 @@ export default function BookingWizard({
                     <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-serif text-lg text-earth-text">{cat.name}</p>
-                        <p className="font-sans text-xs text-earth-text/50 mt-0.5">
+                        <p className="font-sans text-xs text-earth-text/70 mt-0.5">
                           Sleeps {cat.maxGuests}
                           {cat.extraBed && ` (+1 with an extra bed, ₹${cat.extraBedRate.toLocaleString("en-IN")})`}
                         </p>
@@ -709,7 +709,7 @@ export default function BookingWizard({
                         <p className="font-serif text-xl text-primary">
                           ₹{cat.pricePerNight.toLocaleString("en-IN")}
                         </p>
-                        <p className="font-sans text-xs text-earth-text/50">{tRooms("perNight")}</p>
+                        <p className="font-sans text-xs text-earth-text/70">{tRooms("perNight")}</p>
                       </div>
                     </div>
                   </div>
@@ -721,7 +721,7 @@ export default function BookingWizard({
                         it names the −/+ pair, and a label that changes meaning
                         card to card is announced differently by a screen reader
                         each time. The bed is a separate statement. */}
-                    <span className="font-sans text-xs text-earth-text/60 flex items-center gap-2">
+                    <span className="font-sans text-xs text-earth-text/70 flex items-center gap-2">
                       <span id={`${roomCountLabelId}-${cat.roomType}`}>Rooms</span>
                       {beds > 0 && (
                         <span className="text-primary bg-primary-50 border border-primary-200 rounded-full px-2 py-0.5">
@@ -932,22 +932,22 @@ export default function BookingWizard({
                   agree to the total, not discover it on the invoice. */}
               {plan.lines.map((line) => (
                 <div key={line.roomType} className="flex justify-between">
-                  <span className="text-earth-text/60">
+                  <span className="text-earth-text/70">
                     {line.rooms > 1 ? `${line.rooms} × ` : ""}{line.name}
                   </span>
                   <span className="font-semibold text-right">
                     {line.extraBeds > 0 && (
-                      <span className="block text-xs font-normal text-earth-text/60">
+                      <span className="block text-xs font-normal text-earth-text/70">
                         + {line.extraBeds} extra {line.extraBeds === 1 ? "bed" : "beds"}
                       </span>
                     )}
                   </span>
                 </div>
               ))}
-              <div className="flex justify-between"><span className="text-earth-text/60">Check-in</span><span>{format(new Date(checkIn), "dd MMM yyyy")}</span></div>
-              <div className="flex justify-between"><span className="text-earth-text/60">Check-out</span><span>{format(new Date(checkOut), "dd MMM yyyy")}</span></div>
-              <div className="flex justify-between"><span className="text-earth-text/60">Guests</span><span>{guests}</span></div>
-              <div className="flex justify-between"><span className="text-earth-text/60">Rooms</span><span>{selectedRooms}{plan.totalExtraBeds > 0 ? ` (+${plan.totalExtraBeds} extra ${plan.totalExtraBeds === 1 ? "bed" : "beds"})` : ""}</span></div>
+              <div className="flex justify-between"><span className="text-earth-text/70">Check-in</span><span>{format(new Date(checkIn), "dd MMM yyyy")}</span></div>
+              <div className="flex justify-between"><span className="text-earth-text/70">Check-out</span><span>{format(new Date(checkOut), "dd MMM yyyy")}</span></div>
+              <div className="flex justify-between"><span className="text-earth-text/70">Guests</span><span>{guests}</span></div>
+              <div className="flex justify-between"><span className="text-earth-text/70">Rooms</span><span>{selectedRooms}{plan.totalExtraBeds > 0 ? ` (+${plan.totalExtraBeds} extra ${plan.totalExtraBeds === 1 ? "bed" : "beds"})` : ""}</span></div>
 
               {/* Room charges and GST are itemised so the total is checkable
                   against what Razorpay opens for, rather than a bare number
@@ -957,17 +957,17 @@ export default function BookingWizard({
               {displayTotals ? (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-earth-text/60">{t("roomCharges")}</span>
+                    <span className="text-earth-text/70">{t("roomCharges")}</span>
                     <span>₹{displayTotals.subtotal.toLocaleString("en-IN")}</span>
                   </div>
                   {displayTotals.discountAmount > 0 && (
                     <div className="flex justify-between text-primary">
-                      <span className="text-earth-text/60">Discount ({appliedPromoCode})</span>
+                      <span className="text-earth-text/70">Discount ({appliedPromoCode})</span>
                       <span>−₹{displayTotals.discountAmount.toLocaleString("en-IN")}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-earth-text/60">{t("taxes")}</span>
+                    <span className="text-earth-text/70">{t("taxes")}</span>
                     <span>₹{displayTotals.taxAmount.toLocaleString("en-IN")}</span>
                   </div>
                   <div className="border-t border-primary-200 pt-2 mt-2 flex justify-between font-semibold text-primary text-base">
@@ -976,7 +976,7 @@ export default function BookingWizard({
                   </div>
                 </>
               ) : (
-                <div className="border-t border-primary-200 pt-2 mt-2 text-earth-text/60">
+                <div className="border-t border-primary-200 pt-2 mt-2 text-earth-text/70">
                   {quoteLoading ? t("priceLoading") : t("priceUnavailable")}
                 </div>
               )}
@@ -1035,7 +1035,7 @@ export default function BookingWizard({
                 <CreditCard size={18} className="text-primary shrink-0" />
                 <div>
                   <p className="font-sans font-medium text-sm">{t("payWithRazorpay")}</p>
-                  <p className="font-sans text-xs text-earth-text/50">Visa, Mastercard, RuPay, UPI, Net Banking</p>
+                  <p className="font-sans text-xs text-earth-text/70">Visa, Mastercard, RuPay, UPI, Net Banking</p>
                 </div>
               </button>
               <button
@@ -1046,7 +1046,7 @@ export default function BookingWizard({
                 <QrCode size={18} className="text-primary shrink-0" />
                 <div>
                   <p className="font-sans font-medium text-sm">{t("payWithUPI")}</p>
-                  <p className="font-sans text-xs text-earth-text/50">Scan QR with any UPI app (GPay, PhonePe, Paytm)</p>
+                  <p className="font-sans text-xs text-earth-text/70">Scan QR with any UPI app (GPay, PhonePe, Paytm)</p>
                 </div>
               </button>
             </div>

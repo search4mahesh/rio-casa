@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { pullOTABookings } from "@/lib/booking-service";
+import { pullOTABookings } from "@/lib/channel-manager";
 import { ok } from "@/lib/api-response";
 import { denyIfNotCron } from "@/lib/cron-auth";
 

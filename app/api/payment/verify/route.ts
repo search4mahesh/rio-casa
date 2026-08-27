@@ -6,12 +6,13 @@ import {
   BOOKING_TX_OPTIONS,
   guardRoomsAvailability,
   recalcGuestTotals,
-  syncWithChannelManager,
   withSerializableRetry,
 } from "@/lib/booking-service";
+import { syncWithChannelManager } from "@/lib/channel-manager";
 import { today } from "@/lib/dates";
 import { Resend } from "resend";
 import { ok, fail } from "@/lib/api-response";
+import { escapeHtml, escapeHtmlWithBreaks } from "@/lib/html-email";
 
 const schema = z.object({
   bookingId: z.string(),
@@ -430,11 +431,11 @@ export async function POST(req: NextRequest) {
           <div style="font-family:Georgia,serif;max-width:600px;margin:auto;padding:24px;color:#2C2416;">
             <h1 style="color:#4A6741;font-size:26px;margin-bottom:4px;">Booking Confirmed!</h1>
             <p style="color:#6b7280;font-size:13px;margin-top:0;">${partyRooms.length > 1 ? booking.bookingNumber.split("/")[0] : booking.bookingNumber}</p>
-            <p>Dear ${booking.guestName},</p>
+            <p>Dear ${escapeHtml(booking.guestName)},</p>
             <p>Your stay at <strong>Rio Casa, Mahabaleshwar</strong> is confirmed. We look forward to welcoming you!</p>
             <hr style="border-color:#e5e7eb;margin:20px 0;" />
             <table style="width:100%;border-collapse:collapse;font-size:14px;">
-              <tr><td style="padding:6px 0;color:#6b7280;">${partyRooms.length > 1 ? "Rooms" : "Room"}</td><td style="padding:6px 0;font-weight:bold;">${roomsLine}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;">${partyRooms.length > 1 ? "Rooms" : "Room"}</td><td style="padding:6px 0;font-weight:bold;">${escapeHtml(roomsLine)}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Check-in</td><td style="padding:6px 0;">${new Date(booking.checkIn).toDateString()}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Check-out</td><td style="padding:6px 0;">${new Date(booking.checkOut).toDateString()}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Nights</td><td style="padding:6px 0;">${booking.nights}</td></tr>
@@ -446,7 +447,7 @@ export async function POST(req: NextRequest) {
               </tr>
             </table>
             <hr style="border-color:#e5e7eb;margin:20px 0;" />
-            ${booking.specialRequests ? `<p style="font-size:13px;"><strong>Special Requests:</strong> ${booking.specialRequests}</p>` : ""}
+            ${booking.specialRequests ? `<p style="font-size:13px;"><strong>Special Requests:</strong> ${escapeHtmlWithBreaks(booking.specialRequests)}</p>` : ""}
             <p style="font-size:13px;color:#6b7280;">
               For any queries, call us at +91 98765 43210 or email info@riocasa.in<br/>
               Rio Casa Resort, Mahabaleshwar, Satara District, Maharashtra — 412806

@@ -9,6 +9,7 @@ const { mockBookingFindUnique, mockTransaction } = vi.hoisted(() => ({
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
+  resolveActiveStaff: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
   ADMIN_COOKIE: "admin_token",
 }));
 
@@ -40,8 +41,8 @@ describe("PATCH /api/admin/bookings/[id]/checkin", () => {
   beforeEach(() => { mockBookingFindUnique.mockReset(); mockTransaction.mockReset(); mockTransaction.mockResolvedValue([]); });
 
   it("returns 401 when auth token is invalid", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     // Use makeReq() so the cookie is present and verifyAdminToken is actually called
     const res = await checkin(makeReq(), { params });
     expect(res.status).toBe(401);
@@ -95,8 +96,8 @@ describe("PATCH /api/admin/bookings/[id]/checkout", () => {
   beforeEach(() => { mockBookingFindUnique.mockReset(); mockTransaction.mockReset(); mockTransaction.mockResolvedValue([]); });
 
   it("returns 401 when auth token is invalid", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await checkout(makeReq("/api/admin/bookings/bk1/checkout"), { params });
     expect(res.status).toBe(401);
   });

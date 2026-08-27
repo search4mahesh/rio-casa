@@ -21,11 +21,36 @@
  * prisma/script-client.ts and prisma/repair-data.ts for the same call.
  */
 import { makeScriptClient } from "./script-client";
+import { gstinProblem, PLACEHOLDER_GSTIN } from "../lib/hotel-details";
 
 const prisma = makeScriptClient();
 const APPLY = process.argv.includes("--apply");
 
+/**
+ * Billing details for the rows this script writes.
+ *
+ * Refuses outright rather than falling back the way the app does in
+ * development: a backfill writes *tax invoices* in bulk, and doing that under
+ * the placeholder is how 35 of them came to carry `27XXXXX0000X1ZX` (B-62).
+ * There is no such thing as a development run of this against real stays.
+ */
+function billingDetails() {
+  const problem = gstinProblem(process.env.HOTEL_GSTIN);
+  if (problem) {
+    throw new Error(
+      `${problem}. Refusing to backfill tax invoices under ${PLACEHOLDER_GSTIN}. ` +
+        `Set HOTEL_GSTIN to the property's real GSTIN and re-run.`
+    );
+  }
+  return {
+    gstin: process.env.HOTEL_GSTIN!.trim().toUpperCase(),
+    name: process.env.HOTEL_NAME?.trim() || "Rio Casa Resort",
+    address: process.env.HOTEL_ADDRESS?.trim() || "Mahabaleshwar, Satara District, Maharashtra - 412806",
+  };
+}
+
 async function main() {
+  const hotel = billingDetails();
   const candidates = await prisma.booking.findMany({
     where: {
       status: "checked_out",
@@ -94,9 +119,9 @@ async function main() {
         invoiceNumber,
         bookingId: booking.id,
         guestId: booking.guestId,
-        hotelGstin: process.env.HOTEL_GSTIN || "27XXXXX0000X1ZX",
-        hotelName: process.env.HOTEL_NAME || "Rio Casa Resort",
-        hotelAddress: process.env.HOTEL_ADDRESS || "Mahabaleshwar, Satara District, Maharashtra - 412806",
+        hotelGstin: hotel.gstin,
+        hotelName: hotel.name,
+        hotelAddress: hotel.address,
         guestName: booking.guestName,
         guestGstin: booking.guest.gstin,
         guestAddress,

@@ -571,54 +571,16 @@ export function applyGst(subtotal: number, discount: number, nights: number): St
   };
 }
 
-/**
- * Allocate the next `BK-YYYYMMDD-NNN` for a check-in day.
- *
- * One statement, atomic, and deliberately outside the booking transaction. It
- * replaces a `COUNT(*)` that was both wrong and expensive: the prefix came from
- * the check-in day while the count window came from `created_at`, so every
- * advance booking for a date computed `-001`, and the second one died on the
- * unique index — reported to the guest as "this room was just booked". A COUNT
- * over a predicate also takes a predicate lock under SERIALIZABLE, which let
- * bookings for unrelated rooms abort one another.
- *
- * A booking that then fails burns its number. Gaps are fine; duplicates are not.
- */
-export async function nextBookingNumber(day: Date): Promise<string> {
-  return nextDailyNumber("booking", "BK", day, 3);
-}
-
-/**
- * Allocate the next `<PREFIX>-YYYYMMDD-NNN` for a day, atomically.
- *
- * One statement against `daily_counters`, which is the whole point: checking
- * what the last number was and claiming the next one cannot be separated, so
- * two writers on the same day cannot compute the same suffix. The alternative
- * — `COUNT(*)` over rows whose number starts with the prefix — loses that race
- * and the loser dies on a unique index, which is what both the booking route
- * and the laundry dispatch route used to do.
- *
- * `scope` keeps each document type's sequence independent, so a laundry batch
- * never consumes a booking number.
- *
- * @param pad digits in the suffix — bookings use 3 (`-001`), laundry 2 (`-01`),
- *            matching the numbers each already had in circulation.
- */
-export async function nextDailyNumber(
-  scope: string,
-  prefix: string,
-  day: Date,
-  pad = 3
-): Promise<string> {
-  const dayStr = toDayString(day);
-  const [row] = await prisma.$queryRaw<Array<{ last_seq: number }>>`
-    INSERT INTO daily_counters (scope, day, last_seq)
-    VALUES (${scope}, ${dayStr}::date, 1)
-    ON CONFLICT (scope, day) DO UPDATE SET last_seq = daily_counters.last_seq + 1
-    RETURNING last_seq
-  `;
-  return `${prefix}-${dayStr.replace(/-/g, "")}-${String(row.last_seq).padStart(pad, "0")}`;
-}
+// Daily document numbers moved to lib/document-numbers.ts — bookings are only
+// one of three callers (laundry and invoices allocate their own sequences from
+// the same table). Re-exported here because `createGroupBooking` below uses
+// `nextBookingNumber`; that module imports nothing from this one, so there is
+// no cycle.
+// Imported *and* re-exported: `export { X } from "…"` forwards the name but
+// does not bind it locally, and `createGroupBooking` below calls
+// `nextBookingNumber` directly.
+import { nextBookingNumber, nextDailyNumber } from "@/lib/document-numbers";
+export { nextBookingNumber, nextDailyNumber };
 
 /** Shape shared by `claimPromo`'s UPDATE...RETURNING and `previewPromo`'s SELECT. */
 type PromoRow = { discount_type: string; discount_value: string; max_discount: string | null };
@@ -1363,162 +1325,11 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
 
 // ─────────────────────────────────────────────
 // LAYER 4: CHANNEL MANAGER SYNC
-// Call immediately after a successful booking (fire-and-forget).
-// Pushes inventory block to eZee Centrix → propagates to OTAs.
+//
+// Moved to lib/channel-manager.ts. Deliberately *not* re-exported from here:
+// that module imports `getAvailableRooms` and `createBooking` from this one,
+// and a re-export would close the cycle. Import from "@/lib/channel-manager".
 // ─────────────────────────────────────────────
-
-export async function syncWithChannelManager(bookingId: string): Promise<void> {
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    include: { room: true },
-  });
-  if (!booking || !process.env.EZEE_API_URL) return;
-
-  try {
-    const res = await fetch(`${process.env.EZEE_API_URL}/inventory/update`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.EZEE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        room_type: booking.room.roomType,
-        date_from: booking.checkIn,
-        date_to: booking.checkOut,
-        available: false,
-      }),
-    });
-
-    const result = await res.json();
-
-    await prisma.channelSyncLog.create({
-      data: {
-        direction: "push",
-        channel: "ezee_centrix",
-        action: "inventory_update",
-        payload: { bookingId, roomType: booking.room.roomType },
-        response: result,
-        status: res.ok ? "success" : "failed",
-        errorMessage: res.ok ? null : JSON.stringify(result),
-        bookingId,
-      },
-    });
-
-    if (!res.ok) {
-      console.error(
-        `[channel-sync] Failed for ${booking.bookingNumber} — update OTAs manually: ` +
-          `${booking.room.roomNumber ?? booking.room.name} blocked ${booking.checkIn} → ${booking.checkOut}`
-      );
-    }
-  } catch (err) {
-    await prisma.channelSyncLog.create({
-      data: {
-        direction: "push",
-        channel: "ezee_centrix",
-        action: "inventory_update",
-        payload: { bookingId },
-        status: "failed",
-        errorMessage: (err as Error).message,
-        bookingId,
-      },
-    });
-    console.error(`[channel-sync] ERROR for booking ${bookingId}:`, err);
-  }
-}
-
-// Pull new OTA bookings from eZee Centrix — run every 3 minutes via cron
-export async function pullOTABookings(): Promise<void> {
-  if (!process.env.EZEE_API_URL) return;
-
-  try {
-    const res = await fetch(`${process.env.EZEE_API_URL}/bookings/new`, {
-      headers: { Authorization: `Bearer ${process.env.EZEE_API_KEY}` },
-    });
-    const otaBookings: Array<{
-      confirmation_id: string;
-      source: string;
-      room_type: string;
-      check_in: string;
-      check_out: string;
-      adults?: number;
-      children?: number;
-      guest: { first_name?: string; last_name?: string; name?: string; phone?: string; email?: string };
-      special_requests?: string;
-    }> = await res.json();
-
-    for (const ota of otaBookings) {
-      const exists = await prisma.booking.findFirst({ where: { sourceBookingId: ota.confirmation_id } });
-      if (exists) continue;
-
-      // Find an available room of the requested type
-      const checkIn = new Date(ota.check_in);
-      const checkOut = new Date(ota.check_out);
-      const rooms = await getAvailableRooms(checkIn, checkOut, (ota.adults ?? 2) + (ota.children ?? 0));
-      const room = rooms.find((r) => r.roomType === ota.room_type);
-
-      if (!room) {
-        console.error(`[ota-pull] No room available for OTA booking ${ota.confirmation_id} — handle manually`);
-        continue;
-      }
-
-      const nameParts = ((ota.guest.first_name ?? "") + " " + (ota.guest.last_name ?? ota.guest.name ?? "Guest")).trim();
-      await createBooking({
-        roomId: room.id,
-        checkIn,
-        checkOut,
-        adults: ota.adults ?? 2,
-        children: ota.children ?? 0,
-        guestName: nameParts,
-        guestEmail: ota.guest.email ?? "",
-        guestPhone: ota.guest.phone ?? "N/A",
-        source: ota.source as BookingInput["source"],
-        specialRequests: ota.special_requests,
-        sourceBookingId: ota.confirmation_id,
-      });
-    }
-  } catch (err) {
-    console.error("[ota-pull] Failed:", err);
-  }
-}
-
-// ─────────────────────────────────────────────
-// LAYER 5: CONFLICT DETECTOR (run hourly via cron)
-// The "oh shit" safety net — queries for any double-booked dates
-// that somehow exist in the DB and alerts the owner.
-// ─────────────────────────────────────────────
-
-export async function detectConflicts(): Promise<Array<Record<string, unknown>>> {
-  const conflicts = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT
-      a.booking_number AS booking_a,
-      b.booking_number AS booking_b,
-      r.name           AS room_name,
-      a.check_in       AS a_checkin,
-      a.check_out      AS a_checkout,
-      b.check_in       AS b_checkin,
-      b.check_out      AS b_checkout,
-      a.source         AS a_source,
-      b.source         AS b_source
-    FROM bookings a
-    JOIN bookings b
-      ON a.room_id = b.room_id
-      AND a.id < b.id
-      AND a.check_in < b.check_out
-      AND a.check_out > b.check_in
-    JOIN rooms r ON r.id = a.room_id
-    WHERE a.status NOT IN ('cancelled', 'no_show')
-      AND b.status NOT IN ('cancelled', 'no_show')
-      AND a.payment_status != 'failed'
-      AND b.payment_status != 'failed'
-  `;
-
-  if (conflicts.length > 0) {
-    console.error("[conflict-detector] DOUBLE BOOKINGS FOUND:", JSON.stringify(conflicts, null, 2));
-    // TODO: send WhatsApp alert via WATI/Twilio when WATI_API_KEY is set
-  }
-
-  return conflicts;
-}
 
 /**
  * Recompute a guest's `totalStays` / `totalRevenue` from their actual bookings.

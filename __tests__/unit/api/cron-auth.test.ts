@@ -5,8 +5,15 @@ import path from "path";
 
 vi.mock("@/lib/booking-service", () => ({
   runNightAudit: vi.fn().mockResolvedValue({ noShows: 0, dueCheckouts: 0, arrivals: 0 }),
+}));
+
+// Channel-manager work moved out of lib/booking-service.ts, which had grown to
+// ~1900 lines across nine unrelated concerns. Mocked separately now — without
+// this the real module loads and reaches for DATABASE_URL.
+vi.mock("@/lib/channel-manager", () => ({
   detectConflicts: vi.fn().mockResolvedValue([]),
   pullOTABookings: vi.fn().mockResolvedValue(undefined),
+  syncWithChannelManager: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { GET as nightAuditGET } from "@/app/api/cron/night-audit/route";

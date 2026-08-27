@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { RATE_PLAN_ROOM_TYPES } from "@/lib/labels";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok, okEmpty, failValidation } from "@/lib/api-response";
+import { ok, okEmpty, failValidation, fail } from "@/lib/api-response";
 import { isDayString } from "@/lib/dates";
 
 const UpdateSchema = z.object({
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const plan = await prisma.ratePlan.update({ where: { id }, data });
     return ok(plan);
   } catch {
-    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+    return fail("Not found", 404);
   }
 }
 
@@ -52,6 +52,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await prisma.ratePlan.delete({ where: { id } });
     return okEmpty();
   } catch {
-    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+    return fail("Not found", 404);
   }
 }

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok, failValidation } from "@/lib/api-response";
+import { ok, failValidation, fail } from "@/lib/api-response";
 import { dateOnly, today as todayDate, addDays, isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   const end = dateOnly(endDate);
 
   if (end < start) {
-    return NextResponse.json({ success: false, error: "End date must be on or after start date" }, { status: 400 });
+    return fail("End date must be on or after start date", 400);
   }
 
   // Expand date range into individual day records (inclusive of both ends)
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (dates.length > 90) {
-    return NextResponse.json({ success: false, error: "Cannot block more than 90 days at once" }, { status: 400 });
+    return fail("Cannot block more than 90 days at once", 400);
   }
 
   // `skipDuplicates` against the partial unique indexes in

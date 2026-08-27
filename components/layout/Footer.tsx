@@ -27,6 +27,10 @@ export default function Footer({ locale }: { locale: string }) {
 
   const prefix = "";
 
+  // The accent gold below is `accent-300`, not `accent`: the brand gold
+  // (#8B6914) is 3.01:1 on this footer's dark ground, well under WCAG AA,
+  // while accent-300 is 7.73:1. On the light pages `accent` itself is fine —
+  // the shade has to follow the background it sits on.
   return (
     <footer className="bg-earth-text text-earth-white/80">
       <div className="container-resort py-14">
@@ -34,7 +38,7 @@ export default function Footer({ locale }: { locale: string }) {
           {/* Brand */}
           <div className="md:col-span-1">
             <p className="font-serif text-2xl text-earth-white mb-2">Rio Casa</p>
-            <p className="text-xs tracking-widest uppercase text-accent mb-4">Mahabaleshwar</p>
+            <p className="text-xs tracking-widest uppercase text-accent-300 mb-4">Mahabaleshwar</p>
             <p className="text-sm leading-relaxed">{t("tagline")}</p>
           </div>
 
@@ -57,7 +61,7 @@ export default function Footer({ locale }: { locale: string }) {
                 <li key={key}>
                   <Link
                     href={`${prefix}${href}`}
-                    className="hover:text-accent transition-colors"
+                    className="hover:text-accent-300 transition-colors"
                   >
                     {nav(key as Parameters<typeof nav>[0])}
                   </Link>
@@ -73,19 +77,19 @@ export default function Footer({ locale }: { locale: string }) {
             </p>
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
-                <MapPin size={15} className="mt-0.5 shrink-0 text-accent" />
+                <MapPin size={15} className="mt-0.5 shrink-0 text-accent-300" />
                 <span>{t("address")}</span>
               </li>
               <li className="flex items-center gap-2">
-                <Phone size={15} className="shrink-0 text-accent" />
+                <Phone size={15} className="shrink-0 text-accent-300" />
                 {/* Strip the display spacing — a tel: URI must be dialable. */}
-                <a href={`tel:${t("phone").replace(/[^\d+]/g, "")}`} className="hover:text-accent transition-colors">
+                <a href={`tel:${t("phone").replace(/[^\d+]/g, "")}`} className="hover:text-accent-300 transition-colors">
                   {t("phone")}
                 </a>
               </li>
               <li className="flex items-center gap-2">
-                <Mail size={15} className="shrink-0 text-accent" />
-                <a href={`mailto:${t("email")}`} className="hover:text-accent transition-colors">
+                <Mail size={15} className="shrink-0 text-accent-300" />
+                <a href={`mailto:${t("email")}`} className="hover:text-accent-300 transition-colors">
                   {t("email")}
                 </a>
               </li>

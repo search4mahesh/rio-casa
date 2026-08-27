@@ -85,9 +85,18 @@ async function main() {
       `slowest ${secs(sorted[sorted.length - 1])}   all done in ${secs(wallClock)}`
   );
 
+  // The groups have to be collected *before* the bookings go, because that is
+  // the only thing linking them to this run — deleting bookings first orphans
+  // them. This script used to do exactly that, leaking one `booking_groups`
+  // row per run into a database it claims to leave clean.
+  const groups = await db.bookingGroup.findMany({
+    where: { bookings: { some: { guestEmail: TAG } } },
+    select: { id: true },
+  });
   const del = await db.booking.deleteMany({ where: { guestEmail: TAG } });
+  await db.bookingGroup.deleteMany({ where: { id: { in: groups.map((g) => g.id) } } });
   await db.guest.deleteMany({ where: { email: TAG } });
-  console.log(`cleanup: removed ${del.count} booking(s)`);
+  console.log(`cleanup: removed ${del.count} booking(s), ${groups.length} group(s)`);
 
   // Exactly one winner, nothing double-booked, and every loser got a real answer.
   const pass = won === 1 && persisted === 1 && unknown === 0;

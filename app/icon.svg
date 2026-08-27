@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Rio Casa">
+  <!--
+    Favicon. There was none, so every page load 404'd on /favicon.ico and the
+    browser tab showed a blank default sheet.
+
+    App Router serves this file automatically at /icon.svg and links it from
+    every page — no <link rel="icon"> and no binary .ico to keep in sync.
+
+    An "RC" monogram on the brand's forest green (#4A6741) with the golden
+    accent (#8B6914), matching the mark the admin sidebar already uses. Drawn
+    rather than typeset: a favicon renders at 16px, where a webfont may not
+    have loaded and letterforms turn to mud.
+  -->
+  <rect width="64" height="64" rx="14" fill="#4A6741" />
+
+  <!-- R -->
+  <path
+    d="M17 20h9.5a7 7 0 0 1 0 14H21l7 10h-6.2l-6.3-9.4V44H17V20zm4 4v6h5.5a3 3 0 0 0 0-6H21z"
+    fill="#FDFAF5"
+  />
+
+  <!-- C, opened to the right so the two letters read apart at 16px -->
+  <path
+    d="M47.5 26.4a8.6 8.6 0 0 0-6.2-2.6 8.2 8.2 0 0 0 0 16.4 8.6 8.6 0 0 0 6.2-2.6l2.8 2.9A12.5 12.5 0 0 1 41.3 44a12.2 12.2 0 0 1 0-24.4 12.5 12.5 0 0 1 9 3.9l-2.8 2.9z"
+    fill="#8B6914"
+  />
+</svg>

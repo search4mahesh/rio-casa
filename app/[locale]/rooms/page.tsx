@@ -7,7 +7,7 @@ import { getAvailableRooms, nextAvailableByType } from "@/lib/booking-service";
 import { addDays, dateOnly, daysBetween, isDayString, today, toDayString } from "@/lib/dates";
 import { pageMetadata } from "@/lib/page-metadata";
 
-export const generateMetadata = () => pageMetadata("rooms");
+export const generateMetadata = () => pageMetadata("rooms", "/rooms");
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,7 @@ export default async function RoomsPage({
         <div className="text-center mb-8">
           <p className="section-subheading mb-2">{t("subtitle")}</p>
           <h1 className="section-heading">{t("title")}</h1>
-          <p className="font-sans text-earth-text/60 mt-3 max-w-xl mx-auto text-sm">
+          <p className="font-sans text-earth-text/70 mt-3 max-w-xl mx-auto text-sm">
             All rooms include extra bed on request (charges apply). Check-in 12:00 PM · Check-out 11:00 AM.
           </p>
         </div>
@@ -119,7 +119,7 @@ export default async function RoomsPage({
               once per page, so fixed ids cannot collide. */}
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 sm:items-end">
             <div>
-              <label htmlFor="rooms-check-in" className="font-sans text-xs text-earth-text/60 block mb-1">
+              <label htmlFor="rooms-check-in" className="font-sans text-xs text-earth-text/70 block mb-1">
                 {t("checkIn")}
               </label>
               <input
@@ -132,7 +132,7 @@ export default async function RoomsPage({
               />
             </div>
             <div>
-              <label htmlFor="rooms-check-out" className="font-sans text-xs text-earth-text/60 block mb-1">
+              <label htmlFor="rooms-check-out" className="font-sans text-xs text-earth-text/70 block mb-1">
                 {t("checkOut")}
               </label>
               <input
@@ -153,10 +153,10 @@ export default async function RoomsPage({
             <p className="font-sans text-sm text-red-600 mt-3">{t(stay.message)}</p>
           )}
           {stay.kind === "none" && (
-            <p className="font-sans text-xs text-earth-text/50 mt-3">{t("datesHint")}</p>
+            <p className="font-sans text-xs text-earth-text/70 mt-3">{t("datesHint")}</p>
           )}
           {stay.kind === "stay" && (
-            <p className="font-sans text-xs text-earth-text/60 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="font-sans text-xs text-earth-text/70 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span>
                 {stay.nights === 1
                   ? t("showingForOne", {
@@ -225,7 +225,7 @@ export default async function RoomsPage({
                   <div className="flex items-center gap-1 text-accent shrink-0">
                     <Star size={14} fill="currentColor" />
                     <span className="font-sans text-sm">{room.marketing.rating}</span>
-                    <span className="text-earth-text/40 text-xs">({room.marketing.reviews})</span>
+                    <span className="text-earth-text/70 text-xs">({room.marketing.reviews})</span>
                   </div>
                 </div>
 
@@ -250,7 +250,7 @@ export default async function RoomsPage({
                   </p>
                 )}
                 {soldOut && (
-                  <p className="font-sans text-xs text-earth-text/60 mb-3">
+                  <p className="font-sans text-xs text-earth-text/70 mb-3">
                     {nextDay
                       ? t("nextFree", { date: humanDay(nextDay) })
                       : t("noNextFree", { days: HORIZON_DAYS })}
@@ -263,9 +263,9 @@ export default async function RoomsPage({
                       <span className="font-serif text-2xl text-primary">
                         ₹{room.pricePerNight.toLocaleString("en-IN")}
                       </span>
-                      <span className="font-sans text-xs text-earth-text/50 ml-1">{t("perNight")}</span>
+                      <span className="font-sans text-xs text-earth-text/70 ml-1">{t("perNight")}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-earth-text/50 text-sm">
+                    <div className="flex items-center gap-1 text-earth-text/70 text-sm">
                       <Users size={14} />
                       <span>{t("maxGuests", { count: room.maxGuests })}</span>
                     </div>

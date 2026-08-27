@@ -29,7 +29,11 @@ const PAGES: Array<{ route: string; key?: string; file: string }> = [
   // Client components — only a server component can export metadata, so these
   // carry it on a sibling layout instead.
   { route: "/contact", key: "contact", file: "app/[locale]/contact/layout.tsx" },
-  { route: "/gallery", key: "gallery", file: "app/[locale]/gallery/layout.tsx" },
+  // Was a sibling layout.tsx, which existed only because the page was a client
+  // component and only a server component can export metadata. Reading the
+  // images from the database made the page a server component, so the
+  // workaround went with it (B-53).
+  { route: "/gallery", key: "gallery", file: "app/[locale]/gallery/page.tsx" },
   // Dynamic: titled from the record they render.
   { route: "/rooms/[slug]", file: "app/[locale]/rooms/[slug]/page.tsx" },
   { route: "/blog/[slug]", file: "app/[locale]/blog/[slug]/page.tsx" },
@@ -70,7 +74,18 @@ describe("titles do not repeat the brand the template appends", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("no page source hardcodes a brand-suffixed title", () => {
+  /**
+   * Scoped to the `<title>` field, which is the only one the template wraps.
+   *
+   * `openGraph.title` and `twitter.title` are **not** wrapped — verified
+   * against the rendered HTML: a page that leaves `openGraph.title` unset
+   * inherits the root layout's site-wide value verbatim, so
+   * /booking/confirmation previews as "Rio Casa — Luxury Resort in
+   * Mahabaleshwar" rather than as itself. Those fields therefore have to spell
+   * the brand out, and flagging them would push pages back into sharing one
+   * preview title between them — B-52 on the Open Graph side.
+   */
+  it("no page source hardcodes a brand-suffixed <title>", () => {
     const hits = execSync(
       'grep -rn "title:" app --include=*.tsx || true',
       { encoding: "utf8" }
@@ -78,7 +93,10 @@ describe("titles do not repeat the brand the template appends", () => {
       .trim().split("\n").filter(Boolean)
       .filter((l) => /title:\s*[`"'].*Rio Casa/i.test(l))
       // The root layout is where the brand legitimately lives.
-      .filter((l) => !l.startsWith("app/layout.tsx"));
+      .filter((l) => !l.startsWith("app/layout.tsx"))
+      // `openGraph:` / `twitter:` blocks — see above. Matched by the two-space
+      // extra indent their nested `title:` carries.
+      .filter((l) => !/:\s{6,}title:/.test(l));
     expect(hits).toEqual([]);
   });
 

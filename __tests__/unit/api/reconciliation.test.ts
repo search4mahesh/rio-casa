@@ -8,6 +8,7 @@ const { mockBookingFindMany, mockExpenseFindMany } = vi.hoisted(() => ({
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
+  resolveActiveStaff: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
   ADMIN_COOKIE: "admin_token",
 }));
 
@@ -52,8 +53,8 @@ describe("GET /api/admin/reconciliation", () => {
   });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await GET(makeReq({ month: "2026-08" }));
     expect(res.status).toBe(401);
   });

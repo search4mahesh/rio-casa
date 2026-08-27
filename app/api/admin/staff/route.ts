@@ -1,17 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { requireRole } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail, failValidation } from "@/lib/api-response";
+import { MIN_PASSWORD_LENGTH, BCRYPT_COST } from "@/lib/passwords";
 
 const CreateSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   phone: z.string().optional(),
   role: z.enum(["owner", "manager", "frontdesk", "housekeeping"]),
-  password: z.string().min(6),
+  password: z.string().min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`),
 });
 
 export async function GET(req: NextRequest) {
@@ -36,18 +36,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const me = token ? await verifyAdminToken(token) : null;
-  if (!me || me.role !== "owner") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const auth = await requireRole(req, "owner");
+  if (!auth.ok) return auth.response;
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
   const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
+  if (!parsed.success) return failValidation(parsed.error);
 
   const existing = await prisma.staff.findUnique({ where: { email: parsed.data.email } });
-  if (existing) return NextResponse.json({ success: false, error: "Email already in use" }, { status: 409 });
+  if (existing) return fail("Email already in use", 409);
 
-  const hash = await bcrypt.hash(parsed.data.password, 12);
+  const hash = await bcrypt.hash(parsed.data.password, BCRYPT_COST);
   const member = await prisma.staff.create({
     data: {
       name: parsed.data.name,

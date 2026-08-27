@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { okMessage } from "@/lib/api-response";
+import { okMessage, fail } from "@/lib/api-response";
 import { generateInvoice } from "@/lib/invoice-service";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -11,13 +11,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const booking = await prisma.booking.findUnique({ where: { id: params.id } });
   if (!booking) {
-    return NextResponse.json({ success: false, error: "Booking not found" }, { status: 404 });
+    return fail("Booking not found", 404);
   }
   if (booking.status !== "checked_in") {
-    return NextResponse.json(
-      { success: false, error: `Cannot check out a booking with status: ${booking.status}` },
-      { status: 400 }
-    );
+    return fail(`Cannot check out a booking with status: ${booking.status}`, 400);
   }
 
   await prisma.$transaction([

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { detectConflicts } from "@/lib/booking-service";
+import { detectConflicts } from "@/lib/channel-manager";
 import { ok } from "@/lib/api-response";
 import { denyIfNotCron } from "@/lib/cron-auth";
 

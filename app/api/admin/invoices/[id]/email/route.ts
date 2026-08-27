@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { okMessage } from "@/lib/api-response";
+import { okMessage, fail } from "@/lib/api-response";
 
 // POST /api/admin/invoices/[id]/email — email invoice to the guest
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,16 +20,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   });
 
-  if (!invoice) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+  if (!invoice) return fail("Not found", 404);
 
   const toEmail = invoice.guest.email ?? invoice.booking.guestEmail;
   if (!toEmail) {
-    return NextResponse.json({ success: false, error: "No email address on file for this guest" }, { status: 400 });
+    return fail("No email address on file for this guest", 400);
   }
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ success: false, error: "Email service not configured" }, { status: 503 });
+    return fail("Email service not configured", 503);
   }
 
   // Use the request origin to build the print URL (works for both dev and prod)
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       html,
     });
     if (sendError) {
-      return NextResponse.json({ success: false, error: sendError.message }, { status: 502 });
+      return fail(sendError.message, 502);
     }
 
     await prisma.invoice.update({
@@ -97,6 +97,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return okMessage(`Invoice emailed to ${toEmail}`);
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : "Email send failed" }, { status: 500 });
+    return fail(err instanceof Error ? err.message : "Email send failed", 500);
   }
 }

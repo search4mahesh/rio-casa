@@ -63,12 +63,18 @@ they aren't seeded:
 npm run seed:admin
 ```
 
-| Role | Email | Password |
+| Role | Email | Password env var |
 |---|---|---|
-| owner | admin@riocasa.in | admin123 |
-| manager | manager@riocasa.in | manager123 |
-| frontdesk | frontdesk@riocasa.in | frontdesk123 |
-| housekeeping | housekeeping@riocasa.in | hk123 |
+| owner | admin@riocasa.in | `SHOT_OWNER_PASSWORD` |
+| manager | manager@riocasa.in | `SHOT_MANAGER_PASSWORD` |
+| frontdesk | frontdesk@riocasa.in | `SHOT_FRONTDESK_PASSWORD` |
+| housekeeping | housekeeping@riocasa.in | `SHOT_HOUSEKEEPING_PASSWORD` |
+
+Passwords are **not** written down here or anywhere else in the repository —
+that is how the seeded owner password ended up published in git (B-59).
+`npm run seed:admin` prints a random one per account, once; put them in `.env`
+under the names above. `shot.mjs` reads them from there and errors clearly when
+one is missing.
 
 `shot.mjs` POSTs to `/api/admin/auth/login` rather than filling the form —
 fewer moving parts, and the `admin_token` cookie lands in the same browser

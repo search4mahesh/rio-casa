@@ -9,6 +9,7 @@ const { mockFindUnique, mockUpdate, mockAuditCreate } = vi.hoisted(() => ({
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
+  resolveActiveStaff: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
   ADMIN_COOKIE: "admin_token",
 }));
 
@@ -41,8 +42,8 @@ describe("GET /api/admin/guests/[id]", () => {
   beforeEach(() => { mockFindUnique.mockReset(); });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await GET(makeReq("GET"), idParams);
     expect(res.status).toBe(401);
   });
@@ -124,8 +125,8 @@ describe("PATCH /api/admin/guests/[id]", () => {
   });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await PATCH(makeReq("PATCH", { firstName: "X" }), idParams);
     expect(res.status).toBe(401);
   });

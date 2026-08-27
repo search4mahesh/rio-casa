@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 import { dateOnly, addDays, addMonths, daysBetween, toDayString, propertyDayString, isDayString, isMonthString } from "@/lib/dates";
 
 const MAX_RANGE_DAYS = 180;
@@ -30,12 +30,12 @@ export async function GET(req: NextRequest) {
   // date query pulled in the day before the window.
   if (from) {
     if (!isDayString(from)) {
-      return NextResponse.json({ success: false, error: "Use YYYY-MM-DD for from" }, { status: 400 });
+      return fail("Use YYYY-MM-DD for from", 400);
     }
     try {
       rangeStart = dateOnly(from);
     } catch {
-      return NextResponse.json({ success: false, error: "Invalid from date" }, { status: 400 });
+      return fail("Invalid from date", 400);
     }
     const requested = parseInt(searchParams.get("days") ?? "60", 10);
     rangeDays = Math.min(MAX_RANGE_DAYS, Math.max(1, isNaN(requested) ? 60 : requested));
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const rawMonth = searchParams.get("month") ?? propertyDayString().slice(0, 7);
 
     if (!isMonthString(rawMonth)) {
-      return NextResponse.json({ success: false, error: "Use YYYY-MM format" }, { status: 400 });
+      return fail("Use YYYY-MM format", 400);
     }
 
     monthStart = dateOnly(`${rawMonth}-01`);

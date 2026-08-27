@@ -52,6 +52,14 @@ export const NAV: NavItem[] = [
     label: "Guests",
     href: "/admin/guests",
     minRole: "frontdesk",
+    tabs: [
+      { slug: "list",      label: "Guest List", minRole: "frontdesk" },
+      // Inbound contact-form submissions. Front desk rather than manager on
+      // purpose: an inquiry is a prospective guest asking whether a room is
+      // free, and gating it higher would keep leads away from the people who
+      // answer the phone (B-61).
+      { slug: "inquiries", label: "Inquiries",  minRole: "frontdesk" },
+    ],
   },
   {
     icon: "sparkle",
@@ -84,6 +92,10 @@ export const NAV: NavItem[] = [
     tabs: [
       { slug: "rates",    label: "Rate Plans",     minRole: "manager" },
       { slug: "promos",   label: "Promo Codes",    minRole: "manager" },
+      { slug: "packages",     label: "Packages",     minRole: "manager" },
+      { slug: "testimonials", label: "Testimonials", minRole: "manager" },
+      // OTA reviews (Google, Booking.com…) — a different model from the
+      // testimonials above, which are quotes the property publishes itself.
       { slug: "reviews",  label: "Reviews",        minRole: "manager" },
       { slug: "messages", label: "Messages",       minRole: "manager" },
       { slug: "shifts",   label: "Staff Schedule", minRole: "manager" },
@@ -100,6 +112,17 @@ export function findHub(pathname: string): NavItem | undefined {
 /** The tabs of a hub that `role` is allowed to see, in declaration order. */
 export function visibleTabs(hub: NavItem, role: string): NavTab[] {
   return (hub.tabs ?? []).filter((t) => rank(role) >= RANK_OF[t.minRole]);
+}
+
+/**
+ * The tab a `?tab=` slug names, ignoring role.
+ *
+ * `resolveTab` is the one to use for rendering — it falls back to the first
+ * tab the *viewer* may see. This one exists for `generateMetadata`, which runs
+ * without a resolved session and only needs a label for the browser tab.
+ */
+export function tabBySlug(hub: NavItem, slug: string | undefined): NavTab | undefined {
+  return hub.tabs?.find((t) => t.slug === slug);
 }
 
 /**

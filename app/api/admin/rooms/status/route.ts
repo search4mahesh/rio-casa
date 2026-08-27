@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 import { today as todayDate, addDays } from "@/lib/dates";
 
 // GET /api/admin/rooms/status — all rooms with current status + today's due check-ins
@@ -88,9 +88,9 @@ export async function PATCH(req: NextRequest) {
     return ok(status);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
+      return fail("Invalid input", 400);
     }
     console.error(err);
-    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
+    return fail("Server error", 500);
   }
 }

@@ -1,11 +1,10 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { requireStaffPage } from "@/lib/admin-page-auth";
 import { hasMinRole } from "@/lib/rbac-utils";
 import { prisma } from "@/lib/prisma";
 import { today, addDays, startOfMonth, addMonths } from "@/lib/dates";
 import RoomBoard from "@/components/admin/RoomBoard";
+import { adminMetadata } from "@/lib/admin-metadata";
 
 async function getTodayData() {
   // Calendar days against DATE columns — see lib/dates.ts. Local-midnight
@@ -142,10 +141,11 @@ function MovementList({
   );
 }
 
+// "Today" is what the sidebar calls this page.
+export const generateMetadata = () => adminMetadata("Today");
+
 export default async function TodayPage() {
-  const token = cookies().get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) redirect("/admin/login");
+  const staff = await requireStaffPage();
 
   const data = await getTodayData();
 

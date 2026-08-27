@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { pageMetadata } from "@/lib/page-metadata";
 
-export const generateMetadata = () => pageMetadata("privacy");
+export const generateMetadata = () => pageMetadata("privacy", "/privacy");
 
 /**
  * The footer has always linked here, so until now every public page carried a
@@ -14,7 +14,7 @@ export default function PrivacyPage() {
     <div className="min-h-screen bg-earth-bg py-16">
       <div className="container-resort max-w-2xl">
         <h1 className="section-heading mb-2">Privacy Policy</h1>
-        <p className="font-sans text-sm text-earth-text/50 mb-10">
+        <p className="font-sans text-sm text-earth-text/70 mb-10">
           Rio Casa, Mahabaleshwar, Satara District, Maharashtra
         </p>
 

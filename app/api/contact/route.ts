@@ -3,6 +3,8 @@ import { z } from "zod";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { okMessage, failValidation } from "@/lib/api-response";
+import { escapeHtml, escapeHtmlWithBreaks } from "@/lib/html-email";
+import { checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({
   name: z.string().min(2),
@@ -12,6 +14,16 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Unthrottled, this wrote a row and sent an email per call — so the cost of
+  // spamming it was ours, in Resend volume and sender reputation (B-64).
+  const limit = await checkRateLimit("contact", clientIp(req));
+  if (!limit.ok) {
+    return tooManyRequests(
+      limit.retryAfter,
+      "You have sent several messages already. Please wait a little before sending another."
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -41,14 +53,16 @@ export async function POST(req: NextRequest) {
         from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
         to: process.env.EMAIL_RESORT ?? "info@riocasa.in",
         replyTo: email,
+        // The subject is plain text in every client — no escaping, or the
+        // reader sees `&amp;` in their inbox list.
         subject: `New contact inquiry — ${name}`,
         html: `
           <div style="font-family:Arial;max-width:600px;padding:20px;color:#2C2416;">
-            <p><strong>Name:</strong> ${name}</p>
-            <p><strong>Email:</strong> ${email}</p>
-            <p><strong>Phone:</strong> ${phone || "—"}</p>
+            <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+            <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+            <p><strong>Phone:</strong> ${escapeHtml(phone) || "—"}</p>
             <p><strong>Message:</strong></p>
-            <p>${message.replace(/\n/g, "<br/>")}</p>
+            <p>${escapeHtmlWithBreaks(message)}</p>
           </div>
         `,
       });

@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 import { dateOnly, today, addDays, addMonths, startOfMonth, daysBetween, toDayString } from "@/lib/dates";
 
 // GET /api/admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -23,10 +23,10 @@ export async function GET(req: NextRequest) {
     to = rawTo ? dateOnly(rawTo) : today();
     from = rawFrom ? dateOnly(rawFrom) : addMonths(to, -12);
   } catch {
-    return NextResponse.json({ success: false, error: "Invalid date format. Use YYYY-MM-DD" }, { status: 400 });
+    return fail("Invalid date format. Use YYYY-MM-DD", 400);
   }
   if (to < from) {
-    return NextResponse.json({ success: false, error: "End date must be after start date" }, { status: 400 });
+    return fail("End date must be after start date", 400);
   }
 
   // `to` is an inclusive calendar day, so the exclusive bound is the next day.

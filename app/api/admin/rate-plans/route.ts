@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { RATE_PLAN_ROOM_TYPES } from "@/lib/labels";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok, failValidation } from "@/lib/api-response";
+import { ok, failValidation, fail } from "@/lib/api-response";
 import { isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const { validFrom, validTo, ...rest } = parsed.data;
 
   if (new Date(validTo) <= new Date(validFrom)) {
-    return NextResponse.json({ success: false, error: "Valid To must be after Valid From" }, { status: 400 });
+    return fail("Valid To must be after Valid From", 400);
   }
 
   const plan = await prisma.ratePlan.create({

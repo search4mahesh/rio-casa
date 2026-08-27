@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The Prisma client is generated into lib/generated/prisma and gitignored,
+      # so typecheck and tests both need it before they can resolve imports.
+      # prisma.config.ts reads DATABASE_URL, but `generate` never connects — the
+      # placeholder below only has to parse as a URL.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # `next.config.mjs` sets eslint.ignoreDuringBuilds, so the build will
+      # never surface a lint error. This step is the only thing that does —
+      # which is how lint silently rotted for months once before (B-46).
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci

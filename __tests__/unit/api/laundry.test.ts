@@ -15,6 +15,10 @@ const { state, db } = vi.hoisted(() => ({
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn(async () => ({ staffId: "s1", name: "Asha", email: "a@a.com", role: state.role })),
+  // The role the route gate sees comes from the staff row, not the token,
+  // since B-60 — so `state.role` has to drive this one to keep meaning what
+  // it did.
+  resolveActiveStaff: vi.fn(async () => ({ staffId: "s1", name: "Asha", email: "a@a.com", role: state.role })),
   ADMIN_COOKIE: "admin_token",
 }));
 

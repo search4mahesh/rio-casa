@@ -10,6 +10,7 @@ const { mockBookingFindMany, mockLogCreate, mockLogFindMany, mockResendSend } = 
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
+  resolveActiveStaff: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
   ADMIN_COOKIE: "admin_token",
 }));
 
@@ -49,8 +50,8 @@ describe("GET /api/admin/communications", () => {
   beforeEach(() => { mockLogFindMany.mockReset(); mockLogFindMany.mockResolvedValue([]); });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await GET(makeReq("GET"));
     expect(res.status).toBe(401);
   });
@@ -74,8 +75,8 @@ describe("POST /api/admin/communications — preview", () => {
   });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await POST(makeReq("POST", { action: "preview", channel: "email", filter: { type: "checked-in" }, subject: "x", body: "y" }));
     expect(res.status).toBe(401);
   });

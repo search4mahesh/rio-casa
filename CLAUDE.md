@@ -226,6 +226,40 @@ if (!auth.ok) return auth.response;              // 401 or 403, already shaped
 Server components use `cookies()` from `next/headers`, so they still call
 `verifyAdminToken` directly — `requireRole` is for route handlers only.
 
+**The token is a snapshot, not a live check.** `role` and `isActive` are read
+once at login and signed into a 12-hour JWT; nothing re-reads the row. So
+deactivating or demoting someone does not take effect until their token expires
+(B-60). Any handler where that gap actually matters — anything that could let a
+revoked account entrench itself — must re-read `staff` rather than trust
+`auth.staff`. `POST /api/admin/auth/password` does exactly this, and it is the
+pattern to copy.
+
+### Passwords — `lib/passwords.ts`
+`MIN_PASSWORD_LENGTH` and `BCRYPT_COST` live here, and both routes that write a
+`passwordHash` read them:
+
+| Route | Writes a hash when |
+|---|---|
+| `POST /api/admin/staff` | an owner creates an account |
+| `POST /api/admin/auth/password` | anyone changes **their own** password |
+
+For a long time only the first existed, so a seeded account kept its seeded
+password forever — `admin123` on the owner, published in the README (B-59).
+Two rules that keeps:
+
+- **Never write a password into the repository.** Not in a seed script, not in
+  a doc, not in a skill file, not in `scripts/shot.mjs`. `npm run seed:admin`
+  generates a random one per account and prints it once; dev tooling reads
+  `SHOT_*` from `.env`. Removing one from the working tree does not remove it
+  from git history, so a leak means rotating the account, not just editing the
+  file.
+- **A password floor is only a floor if it excludes the old defaults.** Eight
+  characters, in one constant, checked by both routes. Two routes with their
+  own literal is how they drift into one accepting what the other rejects.
+
+An owner resetting *someone else's* password is deliberately not built — it
+needs a delivery channel for the new password, which self-service does not.
+
 ### Responses — `lib/api-response.ts`
 Always return via a helper. Never hand-write `NextResponse.json({ success: ... })`
 — that is how the payload key drifted to `promos` / `plan` / `booking` / `kpi`,
@@ -239,6 +273,11 @@ forcing every client to know a different key per endpoint.
 | `fail(text, status?)` | `{ success: false, error: string }` |
 | `failValidation(zodError)` | `fail()` with the first issue message |
 
+`__tests__/unit/api/response-envelope.test.ts` fails the build if a handler
+hand-writes the envelope again, or passes a Zod error object where a string
+belongs. The rule had been written down for a long time and 54 handlers
+ignored it anyway — a convention with no guard is a suggestion.
+
 **`error` is always a string.** Clients render it directly
 (`showToast(data.error ?? "…")`), so returning a Zod error object shows
 `[object Object]` to staff. Use `failValidation(parsed.error)`, never
@@ -246,6 +285,45 @@ forcing every client to know a different key per endpoint.
 
 Clients therefore always read `data.data` for payloads and `data.message`
 for acknowledgements.
+
+### Rate limiting — `lib/rate-limit.ts`
+Three endpoints take unauthenticated traffic, and each broke differently under
+a script (B-64). All three now count against a fixed window before doing any
+work:
+
+| Scope | Route | Limit |
+|---|---|---|
+| `booking` | `POST /api/booking/create` | 6 / hour per address |
+| `login` | `POST /api/admin/auth/login` | 10 / 15 min per address |
+| `contact` | `POST /api/contact` | 5 / hour per address |
+
+```ts
+const limit = await checkRateLimit("booking", clientIp(req));
+if (!limit.ok) return tooManyRequests(limit.retryAfter, "…");
+```
+
+- **Counters live in Postgres, not a module-level `Map`.** Vercel runs several
+  instances and recycles them, so an in-memory window is per instance and
+  resets on a cold start: the effective limit is an unknown multiple of the
+  configured one. `rate_limits` is the same database these routes already
+  write to.
+- **Count before parsing the body.** A flood of malformed payloads must cost
+  the sender exactly what a flood of valid ones does.
+- **Key by address, never by account.** Keying login attempts by email would
+  let anyone lock a staff member out by guessing at their address on purpose.
+- **`booking` is the tightest by intent, not by traffic.** Every call commits a
+  booking that holds a room for `BOOKING_HOLD_MINUTES`, so an unthrottled walk
+  of the room list took the whole property off the calendar for an hour.
+- **It fails open.** A database error inside `checkRateLimit` is logged and the
+  request allowed. This is the opposite of the `JWT_SECRET` rule on purpose: a
+  missing secret lets anyone act as an owner, while an unreachable counter
+  means one caller is un-throttled for as long as the database is down —
+  during which they cannot book anything either. **So a deploy without
+  `8_rate_limits` applied has no rate limiting at all**, and says so only in
+  the log.
+
+Closed windows are swept by `/api/cron/expire-holds`; nothing else deletes
+them.
 
 ## Laundry (linen sent to the laundryman)
 `/admin/housekeeping?tab=laundry` — models `LinenItem`, `LaundryBatch`,
@@ -274,6 +352,8 @@ npx tsx prisma/seed-bookings.ts       # bookings around today
 npx tsx prisma/repair-data.ts         # report drifted derived state (--apply to fix)
 npx tsx prisma/close-overdue-checkouts.ts  # stays never checked out (--apply to close)
 npx tsx prisma/seed-demo.ts           # demo data; idempotent (--prune drops old duplicates)
+npx tsx prisma/repair-invoice-gstin.ts     # invoices issued under the placeholder GSTIN (--apply to fix)
+npx tsx prisma/seed-content.ts        # packages, testimonials, blog, gallery (--exclusive retires the rest)
 ```
 
 ## Scheduled Jobs (`vercel.json` → `crons`)
@@ -585,6 +665,192 @@ audit log (`rateOverridden`, `nightlyRate`) because they are the one figure a
 manager may need to question later. Any `frontdesk` user can set one; there is
 no approval step.
 
+## Security headers — `next.config.mjs`
+Sent on every route: a CSP, `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`, `Permissions-Policy` and HSTS. There were none.
+
+**The CSP is written against what this app actually loads, and it is easy to
+break.** Two hosts are not obvious from the code and were only found by loading
+the pages with the policy in place:
+
+- **`cdn.razorpay.com`** — `checkout.js` pulls a risk-detection bundle from it
+  at runtime. Allowing only `checkout.razorpay.com` blocks that, mid-checkout.
+- **`https://www.google.com`** — the home page embeds a Google Map in an
+  iframe, so it needs `frame-src`.
+
+`'unsafe-inline'` and `'unsafe-eval'` in `script-src` are Next's own runtime,
+which inlines the bootstrap and the RSC payload. Removing them needs
+per-request nonces, and middleware cannot add one to a statically rendered
+page.
+
+**Verify a CSP change in a browser, not with `curl`.** A violation is a console
+error, not a failed response — `node scripts/shot.mjs <path>` prints them, and
+the pages worth checking are `/` (the map), `/booking` (Razorpay) and any admin
+page.
+
+## Error boundaries
+Every segment that a visitor or a staff member can land on has one. There were
+none at all, so a thrown render error dropped whoever hit it onto Next's own
+error screen — unstyled, no navigation, no way back (B-67).
+
+| File | Catches |
+|---|---|
+| `app/global-error.tsx` | errors in the **root layout** — the only boundary above it is Next's |
+| `app/[locale]/error.tsx` | any public page |
+| `app/[locale]/booking/error.tsx` | the booking flow specifically |
+| `app/[locale]/not-found.tsx` | `notFound()` and unmatched public paths |
+| `app/admin/(protected)/error.tsx` | any admin page |
+| `app/not-found.tsx` | paths matching no route at all |
+
+- **`global-error.tsx` uses plain English and inline styles.** It replaces the
+  root layout, so there is no `NextIntlClientProvider` above it and no
+  guarantee `globals.css` was applied. It is the one file where the
+  no-hardcoded-text and Tailwind-only rules are off, because the machinery that
+  enforces them is what has just failed. Every other boundary sits inside
+  `app/[locale]/layout.tsx` and uses `useTranslations` from the `error`
+  namespace like any other copy.
+- **The booking boundary says the card was not charged**, which is true rather
+  than merely comforting: Razorpay is only opened after `/api/booking/create`
+  returns an order, and a render error means the wizard never got that far. It
+  offers WhatsApp as a way to complete the booking that does not depend on
+  whatever broke — and renders that button *only* when
+  `NEXT_PUBLIC_WHATSAPP_NUMBER` is set, so a guest is never sent to the
+  placeholder number.
+- **`error.digest` is rendered.** It is meaningless to the person reading it
+  and is the only thing tying what they saw to a line in the Vercel logs.
+
+**Verify in a browser, not with `curl`.** `error.tsx` is a *client* boundary:
+a server-component throw sends an error shell in the initial HTML and the
+fallback renders after hydration. `curl` shows the shell and makes a working
+boundary look broken. `node scripts/shot.mjs` prints the boundary's own
+`console.error` line, which is the quickest confirmation it engaged.
+
+## Invoicing identity — `lib/hotel-details.ts`
+`HOTEL_GSTIN` fell back to `27XXXXX0000X1ZX`, and that placeholder was
+snapshotted onto every `Invoice` row at check-out and printed on the tax
+invoice handed to the guest. All 35 invoices on file carried it (B-62).
+
+- **It fails shut in production**, like `JWT_SECRET` and `CRON_SECRET`: an
+  unset, placeholder or malformed GSTIN throws rather than invoicing under a
+  number that is not the property's. Safe because `generateInvoice` is already
+  called from a try/catch that treats it as bookkeeping — check-out completes,
+  the room is freed, and the guest leaves. What does not happen is a wrong tax
+  invoice.
+- **The placeholder is rejected by value, not just by shape.** It is a
+  well-formed GSTIN as far as the pattern goes, and `.env` had it set
+  explicitly rather than left blank, so a check for "unset" alone passed it
+  through.
+- **Resolved per call, never at module load** — the same reasoning as
+  `secret()` in `lib/admin-auth.ts`: throwing at import time would take
+  `next build` down whenever the build environment lacks the variable, which is
+  a different problem from a misconfigured deployment.
+- **`/admin/setup` shows the problem, not a fake number.** That screen's whole
+  job is to display the GSTIN; rendering a plausible-looking placeholder there
+  is how 35 invoices went out before anyone noticed. `hotelDetailsForDisplay()`
+  never throws, for the same reason.
+- **Correcting rows already written needs `prisma/repair-invoice-gstin.ts`**,
+  because the value is snapshotted. See B-62 in BUGS.md.
+
+## Editorial content — `lib/site-content.ts`
+Packages, testimonials, blog posts and gallery images are **rows, not
+literals**. All four models were defined in the schema and read by nothing
+while the site served hardcoded copies, which drifted: the page advertised
+three packages that did not exist in `packages`, ignored two that did, and
+priced "Monsoon Magic" two ways (B-53). Editing a price was a code change and
+a deploy.
+
+- **Every reader answers "what should be shown", never "all rows".**
+  `getPackages()` filters on `isActive` *and* the validity window,
+  `getTestimonials()` on `isApproved`, `getBlogPost()` on `isPublished` as well
+  as the slug. A draft must not be readable by anyone who guesses its URL just
+  because the index does not link it.
+- **`validFrom`/`validTo` are the point of the packages table.** A seasonal
+  package leaves the page on its own; the hardcoded version could only express
+  it as a badge someone had to remember to remove.
+- **Content pages are `force-dynamic`.** They are editable from the admin
+  panel, and a statically rendered page would serve yesterday's prices until
+  the next deploy.
+- **A failed load is not an empty page.** "No packages" tells a visitor the
+  property offers none, when in truth we never managed to ask — the same
+  distinction `ErrorState` exists for in the admin panels (B-39).
+- **`lib/blog-posts.ts` is seed input only.** No page reads it. Editing it
+  changes what a fresh seed writes, not what the site serves.
+
+`prisma/seed-content.ts` owns this content and is idempotent. `--exclusive`
+**retires** anything not listed — `isActive: false`, `isApproved: false` —
+rather than deleting it, which is what keeps `seed-demo.ts`'s invented guest
+reviews from publishing as real ones now that the site reads the table.
+
+The Hindi and Marathi columns on `packages` and `blog_posts` are nullable and
+unused. The site is English-only by decision (see **Strings**), so nothing
+writes them; do not start filling them in.
+
+## Email HTML — `lib/html-email.ts`
+**Escape every interpolated value in an email body.** All three senders
+interpolated raw (B-63), and the one that mattered was `/api/contact`, where
+the reader is *staff*: a name of `<a href="…">Approve refund</a>` rendered as a
+live link in the inbox of whoever was handling the enquiry.
+
+- `escapeHtml(value)` for a field, `escapeHtmlWithBreaks(value)` for anything
+  multi-line. **Never `escapeHtml(text).replace(/
+/g, "<br/>")` in the other
+  order** — escaping after inserting the tag prints `&lt;br/&gt;` to the
+  reader, which is why the sequence lives in one function.
+- **Subjects are not escaped.** They are plain text in every mail client, so
+  entities would show up literally in the inbox list.
+- In `substituteTags`, escaping is on for the email path and off for WhatsApp:
+  that one builds a `wa.me` URL, where `&amp;` would be shown to the guest.
+
+## SEO — `lib/site-url.ts`, `lib/structured-data.ts`
+The property sells direct, against OTAs charging commission for the same
+booking, and had none of the machinery that competes for that traffic: no
+sitemap, no robots.txt, no structured data, and no `metadataBase` — so a link
+shared on WhatsApp previewed with no image and the site-wide title, whichever
+page it pointed at (B-66).
+
+- **Every canonical URL comes from `absoluteUrl()`**, which reads
+  `NEXT_PUBLIC_SITE_URL` and strips a trailing slash. Never build one by
+  interpolating the env var — that is how `https://riocasa.in//rooms` happens.
+  It falls back to the production domain rather than localhost: a build with
+  the variable missing should emit *stale* canonicals, not ones pointing
+  crawlers at a laptop.
+- **`pageMetadata(key, path)` takes the path** and sets `alternates.canonical`
+  with it. `/rooms` and `/rooms/[slug]` carry `?checkIn=&checkOut=` on every
+  link, so without a canonical each date combination is crawled as a separate
+  page competing with the room's own.
+- **Open Graph titles must spell the brand out.** The root `title.template`
+  wraps the `<title>` tag *only* — verified against rendered HTML. A page that
+  leaves `openGraph.title` unset inherits the root layout's site-wide value
+  verbatim, so it previews as the home page. This is the one place the brand is
+  written twice on purpose, and `page-metadata.test.ts` is scoped to `title:`
+  accordingly (the B-52 guard still applies to the tag).
+- **Nothing in the schema graph is invented.** `priceRange` and
+  `numberOfRooms` are derived from `getRoomCategories()`, so what a search
+  result quotes is what checkout charges; amenities take the *intersection*
+  across categories, the same rule that stops one room's forest view being
+  sold as the property's (B-55). `geo` is emitted only when
+  `NEXT_PUBLIC_HOTEL_LATITUDE`/`LONGITUDE` are both set — a plausible guess
+  puts the property at the wrong pin.
+- **Structured data must not take a page down.** The home page and the sitemap
+  both build theirs inside `try`/`catch`: a sitemap missing its room URLs is a
+  bad day, and a 500 where a crawler expects XML is a worse one.
+
+`/booking/confirmation` is disallowed in robots.txt and deliberately has no
+canonical — its URL carries a booking id.
+
+## Inbound inquiries
+`/admin/guests?tab=inquiries` reads `contact_inquiries`, which `/api/contact`
+writes. For a long time nothing read it at all, so a submission reached staff
+only if the best-effort Resend notification landed (B-61).
+
+- **It is a worklist, not a log.** The default view is `handledAt: null`, and
+  `handledBy` is stamped from the session so a colleague knows who to ask.
+- **`frontdesk`, not `manager`.** An inquiry is a prospective guest asking
+  whether a room is free; gating it higher keeps leads from the people who
+  answer the phone.
+- **The sidebar badge is the point.** `AdminSidebar` keys badge counts by
+  `href`; a tab nobody has a reason to open is barely better than no tab.
+
 ## Strings (`messages/en.json`)
 **This site is English-only. Do not add Hindi, Marathi, or any other locale.**
 `middleware.ts` registers `locales: ["en"]` and `i18n.ts` always loads
@@ -608,7 +874,26 @@ namespace. A page supplies them in one line —
   and the template only wraps child titles, so `/` gets the unsuffixed default.
 
 A client component cannot export metadata — give it a sibling `layout.tsx`, as
-`/contact` and `/gallery` have.
+`/contact` has. (`/gallery` used to need one and no longer does: reading its
+images from the database made the page a server component.)
+
+**The admin panel titles itself separately** — `lib/admin-metadata.ts`, applied
+through `app/admin/layout.tsx`, which overrides the marketing template with
+`ADMIN_TITLE_TEMPLATE` and adds `noindex`. Every admin page inherited the root
+default until recently, so a manager with the calendar and a booking open saw
+the same tab title on both.
+
+- **The tab label leads, then the hub**: "Reports · Money", not "Money".
+  `?tab=reports` and `?tab=invoices` are the same *page*, so a per-page title
+  fixes nothing. Hub pages call `adminHubMetadata(href, searchParams.tab)`.
+- **A layout with child routes uses `adminSectionMetadata`, not
+  `adminMetadata`.** A plain string title on a layout consumes the template
+  inherited from `app/admin/layout.tsx` and leaves nested routes bare —
+  `/admin/bookings/[id]` rendered "Booking" with no suffix while
+  `/admin/guests/[id]`, whose parent sets no title, kept it.
+- `__tests__/unit/lib/admin-metadata.test.ts` fails the build if an admin page
+  that renders has no title of its own or from a sibling layout, if two tabs
+  collide, or if the suffix is restated anywhere outside the constant.
 
 **Mind the namespace.** A key read from the wrong one renders the raw key path
 to the visitor — next-intl does not fall back. `perNight` lives under `rooms`,
@@ -711,6 +996,26 @@ Prisma version. Unit tests mock the database and cannot catch any of this.
 Pipe it to `tail`, never `head`: SIGPIPE kills the script before its cleanup and
 leaves a booking behind that fails every later run.
 
+#### Where booking code lives
+`lib/booking-service.ts` had grown to ~1900 lines and 30+ exports across nine
+unrelated concerns. Two were split out; the transaction core deliberately was
+not, because pricing, allocation and the room lock are genuinely one unit.
+
+| Module | Holds | Depends on booking-service? |
+|---|---|---|
+| `lib/document-numbers.ts` | `nextDailyNumber`, `nextBookingNumber` | no — re-exported from there for `createGroupBooking` |
+| `lib/channel-manager.ts` | `syncWithChannelManager`, `pullOTABookings`, `detectConflicts` | **yes** — so booking-service must *not* re-export it |
+
+The asymmetry is the point. `document-numbers` imports nothing back, so a
+re-export is safe and existing imports keep working. `channel-manager` calls
+`getAvailableRooms` and `createBooking`, so re-exporting it from
+booking-service would close an import cycle — its three call sites import from
+`@/lib/channel-manager` directly instead.
+
+Bookings are only one of three callers of `nextDailyNumber`; laundry dispatch
+and invoice generation allocate their own sequences from the same table, and
+both used to import it from a module named after bookings.
+
 #### Daily document numbers — `nextDailyNumber(scope, prefix, day, pad)`
 `<PREFIX>-YYYYMMDD-NNN`, allocated by a one-row upsert on `daily_counters`.
 One row per `(scope, day)`, so each document type has its own sequence:
@@ -764,6 +1069,9 @@ applied, not replayed. The migrations are:
 | `4_daily_counters` | `daily_counters` (`scope`, `day`), replacing `booking_counters`; laundry sequences backfilled |
 | `6_room_extra_bed_rate` | `rooms.extra_bed_rate`, backfilled to ₹1,000 for every room that takes one |
 | `7_booking_groups` | `booking_groups` and `bookings.group_id` — one reservation, several rooms |
+| `8_rate_limits` | `rate_limits` — fixed-window request counters for the three public endpoints |
+| `9_contact_inquiry_handled` | `contact_inquiries.handled_at` / `handled_by`, plus a partial index for the open view |
+| `10_content_english_only` | `packages` Hindi/Marathi columns made nullable, duplicate packages and testimonials removed, `packages.name_en` made unique, `blog_posts.excerpt`/`category` added, content indexes |
 
 **`\d` does not work in this database's regex operator.** `'LB-20260727-01' ~
 '^LB-\d{8}-\d+$'` evaluates *false* on Neon while the `[0-9]` form is true, so
@@ -798,7 +1106,9 @@ errors, or network inspection, the `chrome-devtools` MCP server in `.mcp.json`
 drives a real Chrome. See the `run-app` and `test-in-chrome` skills.
 
 ## Environment Variables
-See `.env` — copy to `.env.local` and fill in real values:
+See `.env.example` — the committed template. Copy it and fill in real values
+(`cp .env.example .env.local`). `.env` itself is gitignored, so a fresh clone
+has no copy of it; the template is what a new checkout starts from.
 - `DATABASE_URL` — PostgreSQL connection string
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` — from Razorpay dashboard
 - `RESEND_API_KEY` — from resend.com

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok, okEmpty, failValidation } from "@/lib/api-response";
+import { ok, okEmpty, failValidation, fail } from "@/lib/api-response";
 import { isDayString } from "@/lib/dates";
 
 const UpdateSchema = z.object({
@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const promo = await prisma.promotion.update({ where: { id }, data });
     return ok(promo);
   } catch {
-    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+    return fail("Not found", 404);
   }
 }
 
@@ -51,13 +51,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Only allow deleting if code has never been used
   try {
     const promo = await prisma.promotion.findUnique({ where: { id }, select: { usedCount: true } });
-    if (!promo) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+    if (!promo) return fail("Not found", 404);
     if (promo.usedCount > 0) {
-      return NextResponse.json({ success: false, error: "Cannot delete a promo code that has been used" }, { status: 409 });
+      return fail("Cannot delete a promo code that has been used", 409);
     }
     await prisma.promotion.delete({ where: { id } });
     return okEmpty();
   } catch {
-    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+    return fail("Not found", 404);
   }
 }

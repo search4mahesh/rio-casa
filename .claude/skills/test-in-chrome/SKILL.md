@@ -44,7 +44,9 @@ async () => {
   const res = await fetch("/api/admin/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "admin@riocasa.in", password: "admin123" }),
+    // Paste the owner password from `npm run seed:admin` / `.env` —
+    // an inline literal here is what B-59 was about.
+    body: JSON.stringify({ email: "admin@riocasa.in", password: "<SHOT_OWNER_PASSWORD>" }),
   });
   return { status: res.status, body: await res.text() };
 }
@@ -54,12 +56,18 @@ async () => {
 
 A 401 means staff aren't seeded — run `npm run seed:admin`.
 
-| Role | Email | Password |
+| Role | Email | Password env var |
 |---|---|---|
-| owner | admin@riocasa.in | admin123 |
-| manager | manager@riocasa.in | manager123 |
-| frontdesk | frontdesk@riocasa.in | frontdesk123 |
-| housekeeping | housekeeping@riocasa.in | hk123 |
+| owner | admin@riocasa.in | `SHOT_OWNER_PASSWORD` |
+| manager | manager@riocasa.in | `SHOT_MANAGER_PASSWORD` |
+| frontdesk | frontdesk@riocasa.in | `SHOT_FRONTDESK_PASSWORD` |
+| housekeeping | housekeeping@riocasa.in | `SHOT_HOUSEKEEPING_PASSWORD` |
+
+Passwords are **not** written down here or anywhere else in the repository —
+that is how the seeded owner password ended up published in git (B-59).
+`npm run seed:admin` prints a random one per account, once; put them in `.env`
+under the names above. `shot.mjs` reads them from there and errors clearly when
+one is missing.
 
 Log in as the **lowest role that should see the page** when testing access.
 `PAGE_MIN_ROLE` in `lib/rbac-utils.ts` gates each route, and a role that is

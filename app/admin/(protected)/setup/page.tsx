@@ -1,33 +1,42 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { requireStaffPage } from "@/lib/admin-page-auth";
 import { NAV, resolveTab, visibleTabs } from "@/lib/admin-nav";
+import { adminHubMetadata } from "@/lib/admin-metadata";
 import HubTabs from "@/components/admin/HubTabs";
 import RatePlansPanel from "@/components/admin/panels/RatePlans";
 import PromosPanel from "@/components/admin/panels/Promos";
 import ReviewsPanel from "@/components/admin/panels/Reviews";
+import PackagesPanel from "@/components/admin/panels/Packages";
+import TestimonialsPanel from "@/components/admin/panels/Testimonials";
 import CommunicationsPanel from "@/components/admin/panels/Communications";
 import ShiftsPanel from "@/components/admin/panels/Shifts";
 import HotelSettingsPanel from "@/components/admin/panels/HotelSettings";
+import { hotelDetailsForDisplay } from "@/lib/hotel-details";
 
 const HUB = NAV.find((n) => n.href === "/admin/setup")!;
 
 const PANELS: Record<string, React.ComponentType> = {
-  rates:    RatePlansPanel,
-  promos:   PromosPanel,
-  reviews:  ReviewsPanel,
-  messages: CommunicationsPanel,
-  shifts:   ShiftsPanel,
+  rates:        RatePlansPanel,
+  promos:       PromosPanel,
+  packages:     PackagesPanel,
+  testimonials: TestimonialsPanel,
+  reviews:      ReviewsPanel,
+  messages:     CommunicationsPanel,
+  shifts:       ShiftsPanel,
 };
+
+// Titled from the active tab, not the hub: `?tab=reports` and
+// `?tab=invoices` are the same page, and one title for both would leave
+// them indistinguishable in a row of browser tabs.
+export const generateMetadata = ({ searchParams }: { searchParams: { tab?: string } }) =>
+  adminHubMetadata("/admin/setup", searchParams.tab);
 
 export default async function SetupPage({
   searchParams,
 }: {
   searchParams: { tab?: string };
 }) {
-  const token = cookies().get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) redirect("/admin/login");
+  const staff = await requireStaffPage();
 
   const tab = resolveTab(HUB, searchParams.tab, staff.role);
   if (!tab) redirect("/admin/dashboard");
@@ -47,7 +56,7 @@ export default async function SetupPage({
         active={tab.slug}
       />
       {tab.slug === "hotel" ? (
-        <HotelSettingsPanel gstin={process.env.HOTEL_GSTIN || "27XXXXX0000X1ZX"} />
+        <HotelSettingsPanel hotel={hotelDetailsForDisplay()} />
       ) : (
         Panel && <Panel />
       )}

@@ -1,6 +1,4 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { requireStaffPage } from "@/lib/admin-page-auth";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import RoleGuard from "@/components/admin/RoleGuard";
 
@@ -9,10 +7,7 @@ export default async function AdminProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) redirect("/admin/login");
+  const staff = await requireStaffPage();
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

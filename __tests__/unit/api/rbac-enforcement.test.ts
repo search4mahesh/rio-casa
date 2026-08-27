@@ -1,11 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mutable role the mocked verifyAdminToken will return
-const { state } = vi.hoisted(() => ({ state: { role: "owner" as string } }));
+// Mutable state for the account the session resolves to.
+//
+// `role` now has to come back from the *staff row*, not the token: since B-60
+// the gate re-reads the database and the column wins over the claim. Setting
+// it here therefore exercises the same path a real demotion takes.
+const { state } = vi.hoisted(() => ({ state: { role: "owner" as string, isActive: true } }));
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn(async () => ({ staffId: "s1", name: "Test", email: "t@t.com", role: state.role })),
+  resolveActiveStaff: vi.fn(async (token?: string) => {
+    if (!token) return null;
+    if (!state.isActive) return null;
+    return { staffId: "s1", name: "Test", email: "t@t.com", role: state.role };
+  }),
   ADMIN_COOKIE: "admin_token",
 }));
 
@@ -49,7 +58,7 @@ function req(path = "http://localhost/api/admin/x") {
   return r;
 }
 
-function setRole(role: string) { state.role = role; }
+function setRole(role: string) { state.role = role; state.isActive = true; }
 
 describe("RBAC route enforcement — manager-gated route (reports)", () => {
   beforeEach(() => setRole("owner"));

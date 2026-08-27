@@ -101,11 +101,20 @@ npx prisma db push
 npm run seed:admin
 ```
 
-This creates:
-- **Email:** `admin@riocasa.in`
-- **Password:** `admin123`
+This creates four accounts — owner, manager, front desk and housekeeping —
+each with a **randomly generated password printed once, at the end of the run**.
+Copy them somewhere safe before closing the terminal; they are not recoverable.
 
-> Change the password after first login.
+To choose the passwords yourself instead, set them in the environment first:
+
+```bash
+SEED_OWNER_PASSWORD=... SEED_MANAGER_PASSWORD=... npm run seed:admin
+```
+
+The script upserts, so re-running never overwrites the password of an account
+that already exists.
+
+> Rotate a password from **Setup → Hotel & Staff → Change Password**.
 
 ### 5. (Optional) Load demo data
 
@@ -143,7 +152,11 @@ Access the admin panel at **http://localhost:3000/admin/login**
 | Credential | Value |
 |---|---|
 | Email | `admin@riocasa.in` |
-| Password | `admin123` |
+| Password | printed once by `npm run seed:admin` |
+
+Change it from **Setup → Hotel & Staff → Change Password**. Passwords are never
+written into this repository — a seeded default published in git was, for a
+while, very likely the live owner password (B-59).
 
 ### Admin Pages
 

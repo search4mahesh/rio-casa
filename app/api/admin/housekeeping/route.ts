@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireAuth } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 
 const CreateSchema = z.object({
   roomId: z.string(),
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
+  if (!parsed.success) return fail("Invalid input", 400);
 
   const task = await prisma.housekeepingLog.create({
     data: {

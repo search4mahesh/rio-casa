@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireAuth } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 
 const UpdateSchema = z.object({
   status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
@@ -18,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
   const parsed = UpdateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
+  if (!parsed.success) return fail("Invalid input", 400);
 
   const now = new Date();
   const update: Record<string, unknown> = { ...parsed.data };

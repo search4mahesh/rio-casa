@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { okMessage } from "@/lib/api-response";
+import { okMessage, fail } from "@/lib/api-response";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireRole(req, "frontdesk");
@@ -14,13 +14,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   });
 
   if (!booking) {
-    return NextResponse.json({ success: false, error: "Booking not found" }, { status: 404 });
+    return fail("Booking not found", 404);
   }
   if (booking.status !== "confirmed") {
-    return NextResponse.json(
-      { success: false, error: `Cannot check in a booking with status: ${booking.status}` },
-      { status: 400 }
-    );
+    return fail(`Cannot check in a booking with status: ${booking.status}`, 400);
   }
 
   await prisma.$transaction([

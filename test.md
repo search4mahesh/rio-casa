@@ -2,7 +2,7 @@
 
 **Scope:** Every public website path + every admin tool path (pages + API endpoints)
 **Method:** Live HTTP against `npm run dev` on localhost:3000, against the Neon database
-**Auth:** Admin cookie via `POST /api/admin/auth/login` (admin@riocasa.in / admin123)
+**Auth:** Admin cookie via `POST /api/admin/auth/login` (owner account; password from `npm run seed:admin`)
 **Runner:** `__test_fullapp.mjs` (self-bootstrapping — discovers real ids from list endpoints)
 
 Legend: ✅ pass · ❌ fail · ⊘ skipped (env/seed limitation)

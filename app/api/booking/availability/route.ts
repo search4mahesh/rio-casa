@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { checkAvailability, getAvailableRooms } from "@/lib/booking-service";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -9,23 +9,17 @@ export async function GET(req: NextRequest) {
   const roomId = searchParams.get("roomId");
 
   if (!checkIn || !checkOut) {
-    return NextResponse.json(
-      { success: false, error: "checkIn and checkOut are required" },
-      { status: 400 }
-    );
+    return fail("checkIn and checkOut are required", 400);
   }
 
   const checkInDate = new Date(checkIn);
   const checkOutDate = new Date(checkOut);
 
   if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
-    return NextResponse.json({ success: false, error: "Invalid date format" }, { status: 400 });
+    return fail("Invalid date format", 400);
   }
   if (checkInDate >= checkOutDate) {
-    return NextResponse.json(
-      { success: false, error: "checkOut must be after checkIn" },
-      { status: 400 }
-    );
+    return fail("checkOut must be after checkIn", 400);
   }
 
   // Single-room check

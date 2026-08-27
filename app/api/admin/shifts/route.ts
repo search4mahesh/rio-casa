@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok, failValidation } from "@/lib/api-response";
+import { ok, failValidation, fail } from "@/lib/api-response";
 import { dateOnly, isDayString } from "@/lib/dates";
 
 const SLOT = z.enum(["morning", "evening", "night"]);
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const weekStartParam = searchParams.get("weekStart");
 
   if (!weekStartParam || !isDayString(weekStartParam)) {
-    return NextResponse.json({ success: false, error: "weekStart (YYYY-MM-DD) is required" }, { status: 400 });
+    return fail("weekStart (YYYY-MM-DD) is required", 400);
   }
 
   const weekStart = dateOnly(weekStartParam);
@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
   const { date, slot, station, staffId, notes } = parsed.data;
 
   const exists = await prisma.staff.findUnique({ where: { id: staffId }, select: { id: true, isActive: true } });
-  if (!exists) return NextResponse.json({ success: false, error: "Staff member not found" }, { status: 400 });
-  if (!exists.isActive) return NextResponse.json({ success: false, error: "Cannot assign inactive staff" }, { status: 400 });
+  if (!exists) return fail("Staff member not found", 400);
+  if (!exists.isActive) return fail("Cannot assign inactive staff", 400);
 
   const dateObj = dateOnly(date);
 

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { okMessage } from "@/lib/api-response";
+import { okMessage, fail } from "@/lib/api-response";
 import { recalcGuestTotals } from "@/lib/booking-service";
 
 const CancelSchema = z.object({
@@ -17,13 +17,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const booking = await prisma.booking.findUnique({ where: { id: params.id } });
   if (!booking) {
-    return NextResponse.json({ success: false, error: "Booking not found" }, { status: 404 });
+    return fail("Booking not found", 404);
   }
   if (["cancelled", "checked_out", "no_show"].includes(booking.status)) {
-    return NextResponse.json(
-      { success: false, error: `Cannot cancel a booking with status: ${booking.status}` },
-      { status: 400 }
-    );
+    return fail(`Cannot cancel a booking with status: ${booking.status}`, 400);
   }
 
   try {
@@ -35,13 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // on the booking page as fact, with nothing anywhere to catch it. Same cap
     // and same reasoning as walk-in `amountPaid` (B-26); this is its twin.
     if (refundAmount != null && refundAmount > booking.totalAmount) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Refund (₹${refundAmount.toLocaleString("en-IN")}) is more than the booking total (₹${booking.totalAmount.toLocaleString("en-IN")})`,
-        },
-        { status: 400 }
-      );
+      return fail(`Refund (₹${refundAmount.toLocaleString("en-IN")}) is more than the booking total (₹${booking.totalAmount.toLocaleString("en-IN")})`, 400);
     }
 
     await prisma.$transaction([
@@ -84,9 +75,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return okMessage(`Booking ${booking.bookingNumber} cancelled`);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ success: false, error: "Invalid input" }, { status: 400 });
+      return fail("Invalid input", 400);
     }
     console.error(err);
-    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
+    return fail("Server error", 500);
   }
 }

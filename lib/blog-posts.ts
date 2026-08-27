@@ -11,6 +11,14 @@
  * the property's own words before this goes anywhere near production.
  */
 
+/**
+ * **No page reads this any more.** Posts live in `blog_posts` and are read
+ * through `lib/site-content.ts`; this array is the seed source for
+ * `prisma/seed-content.ts` and nothing else (B-53).
+ *
+ * Editing it changes what a *fresh* seed writes, not what the site serves —
+ * to change a live post, edit the row.
+ */
 export type BlogPost = {
   slug: string;
   title: string;

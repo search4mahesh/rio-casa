@@ -9,6 +9,7 @@ import {
 } from "@/lib/booking-service";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, failValidation } from "@/lib/api-response";
+import { checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 
 // POST /api/booking/create
 //
@@ -39,6 +40,19 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Before anything else: every booking that gets committed here holds its
+  // room until the guest pays or the hold expires, so an unthrottled script
+  // walking the room list took the whole property off the calendar for an
+  // hour at a time (B-64). Counted before the body is even parsed, so a
+  // malformed flood costs no more than a well-formed one.
+  const limit = await checkRateLimit("booking", clientIp(req));
+  if (!limit.ok) {
+    return tooManyRequests(
+      limit.retryAfter,
+      "Too many booking attempts from this connection. Please try again shortly, or call us to book."
+    );
+  }
+
   const body = await req.json();
   const parsed = schema.safeParse(body);
 

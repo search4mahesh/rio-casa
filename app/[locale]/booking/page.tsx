@@ -2,7 +2,7 @@ import BookingWizard from "@/components/booking/BookingWizard";
 import { useTranslations } from "next-intl";
 import { pageMetadata } from "@/lib/page-metadata";
 
-export const generateMetadata = () => pageMetadata("booking");
+export const generateMetadata = () => pageMetadata("booking", "/booking");
 
 export default function BookingPage({
   params,

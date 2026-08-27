@@ -16,6 +16,10 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
 import path from "path";
+// Same reason prisma.config.ts and prisma/script-client.ts do it: this is a
+// standalone script, so Next never loads the env file for it. `dotenv/config`
+// reads `.env` — without this the SHOT_* passwords below are always undefined.
+import "dotenv/config";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -42,11 +46,15 @@ const height = Number(flag("height", 900));
 const role = flag("role", "owner");
 const outDir = ".screenshots";
 
-const CREDENTIALS = {
-  owner: { email: "admin@riocasa.in", password: "admin123" },
-  manager: { email: "manager@riocasa.in", password: "manager123" },
-  frontdesk: { email: "frontdesk@riocasa.in", password: "frontdesk123" },
-  housekeeping: { email: "housekeeping@riocasa.in", password: "hk123" },
+// Passwords come from the environment, never from this file. They used to be
+// literals here and in two SKILL.md files, which is part of how the seeded
+// owner password ended up published in git (B-59). `npm run seed:admin` prints
+// a random one per account; put them in `.env` as SHOT_* to use this.
+const ACCOUNTS = {
+  owner:        { email: "admin@riocasa.in",        envVar: "SHOT_OWNER_PASSWORD" },
+  manager:      { email: "manager@riocasa.in",      envVar: "SHOT_MANAGER_PASSWORD" },
+  frontdesk:    { email: "frontdesk@riocasa.in",    envVar: "SHOT_FRONTDESK_PASSWORD" },
+  housekeeping: { email: "housekeeping@riocasa.in", envVar: "SHOT_HOUSEKEEPING_PASSWORD" },
 };
 
 const needsAuth = target.startsWith("/admin") && !has("no-auth");
@@ -63,8 +71,18 @@ page.on("pageerror", (e) => consoleErrors.push(String(e)));
 
 try {
   if (needsAuth) {
-    const creds = CREDENTIALS[role];
-    if (!creds) throw new Error(`Unknown role "${role}". Use one of: ${Object.keys(CREDENTIALS).join(", ")}`);
+    const account = ACCOUNTS[role];
+    if (!account) throw new Error(`Unknown role "${role}". Use one of: ${Object.keys(ACCOUNTS).join(", ")}`);
+
+    const password = process.env[account.envVar];
+    if (!password) {
+      throw new Error(
+        `${account.envVar} is not set. Screenshotting an admin page needs the ${role} password —
+` +
+        `set it in .env, or re-run \`npm run seed:admin\` on a fresh database to print one.`
+      );
+    }
+    const creds = { email: account.email, password };
 
     // Hit the API directly rather than driving the login form — fewer moving
     // parts, and the session cookie lands in the same browser context.

@@ -2,7 +2,7 @@ import { useTranslations } from "next-intl";
 import { Waves, Flame, Wifi, Car, Dumbbell, Trees } from "lucide-react";
 import { pageMetadata } from "@/lib/page-metadata";
 
-export const generateMetadata = () => pageMetadata("dining");
+export const generateMetadata = () => pageMetadata("dining", "/dining");
 
 const amenities = [
   { icon: Waves, name: "Swimming Pool", desc: "Temperature-controlled outdoor pool with valley views." },
@@ -47,15 +47,15 @@ export default function DiningPage() {
               </p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between border-b border-primary-50 pb-2">
-                  <span className="font-sans text-earth-text/60">Breakfast</span>
+                  <span className="font-sans text-earth-text/70">Breakfast</span>
                   <span className="font-sans font-medium">7:00 AM – 10:30 AM</span>
                 </div>
                 <div className="flex justify-between border-b border-primary-50 pb-2">
-                  <span className="font-sans text-earth-text/60">Lunch</span>
+                  <span className="font-sans text-earth-text/70">Lunch</span>
                   <span className="font-sans font-medium">12:30 PM – 3:00 PM</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-sans text-earth-text/60">Dinner</span>
+                  <span className="font-sans text-earth-text/70">Dinner</span>
                   <span className="font-sans font-medium">7:30 PM – 10:30 PM</span>
                 </div>
               </div>
@@ -78,7 +78,7 @@ export default function DiningPage() {
                   <Icon size={22} className="text-primary" />
                 </div>
                 <h3 className="font-serif text-lg mb-2">{name}</h3>
-                <p className="font-sans text-sm text-earth-text/60">{desc}</p>
+                <p className="font-sans text-sm text-earth-text/70">{desc}</p>
               </div>
             ))}
           </div>

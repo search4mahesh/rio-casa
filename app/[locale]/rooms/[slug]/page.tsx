@@ -5,6 +5,9 @@ import { getTranslations } from "next-intl/server";
 import { Users, Star, ArrowLeft, Check, Bath, BedDouble, Wifi, Tv, Wind, Droplets } from "lucide-react";
 import { getRoomCategory } from "@/lib/room-catalogue";
 import { isDayString } from "@/lib/dates";
+import { absoluteUrl } from "@/lib/site-url";
+import JsonLd from "@/components/seo/JsonLd";
+import { roomSchema, breadcrumbSchema } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +19,26 @@ export const dynamic = "force-dynamic";
  */
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const room = await getRoomCategory(params.slug);
-  if (!room) return { title: "Room not found" };
+  // No canonical for a room that does not exist — the page 404s, and a
+  // canonical would invite it to be indexed anyway.
+  if (!room) return { title: "Room not found", robots: { index: false } };
+
+  const description = `${room.name} at Rio Casa, Mahabaleshwar — from ₹${room.pricePerNight.toLocaleString("en-IN")} per night, up to ${room.maxGuests} guests. Book direct.`;
+  const path = `/rooms/${room.slug}`;
+
   return {
     title: room.name,
-    description: `${room.name} at Rio Casa, Mahabaleshwar — from ₹${room.pricePerNight.toLocaleString("en-IN")} per night, up to ${room.maxGuests} guests. Book direct.`,
+    description,
+    // `?checkIn=&checkOut=` rides through on every link from /rooms, so
+    // without this each date combination is a separate URL competing with the
+    // room's own page for the same snippet.
+    alternates: { canonical: path },
+    openGraph: {
+      url: absoluteUrl(path),
+      title: `${room.name} | Rio Casa Mahabaleshwar`,
+      description,
+      images: [{ url: room.marketing.heroImage, alt: room.marketing.heroAlt }],
+    },
   };
 }
 
@@ -70,6 +89,20 @@ export default async function RoomDetailPage({
 
   return (
     <div className="py-16 bg-earth-bg min-h-screen">
+      {/* The offer a search result can quote: the category's *minimum* nightly
+          rate, which is the figure the card shows and one a guest can actually
+          get. `containedInPlace` ties it to the Resort node on the home page,
+          so the two are one graph rather than two unrelated claims. */}
+      <JsonLd
+        data={[
+          roomSchema(room),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Rooms", path: "/rooms" },
+            { name: room.name, path: `/rooms/${room.slug}` },
+          ]),
+        ]}
+      />
       <div className="container-resort">
         {/* Back link */}
         <Link href="/rooms" className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 mb-8 font-sans">
@@ -112,15 +145,15 @@ export default async function RoomDetailPage({
               <div className="flex items-center gap-1 text-accent shrink-0">
                 <Star size={16} fill="currentColor" />
                 <span className="font-sans font-semibold">{room.marketing.rating}</span>
-                <span className="text-earth-text/40 text-sm">({room.marketing.reviews} reviews)</span>
+                <span className="text-earth-text/70 text-sm">({room.marketing.reviews} reviews)</span>
               </div>
             </div>
 
-            <p className="font-sans text-sm text-earth-text/50 italic mb-4">
+            <p className="font-sans text-sm text-earth-text/70 italic mb-4">
               {room.count} {room.count === 1 ? "room" : "rooms"} of this type
             </p>
 
-            <div className="flex items-center gap-4 text-earth-text/60 text-sm mb-6">
+            <div className="flex items-center gap-4 text-earth-text/70 text-sm mb-6">
               <div className="flex items-center gap-1.5">
                 <Users size={15} />
                 <span>{t("maxGuests", { count: room.maxGuests })}</span>
@@ -172,11 +205,11 @@ export default async function RoomDetailPage({
                   being advertised as if every guest got one (B-55). */}
               {room.someRoomsAmenities.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-primary/10">
-                  <p className="font-sans text-xs text-earth-text/50 mb-2">{t("someRoomsAmenities")}</p>
+                  <p className="font-sans text-xs text-earth-text/70 mb-2">{t("someRoomsAmenities")}</p>
                   <div className="grid grid-cols-2 gap-2">
                     {room.someRoomsAmenities.map((amenity) => (
-                      <div key={amenity} className="flex items-center gap-2 text-sm text-earth-text/50">
-                        <Check size={14} className="text-earth-text/30 shrink-0" />
+                      <div key={amenity} className="flex items-center gap-2 text-sm text-earth-text/70">
+                        <Check size={14} className="text-earth-text/70 shrink-0" />
                         <span>{amenity}</span>
                       </div>
                     ))}
@@ -192,11 +225,11 @@ export default async function RoomDetailPage({
                   <span className="font-serif text-3xl text-primary">
                     ₹{room.pricePerNight.toLocaleString("en-IN")}
                   </span>
-                  <span className="font-sans text-sm text-earth-text/50 ml-2">{t("perNight")}</span>
+                  <span className="font-sans text-sm text-earth-text/70 ml-2">{t("perNight")}</span>
                 </div>
-                <span className="font-sans text-xs text-earth-text/40">+taxes</span>
+                <span className="font-sans text-xs text-earth-text/70">+taxes</span>
               </div>
-              <p className="font-sans text-xs text-earth-text/50 mb-4">Extra bed charges apply on request</p>
+              <p className="font-sans text-xs text-earth-text/70 mb-4">Extra bed charges apply on request</p>
               <Link href={bookHref} className="btn-primary w-full text-center block">
                 {t("bookRoom")}
               </Link>

@@ -10,6 +10,7 @@ const { mockFindMany, mockCreate, mockUpdate, mockDelete } = vi.hoisted(() => ({
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
+  resolveActiveStaff: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
   ADMIN_COOKIE: "admin_token",
 }));
 
@@ -49,8 +50,8 @@ describe("GET /api/admin/rate-plans", () => {
   });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await GET(makeReq("GET"));
     expect(res.status).toBe(401);
   });
@@ -100,8 +101,8 @@ describe("POST /api/admin/rate-plans — Zod validation", () => {
   });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await POST(makeReq("POST", validPlan));
     expect(res.status).toBe(401);
   });
@@ -133,8 +134,8 @@ describe("PATCH /api/admin/rate-plans/[id]", () => {
   });
 
   it("returns 401 without auth", async () => {
-    const { verifyAdminToken } = await import("@/lib/admin-auth");
-    vi.mocked(verifyAdminToken).mockResolvedValueOnce(null as never);
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(null as never);
     const res = await PATCH(makeReq("PATCH", { isActive: false }), idParams);
     expect(res.status).toBe(401);
   });

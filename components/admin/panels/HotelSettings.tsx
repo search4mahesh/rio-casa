@@ -3,7 +3,9 @@
 import { useEffect, useState, useId } from "react";
 import { ROLE_LABEL } from "@/lib/labels";
 import { useToast, Toast } from "@/components/ui/Toast";
+import { Field } from "@/components/ui/Field";
 import { apiJson } from "@/lib/api-client";
+import { MIN_PASSWORD_LENGTH } from "@/lib/passwords";
 
 type StaffMember = {
   id: string;
@@ -23,7 +25,9 @@ const ROLE_COLOR: Record<string, string> = {
   housekeeping: "bg-yellow-100 text-yellow-700",
 };
 
-export default function HotelSettingsPanel({ gstin }: { gstin: string }) {
+type HotelDetails = { gstin: string; name: string; address: string; problem: string | null };
+
+export default function HotelSettingsPanel({ hotel }: { hotel: HotelDetails }) {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -56,14 +60,17 @@ export default function HotelSettingsPanel({ gstin }: { gstin: string }) {
     setTogglingId(null);
   }
 
+  // These are read server-side and passed down as props — `HOTEL_*` have no
+  // `NEXT_PUBLIC_` prefix, so reading them in this client component would
+  // always give `undefined` (B-29).
   const hotelInfo = [
-    { label: "Hotel Name", value: "Rio Casa Resort" },
-    { label: "Location", value: "Mahabaleshwar, Satara District, Maharashtra" },
-    // `HOTEL_GSTIN` has no `NEXT_PUBLIC_` prefix — it's read server-side, same
-    // as lib/invoice-service.ts reads it, and passed down as a prop. This
-    // component is a client component, so reading `process.env.HOTEL_GSTIN`
-    // here directly would always be `undefined` (B-29).
-    { label: "GSTIN", value: gstin },
+    { label: "Hotel Name", value: hotel.name },
+    { label: "Location", value: hotel.address },
+    // Shown as a problem rather than as a plausible-looking placeholder: this
+    // is the one screen whose job is to display the GSTIN, and a fake number
+    // here is how 35 tax invoices went out under `27XXXXX0000X1ZX` before
+    // anyone noticed (B-62).
+    { label: "GSTIN", value: hotel.problem ? "Not configured" : hotel.gstin },
     { label: "WhatsApp", value: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "—" },
   ];
 
@@ -80,8 +87,19 @@ export default function HotelSettingsPanel({ gstin }: { gstin: string }) {
             </div>
           ))}
         </div>
+        {hotel.problem && (
+          <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <p className="text-sm text-amber-800 font-medium">No tax invoices are being generated.</p>
+            <p className="text-xs text-amber-700 mt-1">
+              {hotel.problem}. A GST invoice cannot be issued under a number that is not the
+              property&apos;s, so check-out completes without one until this is set.
+            </p>
+          </div>
+        )}
         <p className="text-xs text-gray-400 mt-4">To update hotel info, edit the environment variables in your deployment settings.</p>
       </section>
+
+      <ChangePasswordCard onDone={showToast} />
 
       {/* Staff */}
       <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -166,7 +184,7 @@ export default function HotelSettingsPanel({ gstin }: { gstin: string }) {
 }
 
 function AddStaffModal({ onClose }: { onClose: () => void }) {
-  const fieldId = useId();
+  const roleFieldId = useId();
   const [form, setForm] = useState({ name: "", email: "", phone: "", role: "frontdesk", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -185,16 +203,23 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
     setLoading(false);
   }
 
+  // Every control used to be rendered with the same literal id,
+  // `${fieldId}-field`, so all four labels pointed at the Name input:
+  // clicking "Email" focused Name, and a screen reader announced the same
+  // control four times. `Field` hands each child an id from its own
+  // `useId()`, which is why it takes a render prop — the id cannot be
+  // shared by accident.
   const inp = (label: string, name: keyof typeof form, props?: React.InputHTMLAttributes<HTMLInputElement>) => (
-    <div>
-      <label htmlFor={`${fieldId}-field`} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input id={`${fieldId}-field`}
-        {...props}
-        value={form[name]}
-        onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
-        className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-    </div>
+    <Field label={label}>
+      {(id) => (
+        <input id={id}
+          {...props}
+          value={form[name]}
+          onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
+          className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+      )}
+    </Field>
   );
 
   return (
@@ -218,8 +243,8 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
             {inp("Phone", "phone", { type: "tel", placeholder: "9876543210" })}
 
             <div>
-              <label htmlFor={`${fieldId}-role`} className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-              <select id={`${fieldId}-role`} required value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+              <label htmlFor={`${roleFieldId}-role`} className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+              <select id={`${roleFieldId}-role`} required value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                 <option value="manager">Manager</option>
                 <option value="frontdesk">Front Desk</option>
@@ -227,7 +252,7 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
               </select>
             </div>
 
-            {inp("Temporary Password *", "password", { required: true, type: "password", minLength: 6, placeholder: "Min. 6 characters" })}
+            {inp("Temporary Password *", "password", { required: true, type: "password", minLength: MIN_PASSWORD_LENGTH, placeholder: `Min. ${MIN_PASSWORD_LENGTH} characters` })}
 
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={onClose}
@@ -243,5 +268,124 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Change your own password.
+ *
+ * Shown to every rank, not just the owner: the account this changes is
+ * always the signed-in one, so there is nothing here a housekeeper should
+ * not be able to do to their own login. Until this existed, a password
+ * could only be set at staff creation, which left the seeded accounts on
+ * their seeded passwords indefinitely (B-59).
+ */
+function ChangePasswordCard({ onDone }: { onDone: (message: string) => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  // Checked here as well as on the server so a typo is caught before a round
+  // trip. The server never receives `confirm` — it is a UI affordance, not a
+  // second field of the password.
+  const mismatch = confirm.length > 0 && next !== confirm;
+  const tooShort = next.length > 0 && next.length < MIN_PASSWORD_LENGTH;
+  const submittable =
+    current.length > 0 && next.length >= MIN_PASSWORD_LENGTH && next === confirm && !saving;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+
+    const data = await apiJson("/api/admin/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: current, newPassword: next }),
+    });
+
+    if (data.success) {
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      onDone("Password changed.");
+    } else {
+      setError(data.error);
+    }
+    setSaving(false);
+  }
+
+  const inputClass =
+    "w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary";
+
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <h2 className="font-semibold text-gray-900 mb-1">Change Password</h2>
+      <p className="text-xs text-gray-500 mb-4">
+        Changes the password for the account you are signed in as.
+      </p>
+
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+        {error && (
+          <div className="sm:col-span-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        <Field label="Current Password">
+          {(id) => (
+            <input
+              id={id}
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              className={inputClass}
+            />
+          )}
+        </Field>
+
+        <Field
+          label="New Password"
+          hint={tooShort ? `At least ${MIN_PASSWORD_LENGTH} characters` : undefined}
+        >
+          {(id) => (
+            <input
+              id={id}
+              type="password"
+              autoComplete="new-password"
+              minLength={MIN_PASSWORD_LENGTH}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              className={inputClass}
+            />
+          )}
+        </Field>
+
+        <Field
+          label="Confirm New Password"
+          hint={mismatch ? "Passwords do not match" : undefined}
+        >
+          {(id) => (
+            <input
+              id={id}
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className={inputClass}
+            />
+          )}
+        </Field>
+
+        <div className="sm:col-span-3">
+          <button type="submit" disabled={!submittable} className="px-4 py-2 btn-admin">
+            {saving ? "Changing…" : "Change Password"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }

@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/admin-auth";
+import { requireStaffPage } from "@/lib/admin-page-auth";
 import { NAV, resolveTab, visibleTabs } from "@/lib/admin-nav";
+import { adminHubMetadata } from "@/lib/admin-metadata";
 import HubTabs from "@/components/admin/HubTabs";
 import CalendarMonthPanel from "@/components/admin/panels/CalendarMonth";
 import OccupancyGridPanel from "@/components/admin/panels/OccupancyGrid";
@@ -15,14 +15,18 @@ const PANELS: Record<string, React.ComponentType> = {
   blocked: BlockedDatesPanel,
 };
 
+// Titled from the active tab, not the hub: `?tab=reports` and
+// `?tab=invoices` are the same page, and one title for both would leave
+// them indistinguishable in a row of browser tabs.
+export const generateMetadata = ({ searchParams }: { searchParams: { tab?: string } }) =>
+  adminHubMetadata("/admin/calendar", searchParams.tab);
+
 export default async function CalendarPage({
   searchParams,
 }: {
   searchParams: { tab?: string };
 }) {
-  const token = cookies().get(ADMIN_COOKIE)?.value;
-  const staff = token ? await verifyAdminToken(token) : null;
-  if (!staff) redirect("/admin/login");
+  const staff = await requireStaffPage();
 
   const tab = resolveTab(HUB, searchParams.tab, staff.role);
   if (!tab) redirect("/admin/dashboard");

@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok, failValidation } from "@/lib/api-response";
+import { ok, failValidation, fail } from "@/lib/api-response";
 import { dateOnly, today as todayDate, isDayString } from "@/lib/dates";
+import { escapeHtml } from "@/lib/html-email";
 
 // ─── Audience resolver ────────────────────────────────────────────────────────
 
@@ -136,12 +137,24 @@ async function resolveRecipients(filter: Filter, channel: Channel): Promise<Reci
   );
 }
 
-function substituteTags(template: string, r: Recipient): string {
+/**
+ * Fill the merge tags in a staff-composed template.
+ *
+ * `escape` is off for the WhatsApp path — that is a plain-text `wa.me` URL,
+ * where HTML entities would be shown to the guest literally ("Rahul &amp;
+ * Co"). It is on for email, where the substituted values (a guest name typed
+ * at booking) would otherwise be markup inside a message the property appears
+ * to have written (B-63).
+ */
+function substituteTags(template: string, r: Recipient, escape = false): string {
+  const v = (value: string | null | undefined) =>
+    escape ? escapeHtml(value ?? "") : (value ?? "");
+
   return template
-    .replace(/\{\{\s*guestName\s*\}\}/g, r.guestName)
-    .replace(/\{\{\s*bookingNumber\s*\}\}/g, r.bookingNumber ?? "")
-    .replace(/\{\{\s*checkIn\s*\}\}/g, r.checkIn ?? "")
-    .replace(/\{\{\s*roomName\s*\}\}/g, r.roomName ?? "");
+    .replace(/\{\{\s*guestName\s*\}\}/g, v(r.guestName))
+    .replace(/\{\{\s*bookingNumber\s*\}\}/g, v(r.bookingNumber))
+    .replace(/\{\{\s*checkIn\s*\}\}/g, v(r.checkIn))
+    .replace(/\{\{\s*roomName\s*\}\}/g, v(r.roomName));
 }
 
 // ─── GET: list past communications ────────────────────────────────────────────
@@ -181,7 +194,7 @@ export async function POST(req: NextRequest) {
   const { action, channel, filter, subject, body } = parsed.data;
 
   if (channel === "email" && !subject) {
-    return NextResponse.json({ success: false, error: "Subject is required for email" }, { status: 400 });
+    return fail("Subject is required for email", 400);
   }
 
   const recipients = await resolveRecipients(filter, channel);
@@ -208,7 +221,7 @@ export async function POST(req: NextRequest) {
 
   // Live send
   if (reachable.length === 0) {
-    return NextResponse.json({ success: false, error: "No reachable recipients" }, { status: 400 });
+    return fail("No reachable recipients", 400);
   }
 
   let sentCount = 0;
@@ -218,7 +231,7 @@ export async function POST(req: NextRequest) {
   if (channel === "email") {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ success: false, error: "Email service not configured" }, { status: 503 });
+      return fail("Email service not configured", 503);
     }
     const resend = new Resend(apiKey);
 
@@ -233,7 +246,10 @@ export async function POST(req: NextRequest) {
           from: "Rio Casa <hello@riocasa.com>",
           to: r.email!,
           subject: substituteTags(subject!, r),
-          html: `<div style="font-family: Arial; max-width: 600px; padding: 20px; color: #2C2416;">${substituteTags(body, r).replace(/\n/g, "<br/>")}</div>`,
+          // The template is staff-authored and may legitimately carry markup;
+          // only the substituted guest values are escaped (B-63). Newlines
+          // become <br/> after substitution, as before.
+          html: `<div style="font-family: Arial; max-width: 600px; padding: 20px; color: #2C2416;">${substituteTags(body, r, true).replace(/\n/g, "<br/>")}</div>`,
         });
         if (sendError) {
           errors.push(`${r.guestName}: ${sendError.message}`);

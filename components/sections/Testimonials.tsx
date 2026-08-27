@@ -4,33 +4,36 @@ import { useTranslations } from "next-intl";
 import { Star, Quote } from "lucide-react";
 import { useState } from "react";
 
-const testimonials = [
-  {
-    name: "Priya Sharma",
-    location: "Mumbai",
-    review: "Rio Casa is an absolute gem. The rooms are stunning, the staff is warm, and waking up to the mist-covered hills every morning was pure magic.",
-    rating: 5,
-    date: "April 2025",
-  },
-  {
-    name: "Arjun & Meera Patel",
-    location: "Pune",
-    review: "We celebrated our anniversary here and it was perfect. The honeymoon package was thoughtfully curated — the bonfire dinner was unforgettable!",
-    rating: 5,
-    date: "March 2025",
-  },
-  {
-    name: "Rahul Deshmukh",
-    location: "Nashik",
-    review: "Best resort in Mahabaleshwar, hands down. The valley view from our suite was breathtaking. Will definitely return in monsoon!",
-    rating: 5,
-    date: "February 2025",
-  },
-];
+/**
+ * A testimonial as the home page hands it over.
+ *
+ * The three shown here used to be a literal in this file while 24 rows sat in
+ * `testimonials` unread, and `isApproved` implied an approval workflow with no
+ * panel to approve through and no page that would read an approved one (B-53).
+ * Both ends exist now; this component only renders what it is given.
+ *
+ * Still a client component — the carousel is the whole point — so the page
+ * fetches and passes down rather than this reaching for the database.
+ */
+export type TestimonialCard = {
+  id: string;
+  guestName: string;
+  location: string | null;
+  review: string;
+  rating: number;
+  stayDate: string | null;
+};
 
-export default function Testimonials() {
+export default function Testimonials({ testimonials }: { testimonials: TestimonialCard[] }) {
   const t = useTranslations("home");
   const [active, setActive] = useState(0);
+
+  // Nothing approved yet is a real state — `isApproved` defaults to false, so a
+  // fresh property has none. An empty quote card with a stray dot beneath it
+  // reads as broken, so the section stands down entirely.
+  if (testimonials.length === 0) return null;
+
+  const current = testimonials[Math.min(active, testimonials.length - 1)];
 
   return (
     <section className="py-20 bg-primary-50/30">
@@ -43,15 +46,17 @@ export default function Testimonials() {
           <div className="relative bg-earth-white rounded-sm shadow-sm p-8 md:p-12">
             <Quote size={40} className="text-primary-200 mb-6" />
             <p className="font-serif text-lg md:text-xl text-earth-text leading-relaxed italic mb-6">
-              &ldquo;{testimonials[active].review}&rdquo;
+              &ldquo;{current.review}&rdquo;
             </p>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-sans font-semibold text-earth-text">{testimonials[active].name}</p>
-                <p className="font-sans text-sm text-earth-text/50">{testimonials[active].location} · {testimonials[active].date}</p>
+                <p className="font-sans font-semibold text-earth-text">{current.guestName}</p>
+                <p className="font-sans text-sm text-earth-text/70">
+                  {[current.location, current.stayDate].filter(Boolean).join(" · ")}
+                </p>
               </div>
               <div className="flex gap-0.5">
-                {Array.from({ length: testimonials[active].rating }).map((_, i) => (
+                {Array.from({ length: current.rating }).map((_, i) => (
                   <Star key={i} size={16} className="text-accent" fill="currentColor" />
                 ))}
               </div>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { absoluteUrl } from "@/lib/site-url";
 
 // ─────────────────────────────────────────────────────────────
 // Per-page title and description.
@@ -24,13 +25,40 @@ import { getTranslations } from "next-intl/server";
  * Metadata for a static page, keyed by its entry under `meta` in en.json.
  *
  * ```ts
- * export const generateMetadata = () => pageMetadata("about");
+ * export const generateMetadata = () => pageMetadata("about", "/about");
  * ```
+ *
+ * `path` gives the page a canonical URL and a per-page Open Graph title, so a
+ * link to /rooms shared on WhatsApp previews as "Rooms & Suites" rather than
+ * inheriting the site-wide default from the root layout. Omitting it keeps the
+ * old behaviour — title and description only — for a page with no stable URL
+ * of its own.
  */
-export async function pageMetadata(key: string): Promise<Metadata> {
+export async function pageMetadata(key: string, path?: string): Promise<Metadata> {
   const t = await getTranslations("meta");
+  const title = t(`${key}.title`);
+  const description = t(`${key}.description`);
+
+  if (!path) return { title, description };
+
   return {
-    title: t(`${key}.title`),
-    description: t(`${key}.description`),
+    title,
+    description,
+    // A canonical is what stops `/rooms`, `/rooms?checkIn=…&checkOut=…` and
+    // every other date combination being crawled as separate pages competing
+    // with each other for the same snippet.
+    alternates: { canonical: path },
+    openGraph: {
+      url: absoluteUrl(path),
+      // The root layout's template does not apply to Open Graph, so the brand
+      // is written out here rather than left off (B-52 is about the <title>
+      // tag, which the template *does* wrap).
+      title: `${title} | Rio Casa Mahabaleshwar`,
+      description,
+    },
+    twitter: {
+      title: `${title} | Rio Casa Mahabaleshwar`,
+      description,
+    },
   };
 }

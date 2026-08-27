@@ -1,16 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { nextDailyNumber } from "@/lib/booking-service";
+import { nextDailyNumber } from "@/lib/document-numbers";
 import { today } from "@/lib/dates";
 
-/**
- * GST-registered details this property bills under. Same source as the
- * "Hotel Information" card in /admin/setup — see HotelSettings.tsx — kept
- * here as server-only env vars (no NEXT_PUBLIC_ prefix) because invoice
- * generation only ever runs on the server.
- */
-const HOTEL_NAME = process.env.HOTEL_NAME || "Rio Casa Resort";
-const HOTEL_ADDRESS = process.env.HOTEL_ADDRESS || "Mahabaleshwar, Satara District, Maharashtra - 412806";
-const HOTEL_GSTIN = process.env.HOTEL_GSTIN || "27XXXXX0000X1ZX";
+import { hotelBillingDetails } from "@/lib/hotel-details";
 
 /**
  * Generate the GST tax invoice for a stay, once it is both completed
@@ -60,6 +52,12 @@ export async function generateInvoice(bookingId: string): Promise<{ id: string; 
       .filter(Boolean)
       .join("\n") || null;
 
+  // Resolved before the number is allocated, so a misconfigured GSTIN fails
+  // without burning an invoice number. Throws in production rather than
+  // stamping the placeholder onto a tax document (B-62) — check-out treats
+  // this call as bookkeeping and completes regardless.
+  const hotel = hotelBillingDetails();
+
   const invoiceNumber = await nextDailyNumber("invoice", "INV", today(), 3);
 
   const invoice = await prisma.invoice.create({
@@ -67,9 +65,9 @@ export async function generateInvoice(bookingId: string): Promise<{ id: string; 
       invoiceNumber,
       bookingId: booking.id,
       guestId: booking.guestId,
-      hotelGstin: HOTEL_GSTIN,
-      hotelName: HOTEL_NAME,
-      hotelAddress: HOTEL_ADDRESS,
+      hotelGstin: hotel.gstin,
+      hotelName: hotel.name,
+      hotelAddress: hotel.address,
       guestName: booking.guestName,
       guestGstin: booking.guest.gstin,
       guestAddress,

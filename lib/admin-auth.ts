@@ -71,3 +71,50 @@ export const cookieOptions = {
   maxAge: 60 * 60 * 12,
   path: "/",
 };
+
+/**
+ * Resolve a session token to the account **as it stands right now**.
+ *
+ * `verifyAdminToken` above proves only that we signed the token and that it
+ * has not expired. Everything inside it — `role`, and the fact the account was
+ * active — is a snapshot taken at login, and the token lives for 12 hours.
+ *
+ * That gap was reachable: pressing *Deactivate* in Setup → Hotel & Staff
+ * greyed the row out and showed a success toast while the person kept working
+ * normally until their token expired, and an `owner` demoted to `frontdesk`
+ * kept owner powers for long enough to promote themselves back (B-60). The
+ * panel reported a revocation that had not happened.
+ *
+ * So the row is re-read on every request and the **database** value wins:
+ * `isActive` false is no session at all, and `role` comes from the column
+ * rather than the claim. One indexed lookup on a primary key, against handlers
+ * that already run several queries — and the admin panel is a front desk, not
+ * a public endpoint.
+ *
+ * Deliberately not cached. A cache here is the same bug with a shorter fuse.
+ */
+export async function resolveActiveStaff(token: string | undefined): Promise<AdminPayload | null> {
+  if (!token) return null;
+
+  const claims = await verifyAdminToken(token);
+  if (!claims) return null;
+
+  // Imported lazily so the JWT half of this module stays free of a database
+  // dependency — `signAdminToken`/`verifyAdminToken` are pure, and the tests
+  // that mock them should not have to stand up a Prisma client.
+  const { prisma } = await import("@/lib/prisma");
+
+  const staff = await prisma.staff.findUnique({
+    where: { id: claims.staffId },
+    select: { id: true, name: true, email: true, role: true, isActive: true },
+  });
+
+  if (!staff || !staff.isActive) return null;
+
+  return {
+    staffId: staff.id,
+    name: staff.name,
+    email: staff.email,
+    role: staff.role,
+  };
+}

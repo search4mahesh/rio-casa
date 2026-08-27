@@ -1,20 +1,38 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { BLOG_POSTS, getPost } from "@/lib/blog-posts";
+import { getBlogPost } from "@/lib/site-content";
+import { absoluteUrl } from "@/lib/site-url";
 
-export function generateStaticParams() {
-  return BLOG_POSTS.map((p) => ({ slug: p.slug }));
+// Was statically generated from a hardcoded array. Posts live in `blog_posts`
+// now (B-53), so the set of slugs is not known at build time — and a post
+// published from the admin panel should appear without a deploy, which is the
+// whole point of moving it.
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const post = await getBlogPost(params.slug);
+  // Unpublished and non-existent look the same from out here, deliberately: a
+  // draft must not be discoverable by guessing its URL.
+  if (!post) return { title: "Post not found", robots: { index: false } };
+
+  const path = `/blog/${post.slug}`;
+  return {
+    title: post.title,
+    description: post.excerpt,
+    alternates: { canonical: path },
+    openGraph: {
+      type: "article",
+      url: absoluteUrl(path),
+      title: `${post.title} | Rio Casa Mahabaleshwar`,
+      description: post.excerpt,
+      publishedTime: post.publishedAt?.toISOString(),
+    },
+  };
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }) {
-  const post = getPost(params.slug);
-  if (!post) return { title: "Post not found" };
-  return { title: post.title, description: post.excerpt };
-}
-
-export default function BlogPostPage({ params }: { params: { locale: string; slug: string } }) {
-  const post = getPost(params.slug);
+export default async function BlogPostPage({ params }: { params: { locale: string; slug: string } }) {
+  const post = await getBlogPost(params.slug);
   if (!post) notFound();
 
   return (
@@ -32,8 +50,11 @@ export default function BlogPostPage({ params }: { params: { locale: string; slu
           {post.category}
         </p>
         <h1 className="section-heading mb-3">{post.title}</h1>
-        <p className="font-sans text-sm text-earth-text/50 mb-8">
-          {post.date} · {post.readTime}
+        <p className="font-sans text-sm text-earth-text/70 mb-8">
+          {[
+            post.publishedAt?.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
+            post.readTime,
+          ].filter(Boolean).join(" · ")}
         </p>
 
         <p className="font-sans text-lg text-earth-text/80 leading-relaxed mb-8 italic">

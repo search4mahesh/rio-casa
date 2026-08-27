@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { expireStalePaymentHolds, BOOKING_HOLD_MINUTES } from "@/lib/booking-service";
 import { ok } from "@/lib/api-response";
 import { denyIfNotCron } from "@/lib/cron-auth";
+import { sweepRateLimits } from "@/lib/rate-limit";
 
 // Vercel Cron: 30 0 * * * UTC daily (see vercel.json), between the night audit
 // and the conflict detector.
@@ -21,8 +22,22 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   const result = await expireStalePaymentHolds();
+
+  // Closed rate-limit windows ride along on the job that already exists to
+  // clear stale rows. They are pure dead weight once their window has passed,
+  // and nothing else would ever delete them. Non-fatal on purpose: the holds
+  // are the reason this route runs, and a failed tidy-up must not report the
+  // sweep that did happen as a failure.
+  let rateLimitRowsCleared = 0;
+  try {
+    rateLimitRowsCleared = await sweepRateLimits();
+  } catch (err) {
+    console.error("[cron/expire-holds] Rate-limit sweep failed:", err);
+  }
+
   return ok({
     ...result,
+    rateLimitRowsCleared,
     holdMinutes: BOOKING_HOLD_MINUTES,
     timestamp: new Date().toISOString(),
   });

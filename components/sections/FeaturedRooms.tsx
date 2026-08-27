@@ -57,9 +57,9 @@ export default async function FeaturedRooms({ locale }: { locale: string }) {
                   </div>
                 </div>
 
-                <p className="font-sans text-xs text-earth-text/50 italic mb-3">{room.marketing.tagline}</p>
+                <p className="font-sans text-xs text-earth-text/70 italic mb-3">{room.marketing.tagline}</p>
 
-                <div className="flex items-center gap-1 text-earth-text/60 text-sm mb-4">
+                <div className="flex items-center gap-1 text-earth-text/70 text-sm mb-4">
                   <Users size={14} />
                   <span>{rooms("maxGuests", { count: room.maxGuests })}</span>
                 </div>
@@ -67,7 +67,7 @@ export default async function FeaturedRooms({ locale }: { locale: string }) {
                 <div className="flex items-center justify-between mt-auto">
                   <div>
                     <span className="font-serif text-2xl text-primary">₹{room.pricePerNight.toLocaleString("en-IN")}</span>
-                    <span className="font-sans text-xs text-earth-text/50 ml-1">{rooms("perNight")}</span>
+                    <span className="font-sans text-xs text-earth-text/70 ml-1">{rooms("perNight")}</span>
                   </div>
                   <Link href={`${prefix}/rooms/${room.slug}`} className="btn-outline text-sm py-2 px-4">
                     {rooms("bookRoom")}

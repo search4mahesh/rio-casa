@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, fail, failValidation } from "@/lib/api-response";
 import { dateOnly, addMonths, toDayString, isMonthString, isDayString } from "@/lib/dates";
-import { nextDailyNumber } from "@/lib/booking-service";
+import { nextDailyNumber } from "@/lib/document-numbers";
 
 const CreateSchema = z.object({
   sentDate: z.string().refine(isDayString, "Use YYYY-MM-DD"),

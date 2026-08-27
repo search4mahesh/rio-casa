@@ -1,17 +1,28 @@
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 import { ArrowRight } from "lucide-react";
-import { BLOG_POSTS } from "@/lib/blog-posts";
+import { getBlogPosts } from "@/lib/site-content";
 import { pageMetadata } from "@/lib/page-metadata";
 
-export const generateMetadata = () => pageMetadata("blog");
+export const generateMetadata = () => pageMetadata("blog", "/blog");
 
-// Shared with the article route so the two cannot disagree — see lib/blog-posts.ts
-const posts = BLOG_POSTS;
+// Posts come from `blog_posts`, which nothing read for a long time while the
+// site served `BLOG_POSTS` from code (B-53). Publishing a post is now a row,
+// not a deploy — which is also what `isPublished` and `publishedAt` were for.
+export const dynamic = "force-dynamic";
 
-export default function BlogPage({ params }: { params: { locale: string } }) {
-  const t = useTranslations("blog");
+export default async function BlogPage({ params }: { params: { locale: string } }) {
+  const t = await getTranslations("blog");
   const prefix = "";
+
+  let posts: Awaited<ReturnType<typeof getBlogPosts>> = [];
+  let loadFailed = false;
+  try {
+    posts = await getBlogPosts();
+  } catch (err) {
+    console.error("[blog] Could not load posts.", err);
+    loadFailed = true;
+  }
 
   return (
     <div className="min-h-screen bg-earth-bg py-16">
@@ -21,6 +32,11 @@ export default function BlogPage({ params }: { params: { locale: string } }) {
           <h1 className="section-heading">{t("title")}</h1>
         </div>
 
+        {loadFailed || posts.length === 0 ? (
+          <p className="text-center font-sans text-sm text-earth-text/70 py-12">
+            {loadFailed ? t("loadError") : t("none")}
+          </p>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {posts.map((post) => (
             <div key={post.slug} className="bg-earth-white rounded-sm shadow-sm overflow-hidden group">
@@ -32,13 +48,15 @@ export default function BlogPage({ params }: { params: { locale: string } }) {
                   <span className="font-sans text-xs bg-primary-50 text-primary px-2.5 py-1 rounded-full">
                     {post.category}
                   </span>
-                  <span className="font-sans text-xs text-earth-text/40">{post.date}</span>
-                  <span className="font-sans text-xs text-earth-text/40">· {post.readTime}</span>
+                  <span className="font-sans text-xs text-earth-text/70">
+                    {post.publishedAt?.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}
+                  </span>
+                  <span className="font-sans text-xs text-earth-text/70">· {post.readTime}</span>
                 </div>
                 <h2 className="font-serif text-xl text-earth-text mb-3 group-hover:text-primary transition-colors">
                   {post.title}
                 </h2>
-                <p className="font-sans text-sm text-earth-text/60 leading-relaxed mb-4">{post.excerpt}</p>
+                <p className="font-sans text-sm text-earth-text/70 leading-relaxed mb-4">{post.excerpt}</p>
                 <Link
                   href={`${prefix}/blog/${post.slug}`}
                   className="inline-flex items-center gap-1 font-sans text-sm text-primary hover:text-primary-600 transition-colors"
@@ -49,6 +67,7 @@ export default function BlogPage({ params }: { params: { locale: string } }) {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );

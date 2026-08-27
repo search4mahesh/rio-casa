@@ -245,6 +245,21 @@ model DailyCounter {
 // PAYMENTS
 // ─────────────────────────────────────────────
 
+/// Fixed-window request counters backing lib/rate-limit.ts.
+///
+/// In Postgres rather than process memory because Vercel runs several
+/// instances: an in-memory window is per instance and resets on a cold
+/// start, so the cap it enforces is not the cap you configured (B-64).
+model RateLimit {
+  key         String
+  windowStart DateTime @map("window_start")
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+  @@map("rate_limits")
+}
+
 model Payment {
   id            String  @id @default(cuid())
   bookingId     String  @map("booking_id")
@@ -634,13 +649,18 @@ model ShiftAssignment {
 // ─────────────────────────────────────────────
 
 model Package {
-  id         String    @id @default(cuid())
-  nameEn     String    @map("name_en")
-  nameHi     String    @map("name_hi")
-  nameMr     String    @map("name_mr")
-  descEn     String    @map("desc_en") @db.Text
-  descHi     String    @map("desc_hi") @db.Text
-  descMr     String    @map("desc_mr") @db.Text
+  id     String @id @default(cuid())
+  nameEn String @unique @map("name_en")
+  /// Unused. The site is English-only by decision — see CLAUDE.md. Nullable
+  /// so content can be written without inventing translations nothing serves.
+  nameHi String? @map("name_hi")
+  /// Unused — see `nameHi`.
+  nameMr String? @map("name_mr")
+  descEn String  @map("desc_en") @db.Text
+  /// Unused — see `nameHi`.
+  descHi String? @map("desc_hi") @db.Text
+  /// Unused — see `nameHi`.
+  descMr String? @map("desc_mr") @db.Text
   price      Float
   inclusions String[]
   imageUrl   String?   @map("image_url")
@@ -664,6 +684,7 @@ model Testimonial {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@index([isApproved, stayDate])
   @@map("testimonials")
 }
 
@@ -676,6 +697,10 @@ model BlogPost {
   bodyEn      String    @map("body_en") @db.Text
   bodyHi      String?   @map("body_hi") @db.Text
   bodyMr      String?   @map("body_mr") @db.Text
+  /// One-line summary for the blog index card.
+  excerpt     String?   @db.Text
+  /// Editorial grouping shown on the card, e.g. "Travel Guide".
+  category    String?
   coverImage  String?   @map("cover_image")
   isPublished Boolean   @default(false) @map("is_published")
   publishedAt DateTime? @map("published_at")
@@ -683,6 +708,7 @@ model BlogPost {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([isPublished, publishedAt])
   @@map("blog_posts")
 }
 
@@ -695,6 +721,7 @@ model GalleryImage {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@index([category, sortOrder])
   @@map("gallery_images")
 }
 
@@ -707,6 +734,13 @@ model ContactInquiry {
   email   String
   phone   String?
   message String  @db.Text
+
+  /// Null until someone deals with it. The Inquiries panel defaults to the
+  /// null set — an inbox with no way to mark anything off is one every reader
+  /// has to re-read from the top.
+  handledAt DateTime? @map("handled_at")
+  /// Who dealt with it, so the desk knows who to ask.
+  handledBy String?   @map("handled_by")
 
   createdAt DateTime @default(now()) @map("created_at")
 

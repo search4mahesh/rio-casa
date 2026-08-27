@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ok, fail } from "@/lib/api-response";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireRole(req, "frontdesk");
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   });
 
   if (!booking) {
-    return NextResponse.json({ success: false, error: "Booking not found" }, { status: 404 });
+    return fail("Booking not found", 404);
   }
 
   return ok(booking);

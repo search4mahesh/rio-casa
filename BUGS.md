@@ -25,32 +25,12 @@ Severity:
 
 ## Open
 
-| ID | Severity | Summary | Where |
-|---|---|---|---|
-| B-53 | Low | `Package`, `Testimonial` and `BlogPost` hold live rows no code reads; the site serves hardcoded copies, and "Monsoon Magic" is priced two ways | `app/[locale]/packages/page.tsx`, `components/sections/Testimonials.tsx`, `lib/blog-posts.ts` |
+Nothing open.
 
-**B-53.** Three models are fully defined in `schema.prisma`, and nothing in the
-application ever reads them:
-
-| Model | Rows | What the site shows instead |
-|---|---|---|
-| `Package` | 12 (all `isActive`) | a hardcoded array in `packages/page.tsx` |
-| `Testimonial` | 24 | three hardcoded quotes in `Testimonials.tsx` |
-| `BlogPost` | 0 | `BLOG_POSTS` in `lib/blog-posts.ts` |
-
-This is the shape of B-28 — schema present, nothing reading or writing it —
-except the tables are not empty. The two sources of truth disagree on both
-content and price: the site advertises Honeymoon Escape, Weekend Getaway and
-Corporate Retreat, none of which exist in the database, while Romantic Getaway
-and Family Fun Pack sit there unadvertised. **"Monsoon Magic" appears in both
-at different prices — ₹11,000 on the page, ₹9,999 in the database.**
-
-`Testimonial.isApproved` defaults to `false`, implying an approval workflow —
-but there is no panel to approve through (admin *Reviews* manages `ReviewLog`,
-a different model for OTA review tracking) and no page that would read an
-approved one. Editing a package price or approving a testimonial is a code
-change and a deploy; `Package.validFrom` / `validTo` mean seasonal packages
-were intended, and a hardcoded page cannot expire one.
+Add a row when you find something you are not fixing in the same change — the
+table header lives with the [Fixed](#fixed) section below, and the format is
+the same: **what input produces what wrong output**. An entry you cannot write
+that line for is a code-quality note and belongs in a `/simplify` pass.
 
 ---
 
@@ -58,6 +38,16 @@ were intended, and a hardcoded page cannot expire one.
 
 | ID | Severity | Summary | Fixed in |
 |---|---|---|---|
+| B-53 | Low | `Package`, `Testimonial`, `BlogPost` and `GalleryImage` were defined in the schema and read by nothing; the site served hardcoded copies, and "Monsoon Magic" was priced two ways | `lib/site-content.ts`, `prisma/seed-content.ts`, migration `10_content_english_only`, packages/blog/gallery pages, `components/sections/Testimonials.tsx`, `components/admin/panels/{Packages,Testimonials}.tsx` |
+| B-63 | Low | Guest input was interpolated unescaped into the HTML of all three emails this application sends | `lib/html-email.ts`, `app/api/contact/route.ts`, `app/api/payment/verify/route.ts`, `app/api/admin/communications/route.ts` |
+| B-62 | Medium | All 35 invoices on file were issued under the placeholder GSTIN `27XXXXX0000X1ZX` | `lib/hotel-details.ts`, `lib/invoice-service.ts`, `prisma/backfill-invoices.ts`, `prisma/repair-invoice-gstin.ts`, `components/admin/panels/HotelSettings.tsx` |
+| B-67 | Medium | No error boundary anywhere: a render error dropped the visitor on Next's own error screen, mid-checkout included | `app/global-error.tsx`, `app/not-found.tsx`, `app/[locale]/error.tsx`, `app/[locale]/not-found.tsx`, `app/[locale]/booking/error.tsx`, `app/admin/(protected)/error.tsx` |
+| B-61 | Medium | A contact inquiry was written to the database and read by nothing — with Resend down, a submission reached no one | migration `9_contact_inquiry_handled`, `app/api/admin/inquiries/**`, `components/admin/panels/Inquiries.tsx`, `/admin/guests` hub, `components/admin/AdminSidebar.tsx` |
+| B-66 | Medium | No sitemap, no robots.txt, no structured data and no `metadataBase` — every shared link previewed as the site default and room pages relied on being crawled | `lib/site-url.ts`, `lib/structured-data.ts`, `app/sitemap.ts`, `app/robots.ts`, `components/seo/JsonLd.tsx`, `app/layout.tsx`, `lib/page-metadata.ts` |
+| B-60 | High | Deactivating or demoting a staff member had no effect until their token expired, up to 12 hours later | `lib/admin-auth.ts` (`resolveActiveStaff`), `lib/api-auth.ts`, `lib/admin-page-auth.ts`, the protected layout and 5 hub pages, `app/api/admin/staff/[id]/route.ts` |
+| B-64 | Medium | Nothing rate-limited the three unauthenticated endpoints; a script could hold every room in the property for an hour | `lib/rate-limit.ts`, migration `8_rate_limits`, booking-create / login / contact routes, `app/api/cron/expire-holds/route.ts` |
+| B-59 | Critical | The seeded `owner` password was `admin123`, printed in four git-tracked files, and nothing in the app could change it | `app/api/admin/auth/password/route.ts`, `lib/passwords.ts`, `prisma/seed-admin.ts`, `components/admin/panels/HotelSettings.tsx`, `scripts/shot.mjs`, `README.md`, `test.md`, both `SKILL.md`s |
+| B-65 | Medium | Every control in the Add Staff modal carried the same `id`, so all four labels pointed at the Name input | `components/admin/panels/HotelSettings.tsx` |
 | B-58 | Medium | A request for more rooms of a type than are free was silently reduced: a party that selected 3 standard rooms was quoted and booked 2, with rollaways covering the heads | `allocate()` in `lib/room-capacity.ts`, `resolveSelection()` in `lib/booking-service.ts` |
 | B-57 | High | A party of 5 was told "No rooms available" on dates when every room stood free — no single room sleeps more than 4, and one booking could hold only one room | `lib/room-capacity.ts`, `createGroupBooking()`, `BookingWizard.tsx`, migrations `6_room_extra_bed_rate` + `7_booking_groups` |
 | B-51 | High | 6 stays sat `checked_in` up to 91 days past departure, holding their rooms and with no tax invoice | `prisma/close-overdue-checkouts.ts`, `backfill-invoices.ts`, `repair-data.ts` (all run 2026-08-25) |
@@ -851,3 +841,83 @@ Three things that needed care and are worth not undoing:
 Extra beds are never a guest toggle — the server derives them from the headcount
 in `resolveSelection`, for the same reason no total is computed in the browser.
 
+
+---
+
+**B-59 — rotate the seeded accounts.** The fix removes the passwords from the
+working tree and gives every rank a way to change their own, but it cannot
+remove them from **git history**: anyone with a clone can still read
+`admin123` at any commit before this one. The code change is therefore only
+half the remedy. The other half is operational and has to be done once,
+against the live database:
+
+1. Sign in as each seeded account and change its password from
+   **Setup → Hotel & Staff → Change Password**, or
+2. drop the seeded rows and re-run `npm run seed:admin`, which now prints a
+   random password per account.
+
+Until that is done the published passwords are still live. `npm run seed:admin`
+no longer overwrites an existing account, so re-running it is not a shortcut —
+it will report the accounts as unchanged.
+
+---
+
+**B-64 — the migration has to be applied.** `8_rate_limits` creates the table
+the limiter counts in. Until `npx prisma migrate deploy` has run against the
+environment, `checkRateLimit` finds no such relation, logs it, and **fails
+open** — every request is allowed, exactly as before the fix. That is
+deliberate (a limiter must not 500 a booking because its own counter is
+unreachable), but it does mean a deploy of the code without the migration is a
+deploy with no rate limiting and only a log line to say so.
+
+Check with `npx prisma migrate status`, and grep the logs for
+`[rate-limit] Counter unavailable` after deploying.
+
+---
+
+**B-62 — the 35 existing invoices still need correcting.** The code no longer
+issues one under the placeholder, but `hotelGstin` is *snapshotted* onto the
+`Invoice` row at check-out — deliberately, so a tax document handed to a guest
+cannot change when someone edits a setting later. Fixing the code therefore
+does nothing for rows already written, and every invoice on file carries
+`27XXXXX0000X1ZX`.
+
+```bash
+HOTEL_GSTIN=<the property's real GSTIN>          # set it in the environment first
+npx tsx prisma/repair-invoice-gstin.ts           # dry run — lists what would change
+npx tsx prisma/repair-invoice-gstin.ts --apply   # rewrite them
+```
+
+The script refuses to run while `HOTEL_GSTIN` is unset, the placeholder, or
+malformed — there would be nothing to correct the rows *to*. It touches only
+rows carrying the placeholder, so an invoice bearing a real (or older) GSTIN is
+left exactly as it is.
+
+**It cannot un-send anything.** An invoice already emailed or printed is out in
+the world with the wrong number on it; correcting the record is the part that
+can be automated, and reissuing to affected guests is the property's call.
+
+---
+
+**B-53 — what moved, and one thing that did not.** All four models are read by
+the site now, through `lib/site-content.ts`, and seeded from
+`prisma/seed-content.ts`. The live content was preserved exactly: the same four
+packages at the same four prices, the same three testimonials, the same four
+posts and the same 23 photographs.
+
+Two deliberate changes came with it:
+
+- **Monsoon Magic has a real validity window** (1 Jul – 30 Sep) rather than a
+  hardcoded "Jul–Sep only" badge, so it now leaves the page by itself. That is
+  what `validFrom`/`validTo` were always for.
+- **The demo rows were retired, not deleted.** `seed-demo.ts` had left two
+  packages and nine testimonials in the database, all of them invented and all
+  pre-approved. Now that the site reads these tables, leaving them approved
+  would publish fabricated guest reviews as real ones — so `--exclusive` set
+  them `isActive: false` / `isApproved: false`. They are still there, and
+  Setup → Testimonials can publish any of them.
+
+**The packages page lost its "2 nights / 3 days" line.** `Package` has no
+duration column and inventing one for a value already stated in every
+package's inclusions ("Deluxe Garden View Room (2 nights)") was the worse
+trade. Add a column if the standalone line is wanted back.

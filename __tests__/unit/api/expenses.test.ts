@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 // Mock auth to always pass
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Test", email: "t@t.com" }),
+  resolveActiveStaff: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Test", email: "t@t.com" }),
   ADMIN_COOKIE: "admin_token",
 }));
 

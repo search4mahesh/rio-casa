@@ -41,12 +41,30 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [maintenanceCount, setMaintenanceCount] = useState(0);
+  // Counts shown as a badge on their sidebar entry, keyed by href.
+  //
+  // Inquiries earn one for the reason B-61 existed: the table had a writer and
+  // no reader, and a tab nobody has a reason to open is barely better. The
+  // badge is what turns "there is a page for it" into "someone will look".
+  const [badges, setBadges] = useState<Record<string, number>>({});
 
   useEffect(() => {
+    let live = true;
+    const set = (href: string, n: number) =>
+      live && setBadges((b) => (b[href] === n ? b : { ...b, [href]: n }));
+
     apiJson("/api/admin/housekeeping?maintenanceCount=true")
-      .then((d) => { if (d.success) setMaintenanceCount(d.data); });
-  }, [pathname]); // refresh count when navigating
+      .then((d) => { if (d.success) set("/admin/housekeeping", Number(d.data) || 0); });
+
+    // Front desk and up; housekeeping never sees the Guests entry at all, so
+    // the request is skipped rather than 403ing on every navigation.
+    if (hasMinRole(staff.role, "frontdesk")) {
+      apiJson("/api/admin/inquiries?status=open")
+        .then((d) => { if (d.success) set("/admin/guests", Number(d.data.openCount) || 0); });
+    }
+
+    return () => { live = false; };
+  }, [pathname, staff.role]); // refresh counts when navigating
 
   async function handleLogout() {
     await fetch("/api/admin/auth/logout", { method: "POST" });
@@ -74,7 +92,7 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
-          const isHousekeeping = item.href === "/admin/housekeeping";
+          const badge = badges[item.href] ?? 0;
           return (
             <Link
               key={item.href}
@@ -90,9 +108,9 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
                 {ICONS[item.icon]}
               </svg>
               <span className="flex-1">{item.label}</span>
-              {isHousekeeping && maintenanceCount > 0 && (
+              {badge > 0 && (
                 <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
-                  {maintenanceCount > 9 ? "9+" : maintenanceCount}
+                  {badge > 9 ? "9+" : badge}
                 </span>
               )}
             </Link>
