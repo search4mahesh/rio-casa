@@ -425,6 +425,12 @@ model BlockedDate {
   roomId    String?  @map("room_id")
   blockDate DateTime @map("block_date") @db.Date
   reason    String?
+  // Who took the room off the calendar. Blocking is the one write that removes
+  // inventory without leaving a booking behind, so an unattributed block is a
+  // room that can disappear and be sold privately with nothing to trace it to.
+  // Nullable because rows written before 11_blocked_dates_attribution have no
+  // attribution to recover — "unknown" is honest; a backfilled guess is not.
+  blockedBy String?  @map("blocked_by")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -568,6 +574,11 @@ model AuditLog {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  // The activity log reads this table newest-first, optionally narrowed to one
+  // staff member. Until 12_audit_log_indexes it had no index but its primary
+  // key, so both were a sequential scan and a sort over every row ever written.
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("audit_log")
 }
 

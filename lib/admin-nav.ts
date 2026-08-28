@@ -38,6 +38,13 @@ export const NAV: NavItem[] = [
     tabs: [
       { slug: "month",   label: "Month",         minRole: "frontdesk" },
       { slug: "14day",   label: "Next 14 Days",  minRole: "frontdesk" },
+      // Front desk on purpose, and deliberately *not* matching the API gate.
+      // GET /api/admin/blocked-dates is frontdesk because the desk has to know
+      // a room is closed before promising it on the phone; POST and DELETE are
+      // manager, because blocking is the only write that removes inventory
+      // without a booking to account for it. The panel hides its own write
+      // controls via `canManage`. Raising this to manager would hide the list
+      // from the people who need to read it and fix nothing.
       { slug: "blocked", label: "Blocked Dates", minRole: "frontdesk" },
     ],
   },
@@ -100,6 +107,11 @@ export const NAV: NavItem[] = [
       { slug: "messages", label: "Messages",       minRole: "manager" },
       { slug: "shifts",   label: "Staff Schedule", minRole: "manager" },
       { slug: "hotel",    label: "Hotel & Staff",  minRole: "owner" },
+      // Owner, not manager — and that is the whole point. Every other admin
+      // surface tops out at `manager`, but a manager is inside the group this
+      // view exists to oversee. Someone who can read their own audit trail
+      // knows its coverage, which is most of what an audit trail is for.
+      { slug: "audit",    label: "Activity Log",   minRole: "owner" },
     ],
   },
 ];

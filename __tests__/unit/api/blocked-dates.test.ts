@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockFindMany, mockCreateMany, mockDelete } = vi.hoisted(() => ({
+const { mockFindMany, mockCreateMany, mockDelete, mockFindUnique, mockAuditCreate } = vi.hoisted(() => ({
   mockFindMany: vi.fn().mockResolvedValue([]),
   mockCreateMany: vi.fn().mockResolvedValue({ count: 3 }),
   mockDelete: vi.fn().mockResolvedValue({}),
+  mockFindUnique: vi.fn().mockResolvedValue({
+    id: "bd_123", roomId: "r1", blockDate: new Date("2026-12-25T00:00:00.000Z"),
+    reason: "Christmas", blockedBy: "Admin", createdAt: new Date(),
+  }),
+  mockAuditCreate: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("@/lib/admin-auth", () => ({
@@ -19,7 +24,9 @@ vi.mock("@/lib/prisma", () => ({
       findMany: mockFindMany,
       createMany: mockCreateMany,
       delete: mockDelete,
+      findUnique: mockFindUnique,
     },
+    auditLog: { create: mockAuditCreate },
   },
 }));
 
@@ -68,7 +75,11 @@ describe("GET /api/admin/blocked-dates", () => {
 });
 
 describe("POST /api/admin/blocked-dates", () => {
-  beforeEach(() => { mockCreateMany.mockReset(); mockCreateMany.mockResolvedValue({ count: 0 }); });
+  beforeEach(() => {
+    mockCreateMany.mockReset();
+    mockCreateMany.mockResolvedValue({ count: 0 });
+    mockAuditCreate.mockClear();
+  });
 
   it("creates blocked dates for a valid date range and returns count", async () => {
     mockCreateMany.mockResolvedValueOnce({ count: 3 });
@@ -134,10 +145,64 @@ describe("POST /api/admin/blocked-dates", () => {
     const res = await POST(makeReq("POST", validBody));
     expect(res.status).toBe(401);
   });
+
+  // Blocking is the one write that removes inventory without leaving a booking
+  // behind, which makes it the cheapest way to take a room off the calendar and
+  // sell it privately. Front desk reads the list (GET) but may not write it.
+  it("rejects front desk with 403", async () => {
+    const { resolveActiveStaff } = await import("@/lib/admin-auth");
+    vi.mocked(resolveActiveStaff).mockResolvedValueOnce(
+      { staffId: "s2", role: "frontdesk", name: "Desk", email: "d@r.in" } as never
+    );
+    const res = await POST(makeReq("POST", validBody));
+    expect(res.status).toBe(403);
+    expect(mockCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("stamps every row with who blocked it", async () => {
+    mockCreateMany.mockResolvedValueOnce({ count: 3 });
+    await POST(makeReq("POST", validBody));
+
+    const rows = mockCreateMany.mock.calls[0][0].data;
+    expect(rows).toHaveLength(3);
+    expect(rows.every((r: { blockedBy: string }) => r.blockedBy === "Admin")).toBe(true);
+  });
+
+  it("writes one audit row for the range, counting what was actually added", async () => {
+    // `skipDuplicates` means a re-block over an existing one adds fewer rows
+    // than days requested (B-10); the log records the change, not the request.
+    mockCreateMany.mockResolvedValueOnce({ count: 1 });
+    await POST(makeReq("POST", validBody));
+
+    expect(mockAuditCreate).toHaveBeenCalledTimes(1);
+    const { data } = mockAuditCreate.mock.calls[0][0];
+    expect(data.action).toBe("blocked_dates_created");
+    expect(data.userId).toBe("s1");
+    expect(data.entityId).toBe("all");
+    expect(data.newValue).toMatchObject({
+      startDate: "2026-12-20", endDate: "2026-12-22", daysBlocked: 1,
+    });
+  });
+
+  it("audits a room-specific block against that room", async () => {
+    mockCreateMany.mockResolvedValueOnce({ count: 3 });
+    await POST(makeReq("POST", { ...validBody, roomId: "room_deluxe" }));
+    expect(mockAuditCreate.mock.calls[0][0].data.entityId).toBe("room_deluxe");
+  });
 });
 
 describe("DELETE /api/admin/blocked-dates/[id]", () => {
-  beforeEach(() => { mockDelete.mockReset(); });
+  beforeEach(() => {
+    mockDelete.mockReset();
+    mockAuditCreate.mockClear();
+    // The route reads the row before deleting it, so the audit entry can say
+    // what was removed. Default to a row existing; the 404 cases override it.
+    mockFindUnique.mockReset();
+    mockFindUnique.mockResolvedValue({
+      id: "bd_123", roomId: "r1", blockDate: new Date("2026-12-25T00:00:00.000Z"),
+      reason: "Christmas", blockedBy: "Admin", createdAt: new Date(),
+    });
+  });
 
   it("deletes a blocked date and returns success", async () => {
     mockDelete.mockResolvedValueOnce({ id: "bd_123" });
@@ -152,6 +217,33 @@ describe("DELETE /api/admin/blocked-dates/[id]", () => {
     const res = await DELETE(makeReq("DELETE"), idParams);
     expect(res.status).toBe(404);
     expect((await res.json()).success).toBe(false);
+  });
+
+  it("returns 404 without deleting when the row is already gone", async () => {
+    mockFindUnique.mockResolvedValueOnce(null);
+    const res = await DELETE(makeReq("DELETE"), idParams);
+    expect(res.status).toBe(404);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  // Unblocking puts inventory back on sale. Recording what was removed — and
+  // who had blocked it — is the only trace left once the row is gone.
+  it("audits the removal with the contents of the deleted row", async () => {
+    mockDelete.mockResolvedValueOnce({ id: "bd_123" });
+    await DELETE(makeReq("DELETE"), idParams);
+
+    expect(mockAuditCreate).toHaveBeenCalledTimes(1);
+    const { data } = mockAuditCreate.mock.calls[0][0];
+    expect(data.action).toBe("blocked_date_removed");
+    expect(data.userId).toBe("s1");
+    expect(data.entityId).toBe("r1");
+    expect(data.oldValue).toMatchObject({ blockDate: "2026-12-25", blockedBy: "Admin" });
+  });
+
+  it("does not audit a removal that never happened", async () => {
+    mockFindUnique.mockResolvedValueOnce(null);
+    await DELETE(makeReq("DELETE"), idParams);
+    expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
   it("returns 401 without auth", async () => {

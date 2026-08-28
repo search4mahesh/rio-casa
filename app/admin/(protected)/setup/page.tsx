@@ -11,6 +11,7 @@ import TestimonialsPanel from "@/components/admin/panels/Testimonials";
 import CommunicationsPanel from "@/components/admin/panels/Communications";
 import ShiftsPanel from "@/components/admin/panels/Shifts";
 import HotelSettingsPanel from "@/components/admin/panels/HotelSettings";
+import AuditTrailPanel from "@/components/admin/panels/AuditTrail";
 import { hotelDetailsForDisplay } from "@/lib/hotel-details";
 
 const HUB = NAV.find((n) => n.href === "/admin/setup")!;
@@ -23,6 +24,7 @@ const PANELS: Record<string, React.ComponentType> = {
   reviews:      ReviewsPanel,
   messages:     CommunicationsPanel,
   shifts:       ShiftsPanel,
+  audit:        AuditTrailPanel,
 };
 
 // Titled from the active tab, not the hub: `?tab=reports` and

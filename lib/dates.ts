@@ -85,6 +85,65 @@ export function toDayString(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * The property-zone offset at a given instant, in milliseconds.
+ *
+ * Formats the instant in the property zone, reads those wall-clock fields back
+ * as though they were UTC, and takes the difference. `Asia/Kolkata` is a fixed
+ * +05:30 with no DST, so this is exact for us; the calculation is written
+ * generally anyway so moving `PROPERTY_TIME_ZONE` to a DST zone degrades to a
+ * one-hour error at the transition rather than silently to nonsense.
+ */
+function propertyOffsetMs(at: Date): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PROPERTY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    // h23 rather than hour12:false — the latter renders midnight as "24" in
+    // some ICU versions, which would push the offset out by a full day.
+    hourCycle: "h23",
+  }).formatToParts(at);
+  const field = (type: string) => Number(parts.find((p) => p.type === type)!.value);
+  const asIfUtc = Date.UTC(
+    field("year"), field("month") - 1, field("day"),
+    field("hour"), field("minute"), field("second")
+  );
+  return asIfUtc - at.getTime();
+}
+
+/**
+ * The instant a property-local calendar day begins, for filtering **timestamp**
+ * columns — `audit_log.created_at`, `Booking.createdAt` and friends.
+ *
+ * This is the one helper here that does *not* return UTC midnight, and it is
+ * deliberately the opposite of `dateOnly`. Everything else in this module
+ * serves `@db.Date` columns, which hold a calendar day and are compared by
+ * casting the bound down to a date. A timestamp column holds an instant, so
+ * asking it for "everything on 1 August" means the range from IST midnight to
+ * IST midnight — `2026-07-31T18:30:00Z` to `2026-08-01T18:30:00Z`.
+ *
+ * Passing `dateOnly("2026-08-01")` to a timestamp filter instead loses every
+ * row written between 00:00 and 05:30 IST that morning, and picks up the same
+ * span of the previous evening in their place. For an audit trail that is the
+ * difference between seeing a 2 a.m. action and not knowing it happened.
+ *
+ * Half-open, like `dayRange`: for a range use
+ * `{ gte: propertyDayStartInstant(from), lt: propertyDayStartInstant(dayAfter(to)) }`.
+ */
+export function propertyDayStartInstant(day: string): Date {
+  const utcMidnight = dateOnly(day);
+  return new Date(utcMidnight.getTime() - propertyOffsetMs(utcMidnight));
+}
+
+/** The day after `day`, both as "YYYY-MM-DD". Throws on a malformed input. */
+export function dayAfter(day: string): string {
+  return toDayString(addDays(dateOnly(day), 1));
+}
+
 /** Shift a calendar day by whole days. Safe across DST because it stays in UTC. */
 export function addDays(day: Date, n: number): Date {
   return new Date(day.getTime() + n * 86_400_000);

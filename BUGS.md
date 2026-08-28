@@ -38,6 +38,8 @@ that line for is a code-quality note and belongs in a `/simplify` pass.
 
 | ID | Severity | Summary | Fixed in |
 |---|---|---|---|
+| B-69 | Medium | `audit_log` was written by seventeen code paths and read by none — every "who did this" the system recorded was unreachable without `prisma studio`, and the table had no index but its primary key | `app/api/admin/audit/route.ts`, `components/admin/panels/AuditTrail.tsx`, migration `12_audit_log_indexes`, `lib/labels.ts`, `lib/dates.ts` (`propertyDayStartInstant`), `lib/admin-nav.ts` |
+| B-68 | High | Any front-desk user could take a room off the calendar and put it back, with no record of who did either — the one write that removes inventory without leaving a booking behind | `app/api/admin/blocked-dates/route.ts`, `app/api/admin/blocked-dates/[id]/route.ts`, migration `11_blocked_dates_attribution`, `components/admin/panels/BlockedDates.tsx`, `lib/admin-nav.ts`, `app/admin/(protected)/calendar/page.tsx` |
 | B-53 | Low | `Package`, `Testimonial`, `BlogPost` and `GalleryImage` were defined in the schema and read by nothing; the site served hardcoded copies, and "Monsoon Magic" was priced two ways | `lib/site-content.ts`, `prisma/seed-content.ts`, migration `10_content_english_only`, packages/blog/gallery pages, `components/sections/Testimonials.tsx`, `components/admin/panels/{Packages,Testimonials}.tsx` |
 | B-63 | Low | Guest input was interpolated unescaped into the HTML of all three emails this application sends | `lib/html-email.ts`, `app/api/contact/route.ts`, `app/api/payment/verify/route.ts`, `app/api/admin/communications/route.ts` |
 | B-62 | Medium | All 35 invoices on file were issued under the placeholder GSTIN `27XXXXX0000X1ZX` | `lib/hotel-details.ts`, `lib/invoice-service.ts`, `prisma/backfill-invoices.ts`, `prisma/repair-invoice-gstin.ts`, `components/admin/panels/HotelSettings.tsx` |
@@ -111,6 +113,47 @@ hold sweeper from cancelling a paid stay — are in CLAUDE.md under
 describe how the system now works, not what is wrong with it.
 
 Notes on the rest:
+
+- **B-69.** The B-61 shape again, one table over: seventeen write paths
+  faithfully recorded who cancelled a booking, who overrode a rate and who
+  emailed an invoice, and nothing anywhere read a single row of it. The
+  information existed and reached no one — the failure being that the answer to
+  "who cancelled this booking?" required a database client and a hand-written
+  query, so in practice it was never asked. `audit_log` also carried no index
+  but its primary key, so the first read of it would have been a sequential
+  scan and a sort over every row since `0_init`.
+
+  Now `/admin/setup?tab=audit`, gated at `owner` — the only surface besides
+  staff administration that is, because a manager is inside the group it exists
+  to oversee. Read-only by construction: the route exports `GET` and nothing
+  else, and a test asserts that stays true. Defaults to staff actions, hiding
+  the `system` actor that website bookings and the hold sweeper write under,
+  and to the `notable` actions — the ones that move money or remove inventory.
+
+  One trap found while building it: `audit_log.created_at` is a **timestamp**,
+  not a `@db.Date` column, so `dateOnly` is the wrong bound for it. A "from
+  1 August" filter built that way starts at 00:00Z — 05:30 IST — and silently
+  drops every action taken in the small hours, which is when an audit trail is
+  most worth reading. `propertyDayStartInstant` in `lib/dates.ts` is the
+  correct bound and is deliberately the only helper there that does not return
+  UTC midnight.
+
+- **B-68.** Blocking a date is the only write in the system that removes
+  inventory without leaving a booking behind. `POST` and `DELETE` on
+  `/api/admin/blocked-dates` were both gated at `frontdesk`, `BlockedDate`
+  recorded no author, and neither route wrote an `audit_log` row — alone among
+  the seventeen admin write paths that do. So a desk user could block 105 for a
+  weekend with `reason: "maintenance"`, take the guest's cash directly, and
+  unblock it on Monday, leaving a database in which nothing had happened: no
+  booking, no invoice, no audit entry, and no name against either write. The
+  night audit could not catch it either, since it reasons about bookings and
+  there was never a booking. Writes are now `manager`; `GET` stays `frontdesk`
+  because the desk has to know a room is closed before promising it on the
+  phone, and the panel hides its own controls to match. `blocked_by` is stamped
+  on each row and shown in the list, and both routes audit — the delete
+  captures `oldValue` first, since after the delete there is nothing left to
+  describe. Pre-existing rows show "Added before attribution" rather than a
+  backfilled guess.
 
 - **B-42.** `checkAvailability` refuses a stay in the past and so does
   `createBooking`, but `getAvailableRooms` — the query behind the room list —

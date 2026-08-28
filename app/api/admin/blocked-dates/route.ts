@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation, fail } from "@/lib/api-response";
+import { clientIp } from "@/lib/rate-limit";
 import { dateOnly, today as todayDate, addDays, isDayString } from "@/lib/dates";
 
 const CreateSchema = z.object({
@@ -28,8 +29,14 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/admin/blocked-dates — block a date range for a room (or all rooms)
+//
+// `manager`, while GET above stays `frontdesk`. Reading the list is part of
+// answering the phone — the desk has to know a room is closed before promising
+// it. Creating one takes inventory off the calendar with no booking to account
+// for it, which is the single cheapest way to make a room disappear and sell it
+// for cash. Splitting read from write costs the desk nothing they actually do.
 export async function POST(req: NextRequest) {
-  const auth = await requireRole(req, "frontdesk");
+  const auth = await requireRole(req, "manager");
   if (!auth.ok) return auth.response;
 
   const body = await req.json();
@@ -73,8 +80,29 @@ export async function POST(req: NextRequest) {
       roomId: roomId ?? null,
       blockDate: date,
       reason: reason ?? null,
+      blockedBy: auth.staff.name,
     })),
     skipDuplicates: true,
+  });
+
+  // One audit row for the range, not one per day: the staff member performed a
+  // single act, and 90 rows recording it would bury the rest of the log. There
+  // is no per-row id to reference anyway — `createMany` returns only a count —
+  // so the entity is the room the block targets, or "all" for a property-wide
+  // closure, matching how `roomId: null` reads everywhere else.
+  //
+  // `count` rather than `dates.length`: `skipDuplicates` means the two differ
+  // whenever a range overlaps one already blocked (B-10), and the log should
+  // record what changed, not what was asked for.
+  await prisma.auditLog.create({
+    data: {
+      userId: auth.staff.staffId,
+      action: "blocked_dates_created",
+      entityType: "blocked_date",
+      entityId: roomId ?? "all",
+      newValue: { startDate, endDate, reason: reason ?? null, daysBlocked: count },
+      ipAddress: clientIp(req),
+    },
   });
 
   return ok(count);

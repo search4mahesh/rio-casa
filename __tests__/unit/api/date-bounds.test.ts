@@ -33,6 +33,9 @@ vi.mock("@/lib/prisma", () => ({
     laundryBatch: { findMany: h.laundryFindMany },
     booking: { findMany: h.bookingFindMany },
     blockedDate: { createMany: h.blockedCreateMany, findMany: vi.fn() },
+    // Blocking writes an audit row — this file only cares about the date
+    // bounds, but the route awaits the write, so it has to exist.
+    auditLog: { create: vi.fn().mockResolvedValue({}) },
   },
 }));
 

@@ -1,0 +1,22 @@
+-- ============================================================
+-- BLOCKED DATES — ATTRIBUTION
+--
+-- Blocking is the only write in the system that removes inventory without
+-- leaving a booking behind. A row said which room and which day, gave a
+-- free-text `reason`, and recorded nothing about who created it — so a room
+-- could be taken off the calendar and sold privately for cash with no trace
+-- in the application at all.
+--
+-- The gap was not only the missing column. `/api/admin/blocked-dates` gated
+-- POST and DELETE at `frontdesk` (the role that takes the cash) and wrote no
+-- `audit_log` row, unlike the sixteen other write paths that do. Both are
+-- fixed alongside this migration; the column is what makes attribution
+-- visible in the panel itself rather than only to someone querying audit_log.
+--
+-- Nullable on purpose. Rows written before this migration have no author to
+-- recover, and inventing one — "owner", the first staff id, anything — would
+-- put a name against a block that person may not have made. The panel renders
+-- the absence as "Added before attribution", which is true.
+-- ============================================================
+
+ALTER TABLE "blocked_dates" ADD COLUMN "blocked_by" TEXT;

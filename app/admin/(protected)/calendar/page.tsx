@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireStaffPage } from "@/lib/admin-page-auth";
 import { NAV, resolveTab, visibleTabs } from "@/lib/admin-nav";
+import { hasMinRole } from "@/lib/rbac-utils";
 import { adminHubMetadata } from "@/lib/admin-metadata";
 import HubTabs from "@/components/admin/HubTabs";
 import CalendarMonthPanel from "@/components/admin/panels/CalendarMonth";
@@ -9,7 +10,10 @@ import BlockedDatesPanel from "@/components/admin/panels/BlockedDates";
 
 const HUB = NAV.find((n) => n.href === "/admin/calendar")!;
 
-const PANELS: Record<string, React.ComponentType> = {
+// Every panel is handed `canManage`; the two that take no props ignore it.
+// Typing the map this way keeps the lookup-then-render shape below while
+// letting the blocked-dates panel gate its write controls on the viewer.
+const PANELS: Record<string, React.ComponentType<{ canManage: boolean }>> = {
   month:   CalendarMonthPanel,
   "14day": OccupancyGridPanel,
   blocked: BlockedDatesPanel,
@@ -42,7 +46,7 @@ export default async function CalendarPage({
         tabs={visibleTabs(HUB, staff.role)}
         active={tab.slug}
       />
-      <Panel />
+      <Panel canManage={hasMinRole(staff.role, "manager")} />
     </div>
   );
 }

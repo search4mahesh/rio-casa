@@ -17,6 +17,8 @@ import {
   propertyDayString,
   dayRange,
   isDayString,
+  propertyDayStartInstant,
+  dayAfter,
 } from "@/lib/dates";
 
 describe("addMonths", () => {
@@ -151,5 +153,59 @@ describe("isDayString — the predicate behind dateOnly, without the throw", () 
       try { dateOnly(s); } catch { parses = false; }
       expect(isDayString(s)).toBe(parses);
     }
+  });
+});
+
+/**
+ * The one helper here that is *not* about `@db.Date` columns.
+ *
+ * Timestamp columns — `audit_log.created_at`, `Booking.createdAt` — hold an
+ * instant, so "everything on 1 August" is IST midnight to IST midnight. Using
+ * `dateOnly` on one of those loses every row written before 05:30 IST and
+ * picks up the previous evening in their place.
+ */
+describe("propertyDayStartInstant — day bounds for timestamp columns", () => {
+  it("is IST midnight, which is 18:30Z the previous day", () => {
+    expect(propertyDayStartInstant("2026-08-01").toISOString()).toBe("2026-07-31T18:30:00.000Z");
+  });
+
+  it("is deliberately not UTC midnight — the distinction dateOnly cannot make", () => {
+    expect(propertyDayStartInstant("2026-08-01").getTime())
+      .not.toBe(dateOnly("2026-08-01").getTime());
+    // Exactly 5h30m earlier, the IST offset.
+    expect(dateOnly("2026-08-01").getTime() - propertyDayStartInstant("2026-08-01").getTime())
+      .toBe(5.5 * 3600_000);
+  });
+
+  it("holds across a year boundary", () => {
+    expect(propertyDayStartInstant("2027-01-01").toISOString()).toBe("2026-12-31T18:30:00.000Z");
+  });
+
+  // India has no DST, so the offset must not move with the season. A helper
+  // that drifted here would shift audit windows by an hour half the year.
+  it("uses the same offset in January and July", () => {
+    const jan = dateOnly("2026-01-15").getTime() - propertyDayStartInstant("2026-01-15").getTime();
+    const jul = dateOnly("2026-07-15").getTime() - propertyDayStartInstant("2026-07-15").getTime();
+    expect(jan).toBe(jul);
+  });
+
+  it("rejects a day that does not exist, like dateOnly", () => {
+    expect(() => propertyDayStartInstant("2026-02-30")).toThrow();
+  });
+});
+
+describe("dayAfter", () => {
+  it("advances one day", () => {
+    expect(dayAfter("2026-08-01")).toBe("2026-08-02");
+  });
+
+  it("crosses month and year ends", () => {
+    expect(dayAfter("2026-08-31")).toBe("2026-09-01");
+    expect(dayAfter("2026-12-31")).toBe("2027-01-01");
+  });
+
+  it("handles a leap day", () => {
+    expect(dayAfter("2024-02-28")).toBe("2024-02-29");
+    expect(dayAfter("2024-02-29")).toBe("2024-03-01");
   });
 });

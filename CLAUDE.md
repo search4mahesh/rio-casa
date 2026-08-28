@@ -429,6 +429,15 @@ timezone (the dev box runs IST, Vercel runs UTC) and always return UTC midnight:
 Ranges are half-open: `{ gte: start, lt: end }`. An inclusive `lte` on the last
 day matches that whole day and pulls in one extra.
 
+**Timestamp columns are the exception.** `audit_log.createdAt`, `Booking.createdAt`
+and friends hold an *instant*, not a calendar day, so filtering one by a
+property-local day needs `propertyDayStartInstant("2026-08-01")` — IST midnight,
+`2026-07-31T18:30:00Z` — not `dateOnly`, which is UTC midnight. It is the only
+helper in `lib/dates.ts` that does not return UTC midnight, and it exists
+because a `dateOnly` bound on a timestamp column silently drops everything
+written between 00:00 and 05:30 IST while pulling in the previous evening
+instead (B-69). Pair it with `dayAfter(to)` for the exclusive upper bound.
+
 ## Derived state that used to drift
 Three things are computed from bookings rather than maintained incrementally,
 because incremental updates silently fell out of sync:
@@ -837,6 +846,30 @@ page it pointed at (B-66).
 
 `/booking/confirmation` is disallowed in robots.txt and deliberately has no
 canonical — its URL carries a booking id.
+
+## Activity log (`audit_log`)
+`/admin/setup?tab=audit` reads it. Seventeen paths wrote it and nothing read it
+for a long time (B-69), so the answer to "who cancelled this?" needed a
+database client and was never actually asked.
+
+- **`owner`, not `manager`.** The only surface besides staff administration
+  gated that high, and deliberately so: a manager is inside the group the log
+  exists to oversee, and knowing its coverage is most of what defeats it.
+- **Read-only by construction.** The route exports `GET` and nothing else, and
+  a test asserts that. An audit trail the application can edit is not evidence;
+  that holds for an owner too. Never add a delete, not even for tidying.
+- **`SYSTEM_ACTOR` (`"system"`) is the actor for guest-driven and automated
+  writes** — website bookings, payment verification, the hold sweeper. The view
+  hides them by default, because one booking writes two or three and they bury
+  the staff action someone opened the screen to find.
+- **`userId` is a plain column, not an FK.** An audit row must outlive the
+  account that wrote it — a foreign key would either block deleting a staff
+  member or cascade the evidence away. Names are resolved in a second query and
+  a miss renders as "Deleted account" rather than dropping the row.
+- **`AUDIT_ACTION` in `lib/labels.ts` is the vocabulary.** Add an entry when
+  you add a write site; an unknown action still shows, rendered as its raw
+  value. `notable` marks the actions that move money or remove inventory, and
+  is the view's default filter.
 
 ## Inbound inquiries
 `/admin/guests?tab=inquiries` reads `contact_inquiries`, which `/api/contact`

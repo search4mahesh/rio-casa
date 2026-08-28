@@ -10,13 +10,19 @@ type BlockedDate = {
   id: string;
   blockDate: string;
   reason?: string | null;
+  blockedBy?: string | null;
   createdAt: string;
   room?: { name: string; roomNumber?: string | null; roomType: string } | null;
 };
 
 type Room = { id: string; name: string; roomNumber?: string | null; roomType: string };
 
-export default function BlockedDatesPanel() {
+/**
+ * `canManage` mirrors the API gate on /api/admin/blocked-dates — front desk
+ * reads the list, manager and above create and remove. Hiding the controls is
+ * presentation only; the routes are what actually enforce it.
+ */
+export default function BlockedDatesPanel({ canManage }: { canManage: boolean }) {
   const [blocked, setBlocked] = useState<BlockedDate[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,17 +67,19 @@ export default function BlockedDatesPanel() {
   return (
     <div className="p-6 max-w-5xl">
       {/* Header */}
-      <div className="flex items-center justify-end gap-3 mb-6">
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 btn-admin"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Block Dates
-        </button>
-      </div>
+      {canManage && (
+        <div className="flex items-center justify-end gap-3 mb-6">
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2 btn-admin"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Block Dates
+          </button>
+        </div>
+      )}
 
       {/* Info banner */}
       <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6">
@@ -81,6 +89,7 @@ export default function BlockedDatesPanel() {
         <p className="text-sm text-amber-700">
           Blocked dates are hidden from the booking availability check. Use this to block dates for maintenance, private events, or seasonal closures.
           Blocking &ldquo;All Rooms&rdquo; will block availability for all room types on that date.
+          {!canManage && " Only a manager can add or remove blocks — ask one if a date here is wrong."}
         </p>
       </div>
 
@@ -134,18 +143,27 @@ export default function BlockedDatesPanel() {
                         <td className="px-5 py-3 text-gray-500">
                           {b.reason || <span className="italic text-gray-300">No reason</span>}
                         </td>
-                        <td className="px-5 py-3 text-xs text-gray-400 text-right">
-                          Added {new Date(b.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        <td className="px-5 py-3 text-xs text-gray-400 text-right whitespace-nowrap">
+                          {/* Rows predating 11_blocked_dates_attribution have no
+                              author to show. Saying so beats a blank cell, which
+                              reads as "nobody" rather than "not recorded". */}
+                          {b.blockedBy
+                            ? <>By <span className="text-gray-600">{b.blockedBy}</span></>
+                            : <span className="italic">Added before attribution</span>}
+                          {" · "}
+                          {new Date(b.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </td>
-                        <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => handleDelete(b.id)}
-                            disabled={deletingId === b.id}
-                            className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
-                          >
-                            {deletingId === b.id ? "…" : "Remove"}
-                          </button>
-                        </td>
+                        {canManage && (
+                          <td className="px-5 py-3 text-right">
+                            <button
+                              onClick={() => handleDelete(b.id)}
+                              disabled={deletingId === b.id}
+                              className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                            >
+                              {deletingId === b.id ? "…" : "Remove"}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

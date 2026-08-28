@@ -72,3 +72,79 @@ export const RATE_PLAN_ROOM_TYPES = ["all", ...SELLABLE_ROOM_TYPES] as const;
  * nobody has paid yet — so those are still excluded.
  */
 export const CHANNEL_PAID_SOURCES = ["booking_com", "mmt", "goibibo", "airbnb"] as const;
+
+// ─────────────────────────────────────────────────────────────
+// Audit log
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * The `userId` automated and guest-driven writes carry.
+ *
+ * Website bookings, payment verification and the hold sweeper all audit under
+ * this rather than a staff id — there is no staff member behind them. The
+ * activity log defaults to hiding them: oversight is about what *people* did,
+ * and six system actions per booking would bury the one a person took.
+ */
+export const SYSTEM_ACTOR = "system";
+
+/** Groups actions in the activity log's filter. */
+export type AuditCategory =
+  | "inventory" | "booking" | "money" | "guest" | "staff" | "housekeeping" | "system";
+
+export const AUDIT_CATEGORY_LABEL: Record<AuditCategory, string> = {
+  inventory:    "Rooms & availability",
+  booking:      "Bookings",
+  money:        "Money",
+  guest:        "Guests",
+  staff:        "Staff",
+  housekeeping: "Housekeeping",
+  system:       "System",
+};
+
+/**
+ * Every `action` string written to `audit_log`, with how to show it.
+ *
+ * Keep this in step with the write sites — an action missing here still
+ * appears in the log, rendered as its raw value rather than hidden, because a
+ * blank row in an audit trail is worse than an ugly one.
+ *
+ * `notable` marks the actions worth a second look: they move money, remove
+ * inventory, or undo something. The activity log can filter to just these, and
+ * they are the shortlist any fraud question starts from.
+ */
+export const AUDIT_ACTION: Record<string, { label: string; category: AuditCategory; notable?: true }> = {
+  // Availability — the writes that take a room off sale.
+  blocked_dates_created: { label: "Blocked dates",              category: "inventory", notable: true },
+  blocked_date_removed:  { label: "Unblocked a date",           category: "inventory", notable: true },
+  update_room_status:    { label: "Changed room status",        category: "inventory" },
+  inventory_update:      { label: "Pushed inventory to channel", category: "inventory" },
+
+  // Bookings.
+  create_walkin_booking: { label: "Created a walk-in booking",   category: "booking", notable: true },
+  cancel_booking:        { label: "Cancelled a booking",         category: "booking", notable: true },
+  booking_created:       { label: "Booking created",             category: "booking" },
+  check_in:              { label: "Checked a guest in",          category: "booking" },
+  check_out:             { label: "Checked a guest out",         category: "booking" },
+  booking_hold_expired:  { label: "Unpaid hold expired",         category: "booking" },
+  booking_voided_payment_init_failed:    { label: "Booking voided — payment could not start", category: "booking" },
+  booking_reinstated_after_late_payment: { label: "Reinstated after a late payment",          category: "booking" },
+
+  // Money.
+  payment_received:      { label: "Payment received",            category: "money" },
+  payment_received_for_cancelled_booking: { label: "Paid for a cancelled booking — refund due", category: "money", notable: true },
+  email_invoice:         { label: "Emailed an invoice",          category: "money" },
+
+  update_guest:          { label: "Edited a guest record",       category: "guest" },
+  change_password:       { label: "Changed their own password",  category: "staff" },
+
+  laundry_dispatched:      { label: "Dispatched laundry",        category: "housekeeping" },
+  laundry_returned:        { label: "Received laundry back",     category: "housekeeping" },
+  laundry_batch_cancelled: { label: "Cancelled a laundry batch", category: "housekeeping", notable: true },
+
+  night_audit_run:       { label: "Ran the night audit",         category: "system" },
+};
+
+/** Actions flagged `notable`, for the log's default filter. */
+export const NOTABLE_ACTIONS = Object.entries(AUDIT_ACTION)
+  .filter(([, meta]) => meta.notable)
+  .map(([action]) => action);
