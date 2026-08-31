@@ -1,5 +1,5 @@
-import { getTranslations } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
+import { PROPERTY } from "@/lib/property";
 import { getRoomCategories } from "@/lib/room-catalogue";
 import { getTestimonials } from "@/lib/site-content";
 import { hotelSchema } from "@/lib/structured-data";
@@ -15,8 +15,6 @@ export default async function HomePage({ params }: { params: { locale: string } 
   // live catalogue rather than written down here — so what Google shows is
   // what checkout charges. A database failure must not take the home page
   // down for it, so the schema is simply omitted.
-  const t = await getTranslations("footer");
-
   // Approved testimonials, read here so the carousel below can stay a client
   // component. A failed load renders the section empty rather than taking the
   // home page down over three quotes.
@@ -31,11 +29,10 @@ export default async function HomePage({ params }: { params: { locale: string } 
   try {
     hotel = hotelSchema({
       categories: await getRoomCategories(),
-      address: t("address"),
-      phone: t("phone"),
-      email: t("email"),
-      description:
-        "A boutique resort in the Sahyadri hills at Mahabaleshwar, Maharashtra — rooms, suites and family stays, bookable direct.",
+      address: PROPERTY.address,
+      phone: PROPERTY.phone,
+      email: PROPERTY.email,
+      description: PROPERTY.schemaDescription,
     });
   } catch (err) {
     console.error("[home] Could not build hotel structured data.", err);

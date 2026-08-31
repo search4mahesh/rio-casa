@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { apiJson } from "@/lib/api-client";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { PROPERTY } from "@/lib/property";
+
+/** The square mark on the invoice header: the property's initials. */
+const INITIALS = PROPERTY.name.split(" ").map((w) => w[0]).join("");
 
 type LineItem = { description: string; nights?: number; rate?: number; amount: number };
 
@@ -139,11 +143,11 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-12 h-12 rounded bg-primary flex items-center justify-center">
-                <span className="text-white text-sm font-bold">RC</span>
+                <span className="text-white text-sm font-bold">{INITIALS}</span>
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-primary">{invoice.hotelName}</h1>
-                <p className="text-xs text-gray-500">Mahabaleshwar, Maharashtra</p>
+                <p className="text-xs text-gray-500">{PROPERTY.city}, {PROPERTY.region}</p>
               </div>
             </div>
             <div className="text-xs text-gray-600 mt-2 whitespace-pre-line">{invoice.hotelAddress}</div>
@@ -270,7 +274,7 @@ export default function InvoicePrintPage({ params }: { params: { id: string } })
             </div>
           </div>
           <div className="text-center mt-8 text-gray-400">
-            Thank you for staying with us at Rio Casa
+            Thank you for staying with us at {PROPERTY.name}
           </div>
         </div>
       </div>

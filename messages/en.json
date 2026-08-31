@@ -12,7 +12,7 @@
   },
   "hero": {
     "tagline": "Where Nature Meets Luxury",
-    "subTagline": "Nestled in the misty hills of Mahabaleshwar",
+    "subTagline": "Nestled in the misty hills of {city}",
     "cta": "Book Your Stay",
     "exploreRooms": "Explore Rooms"
   },
@@ -23,7 +23,7 @@
     "packagesSubtitle": "Crafted experiences for every kind of traveller",
     "testimonialsTitle": "What Our Guests Say",
     "locationTitle": "Find Us",
-    "locationSubtitle": "In the heart of Mahabaleshwar"
+    "locationSubtitle": "In the heart of {city}"
   },
   "rooms": {
     "title": "Rooms & Suites",
@@ -103,7 +103,7 @@
   },
   "gallery": {
     "title": "Gallery",
-    "subtitle": "Moments captured at Rio Casa",
+    "subtitle": "Moments captured at {property}",
     "categories": {
       "all": "All",
       "rooms": "Rooms",
@@ -114,9 +114,9 @@
     }
   },
   "about": {
-    "title": "About Rio Casa",
+    "title": "About {property}",
     "subtitle": "Our Story",
-    "mahabaleshwarTitle": "Discover Mahabaleshwar"
+    "placeTitle": "Discover {city}"
   },
   "blog": {
     "title": "Travel Blog",
@@ -146,11 +146,8 @@
     "tagline": "Your serene escape in the Sahyadri hills",
     "quickLinks": "Quick Links",
     "contact": "Contact Us",
-    "address": "Mahabaleshwar, Satara District, Maharashtra — 412806",
-    "phone": "+91 98765 43210",
-    "email": "info@riocasa.in",
     "followUs": "Follow Us",
-    "copyright": "© {year} Rio Casa. All rights reserved.",
+    "copyright": "© {year} {property}. All rights reserved.",
     "privacyPolicy": "Privacy Policy"
   },
   "common": {
@@ -163,43 +160,43 @@
   "meta": {
     "about": {
       "title": "About Us",
-      "description": "The story behind Rio Casa — a family retreat in the Sahyadri hills turned boutique resort in Mahabaleshwar."
+      "description": "The story behind {property} — a family retreat in the Sahyadri hills turned boutique resort in {city}."
     },
     "rooms": {
       "title": "Rooms & Suites",
-      "description": "Standard, Deluxe, Luxury and Family rooms at Rio Casa Mahabaleshwar. Compare rates, amenities and views, and book direct."
+      "description": "Standard, Deluxe, Luxury and Family rooms at {property} {city}. Compare rates, amenities and views, and book direct."
     },
     "gallery": {
       "title": "Gallery",
-      "description": "Photographs of the rooms, balconies, bathrooms and grounds at Rio Casa, Mahabaleshwar."
+      "description": "Photographs of the rooms, balconies, bathrooms and grounds at {property}, {city}."
     },
     "packages": {
       "title": "Packages & Offers",
-      "description": "Curated stay packages at Rio Casa Mahabaleshwar — honeymoon, weekend, monsoon and corporate retreats."
+      "description": "Curated stay packages at {property} {city} — honeymoon, weekend, monsoon and corporate retreats."
     },
     "dining": {
       "title": "Dining & Amenities",
-      "description": "Home-style Maharashtrian and Indian meals, in-room tea and coffee, and the amenities available to guests at Rio Casa."
+      "description": "Home-style Maharashtrian and Indian meals, in-room tea and coffee, and the amenities available to guests at {property}."
     },
     "blog": {
       "title": "Blog",
-      "description": "Guides to Mahabaleshwar — what to see, when to visit, and how to make the most of a hill station weekend."
+      "description": "Guides to {city} — what to see, when to visit, and how to make the most of a hill station weekend."
     },
     "contact": {
       "title": "Contact Us",
-      "description": "Reach Rio Casa, Mahabaleshwar by phone, WhatsApp or email, or send an enquiry about your stay."
+      "description": "Reach {property}, {city} by phone, WhatsApp or email, or send an enquiry about your stay."
     },
     "booking": {
       "title": "Book Your Stay",
-      "description": "Check availability and book a room at Rio Casa, Mahabaleshwar directly — no booking fees, instant confirmation."
+      "description": "Check availability and book a room at {property}, {city} directly — no booking fees, instant confirmation."
     },
     "confirmation": {
       "title": "Booking Confirmation",
-      "description": "Your booking reference and stay details at Rio Casa, Mahabaleshwar."
+      "description": "Your booking reference and stay details at {property}, {city}."
     },
     "privacy": {
       "title": "Privacy Policy",
-      "description": "How Rio Casa collects, uses and protects your personal information."
+      "description": "How {property} collects, uses and protects your personal information."
     }
   },
   "error": {

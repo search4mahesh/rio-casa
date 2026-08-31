@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { pageMetadata } from "@/lib/page-metadata";
+import { PROPERTY } from "@/lib/property";
 
 export const generateMetadata = () => pageMetadata("confirmation");
 
@@ -107,13 +108,13 @@ export default async function BookingConfirmationPage({
               <div className="w-48 h-48 bg-primary-100 flex items-center justify-center text-primary-400 text-sm mx-auto">
                 UPI QR Code
               </div>
-              <p className="font-sans text-sm text-earth-text/70 mt-3">UPI ID: riocasa@paytm</p>
+              <p className="font-sans text-sm text-earth-text/70 mt-3">UPI ID: {PROPERTY.upiId}</p>
               <p className="font-serif text-lg text-primary mt-1">
                 Amount: ₹{amount.toLocaleString("en-IN")}
               </p>
             </div>
             <p className="font-sans text-sm text-earth-text/70 mb-8">
-              After payment, WhatsApp us the screenshot at +91 98765 43210 and we will confirm your booking within 15 minutes.
+              After payment, WhatsApp us the screenshot at {PROPERTY.phone} and we will confirm your booking within 15 minutes.
             </p>
           </>
         ) : (
@@ -168,8 +169,8 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 function ConfirmationActions({ reference }: { reference?: string }) {
   const message = reference
-    ? `Hi! I just made a booking at Rio Casa. Booking reference: ${reference}`
-    : "Hi! I just made a booking at Rio Casa and need help confirming it.";
+    ? `Hi! I just made a booking at ${PROPERTY.name}. Booking reference: ${reference}`
+    : `Hi! I just made a booking at ${PROPERTY.name} and need help confirming it.`;
 
   return (
     <div className="flex flex-col sm:flex-row gap-3 justify-center">

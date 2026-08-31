@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { PROPERTY } from "@/lib/property";
 
 const categories = ["all", "rooms", "amenities", "nature"] as const;
 
@@ -64,7 +65,7 @@ export default function GalleryGrid({ images }: { images: GalleryItem[] }) {
       <div className="container-resort">
         {/* Header */}
         <div className="text-center mb-10">
-          <p className="section-subheading mb-2">{t("subtitle")}</p>
+          <p className="section-subheading mb-2">{t("subtitle", { property: PROPERTY.name })}</p>
           <h1 className="section-heading">{t("title")}</h1>
           <p className="font-sans text-sm text-earth-text/70 mt-2">{filtered.length} photos</p>
         </div>

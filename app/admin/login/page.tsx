@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { apiJson } from "@/lib/api-client";
+import { PROPERTY } from "@/lib/property";
 
 const schema = z.object({
   email: z.string().email("Invalid email"),
@@ -50,7 +51,7 @@ export default function AdminLoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
             </svg>
           </div>
-          <h1 className="text-2xl font-serif font-bold text-earth-text">Rio Casa</h1>
+          <h1 className="text-2xl font-serif font-bold text-earth-text">{PROPERTY.name}</h1>
           <p className="text-sm text-gray-500 mt-1">Staff Portal</p>
         </div>
 
@@ -71,7 +72,7 @@ export default function AdminLoginPage() {
                 autoComplete="email"
                 {...register("email")}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="you@riocasa.in"
+                placeholder={`you@${PROPERTY.email.split("@")[1]}`}
               />
               {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
             </div>
@@ -99,7 +100,7 @@ export default function AdminLoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Rio Casa Resort · Staff access only
+          {PROPERTY.billingName} · Staff access only
         </p>
       </div>
     </div>

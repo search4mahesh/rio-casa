@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { PROPERTY, BRAND, SITE_TITLE, TITLE_TEMPLATE } from "@/lib/property";
 
 const messages = JSON.parse(readFileSync("messages/en.json", "utf8")) as {
   meta: Record<string, { title: string; description: string }>;
@@ -67,9 +68,9 @@ describe("titles do not repeat the brand the template appends", () => {
   // of "Rooms — Rio Casa" therefore renders "Rooms — Rio Casa | Rio Casa
   // Mahabaleshwar", which is how the blog and privacy pages came to say it
   // twice.
-  it("no meta title contains 'Rio Casa'", () => {
+  it("no meta title contains the property name", () => {
     const offenders = Object.entries(messages.meta)
-      .filter(([, m]) => /rio casa/i.test(m.title))
+      .filter(([, m]) => m.title.toLowerCase().includes(PROPERTY.name.toLowerCase()))
       .map(([k, m]) => `${k}: ${m.title}`);
     expect(offenders).toEqual([]);
   });
@@ -91,7 +92,7 @@ describe("titles do not repeat the brand the template appends", () => {
       { encoding: "utf8" }
     )
       .trim().split("\n").filter(Boolean)
-      .filter((l) => /title:\s*[`"'].*Rio Casa/i.test(l))
+      .filter((l) => /title:\s*["'\`]/.test(l) && l.includes(PROPERTY.name))
       // The root layout is where the brand legitimately lives.
       .filter((l) => !l.startsWith("app/layout.tsx"))
       // `openGraph:` / `twitter:` blocks — see above. Matched by the two-space
@@ -100,9 +101,20 @@ describe("titles do not repeat the brand the template appends", () => {
     expect(hits).toEqual([]);
   });
 
+  // The layout names the constants now rather than restating the brand, which
+  // is the point: the suffix was written out in app/layout.tsx and twice more
+  // in lib/page-metadata.ts, with nothing tying the three together. Asserting
+  // the *values* rather than the source text is also what this should have
+  // been doing all along.
   it("the root layout still supplies the template and default", () => {
     const root = readFileSync("app/layout.tsx", "utf8");
-    expect(root).toMatch(/template:\s*["'`]%s \| Rio Casa Mahabaleshwar/);
-    expect(root).toMatch(/default:\s*["'`]Rio Casa/);
+    expect(root).toMatch(/template:\s*TITLE_TEMPLATE/);
+    expect(root).toMatch(/default:\s*SITE_TITLE/);
+  });
+
+  it("builds the template and the default from the property", () => {
+    expect(BRAND).toBe(`${PROPERTY.name} ${PROPERTY.city}`);
+    expect(TITLE_TEMPLATE).toBe(`%s | ${BRAND}`);
+    expect(SITE_TITLE).toBe(`${PROPERTY.name} — ${PROPERTY.descriptor}`);
   });
 });

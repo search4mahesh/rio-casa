@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { pageMetadata } from "@/lib/page-metadata";
+import { PROPERTY } from "@/lib/property";
 
 export const generateMetadata = () => pageMetadata("privacy", "/privacy");
 
@@ -15,7 +16,7 @@ export default function PrivacyPage() {
       <div className="container-resort max-w-2xl">
         <h1 className="section-heading mb-2">Privacy Policy</h1>
         <p className="font-sans text-sm text-earth-text/70 mb-10">
-          Rio Casa, Mahabaleshwar, Satara District, Maharashtra
+          {PROPERTY.name}, {PROPERTY.city}, {PROPERTY.district}, {PROPERTY.region}
         </p>
 
         <div className="space-y-8 font-sans text-earth-text/75 leading-relaxed">
@@ -65,8 +66,8 @@ export default function PrivacyPage() {
             <p>
               You can ask us for a copy of the information we hold about you, ask us to correct
               it, or ask us to delete anything we are not required to keep. Write to{" "}
-              <a href="mailto:info@riocasa.in" className="text-primary hover:underline">
-                info@riocasa.in
+              <a href={`mailto:${PROPERTY.email}`} className="text-primary hover:underline">
+                {PROPERTY.email}
               </a>{" "}
               and we will respond.
             </p>
@@ -83,8 +84,8 @@ export default function PrivacyPage() {
           <Section title="Contact">
             <p>
               Questions about this policy can go to{" "}
-              <a href="mailto:info@riocasa.in" className="text-primary hover:underline">
-                info@riocasa.in
+              <a href={`mailto:${PROPERTY.email}`} className="text-primary hover:underline">
+                {PROPERTY.email}
               </a>
               .
             </p>

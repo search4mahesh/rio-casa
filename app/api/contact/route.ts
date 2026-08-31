@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { okMessage, failValidation } from "@/lib/api-response";
 import { escapeHtml, escapeHtmlWithBreaks } from "@/lib/html-email";
 import { checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
+import { PROPERTY } from "@/lib/property";
 
 const schema = z.object({
   name: z.string().min(2),
@@ -50,8 +51,8 @@ export async function POST(req: NextRequest) {
       // throws. Checking `error` explicitly is what makes this genuinely
       // best-effort rather than silently pretending to have sent.
       const { error: sendError } = await resend.emails.send({
-        from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
-        to: process.env.EMAIL_RESORT ?? "info@riocasa.in",
+        from: process.env.EMAIL_FROM ?? PROPERTY.bookingsEmail,
+        to: process.env.EMAIL_RESORT ?? PROPERTY.email,
         replyTo: email,
         // The subject is plain text in every client — no escaping, or the
         // reader sees `&amp;` in their inbox list.

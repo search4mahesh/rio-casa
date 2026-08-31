@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ADMIN_TITLE_TEMPLATE } from "@/lib/admin-metadata";
+import { ADMIN_BRAND } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
 // Wraps every admin route, `/admin/login` included.
@@ -20,7 +21,7 @@ import { ADMIN_TITLE_TEMPLATE } from "@/lib/admin-metadata";
 // ─────────────────────────────────────────────────────────────
 export const metadata: Metadata = {
   title: {
-    default: "Rio Casa Admin",
+    default: ADMIN_BRAND,
     template: ADMIN_TITLE_TEMPLATE,
   },
   robots: { index: false, follow: false },

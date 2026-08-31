@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { NAV, tabBySlug } from "@/lib/admin-nav";
+import { ADMIN_BRAND } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
 // Browser-tab titles for the admin panel.
@@ -48,7 +49,7 @@ export function adminMetadata(title: string): Metadata {
  * `app/admin/layout.tsx` and `adminSectionMetadata` below, so the two cannot
  * drift into two different suffixes.
  */
-export const ADMIN_TITLE_TEMPLATE = "%s · Rio Casa Admin";
+export const ADMIN_TITLE_TEMPLATE = `%s · ${ADMIN_BRAND}`;
 
 /**
  * Title for a layout that has child *routes* under it.

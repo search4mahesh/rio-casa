@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { MapPin, Phone, Mail } from "lucide-react";
+import { PROPERTY, telHref } from "@/lib/property";
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -18,7 +19,6 @@ type ContactForm = z.infer<typeof contactSchema>;
 
 export default function ContactPage() {
   const t = useTranslations("contactPage");
-  const f = useTranslations("footer");
   const fieldId = useId();
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -51,9 +51,9 @@ export default function ContactPage() {
   }
 
   const details = [
-    { icon: MapPin, label: t("visitTitle"), value: f("address") },
-    { icon: Phone, label: t("callTitle"), value: f("phone"), href: `tel:${f("phone").replace(/[^\d+]/g, "")}` },
-    { icon: Mail, label: t("emailTitle"), value: f("email"), href: `mailto:${f("email")}` },
+    { icon: MapPin, label: t("visitTitle"), value: PROPERTY.address },
+    { icon: Phone, label: t("callTitle"), value: PROPERTY.phone, href: telHref() },
+    { icon: Mail, label: t("emailTitle"), value: PROPERTY.email, href: `mailto:${PROPERTY.email}` },
   ];
 
   return (

@@ -12,6 +12,7 @@ import Image from "next/image";
 import { Field } from "@/components/ui/Field";
 import { isDayString } from "@/lib/dates";
 import { marketingFor } from "@/lib/room-marketing";
+import { PROPERTY, telHref } from "@/lib/property";
 import {
   toCategories,
   allocate,
@@ -461,7 +462,7 @@ export default function BookingWizard({
           // a fractional paisa that disagrees with it.
           amount: Math.round(data.data.amount * 100),
           currency: "INR",
-          name: "Rio Casa",
+          name: PROPERTY.name,
           description: `${data.data.roomName} — ${data.data.nights} nights`,
           order_id: data.data.orderId,
           handler: async (response: {
@@ -645,7 +646,7 @@ export default function BookingWizard({
               </p>
               <p className="text-earth-text/70 mt-1">
                 Call us on{" "}
-                <a href="tel:+919876543210" className="text-primary underline">+91 98765 43210</a>{" "}
+                <a href={telHref()} className="text-primary underline">{PROPERTY.phone}</a>{" "}
                 and we will see what we can arrange.
               </p>
             </div>

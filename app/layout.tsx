@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
 import { metadataBase, absoluteUrl } from "@/lib/site-url";
+import { PROPERTY, SITE_TITLE, TITLE_TEMPLATE } from "@/lib/property";
 import "./globals.css";
 
-const DESCRIPTION =
-  "Experience nature's serenity at Rio Casa, a boutique resort nestled in the hills of Mahabaleshwar. Book rooms, explore packages, and discover Mahabaleshwar's beauty.";
+const DESCRIPTION = PROPERTY.description;
 
 // The image every share falls back to. A real photograph of the property
 // rather than a generated card: this is what appears when someone forwards
 // the site on WhatsApp, which for a resort in Maharashtra is the share that
 // matters most. 1200×630 is the ratio Facebook, LinkedIn and WhatsApp crop to.
 const OG_IMAGE = {
-  url: "/images/hero/exterior-front.jpg",
+  url: PROPERTY.images.og,
   width: 1200,
   height: 630,
-  alt: "Rio Casa resort exterior, Mahabaleshwar",
+  alt: `${PROPERTY.name} resort exterior, ${PROPERTY.city}`,
 };
 
 export const metadata: Metadata = {
@@ -22,24 +22,24 @@ export const metadata: Metadata = {
   // image at all.
   metadataBase: metadataBase(),
   title: {
-    default: "Rio Casa — Luxury Resort in Mahabaleshwar",
-    template: "%s | Rio Casa Mahabaleshwar",
+    default: SITE_TITLE,
+    template: TITLE_TEMPLATE,
   },
   description: DESCRIPTION,
-  keywords: ["Mahabaleshwar resort", "Rio Casa", "hill station resort", "Maharashtra resort", "book resort Mahabaleshwar"],
+  keywords: PROPERTY.keywords,
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     locale: "en_IN",
-    siteName: "Rio Casa Resort",
+    siteName: PROPERTY.name,
     url: absoluteUrl("/"),
-    title: "Rio Casa — Luxury Resort in Mahabaleshwar",
+    title: SITE_TITLE,
     description: DESCRIPTION,
     images: [OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Rio Casa — Luxury Resort in Mahabaleshwar",
+    title: SITE_TITLE,
     description: DESCRIPTION,
     images: [OG_IMAGE.url],
   },

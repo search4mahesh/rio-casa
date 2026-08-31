@@ -8,6 +8,10 @@ import { hasMinRole } from "@/lib/rbac-utils";
 import { NAV } from "@/lib/admin-nav";
 import { ROLE_LABEL } from "@/lib/labels";
 import { apiJson } from "@/lib/api-client";
+import { PROPERTY, ADMIN_BRAND } from "@/lib/property";
+
+/** The square mark in both sidebar headers: the property's initials. */
+const INITIALS = PROPERTY.name.split(" ").map((w) => w[0]).join("");
 
 const ICONS: Record<string, React.ReactNode> = {
   home: (
@@ -79,10 +83,10 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
       <div className="px-6 py-5 border-b border-primary-600">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-            <span className="text-white text-xs font-bold">RC</span>
+            <span className="text-white text-xs font-bold">{INITIALS}</span>
           </div>
           <div>
-            <div className="text-white text-sm font-semibold leading-tight">Rio Casa</div>
+            <div className="text-white text-sm font-semibold leading-tight">{PROPERTY.name}</div>
             <div className="text-[#a8c4a0] text-xs">Admin Panel</div>
           </div>
         </div>
@@ -155,9 +159,9 @@ export default function AdminSidebar({ staff }: { staff: AdminPayload }) {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-primary px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded bg-accent flex items-center justify-center">
-            <span className="text-white text-xs font-bold">RC</span>
+            <span className="text-white text-xs font-bold">{INITIALS}</span>
           </div>
-          <span className="text-white text-sm font-semibold">Rio Casa Admin</span>
+          <span className="text-white text-sm font-semibold">{ADMIN_BRAND}</span>
         </div>
         <button onClick={() => setMobileOpen(true)} className="text-white p-1">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

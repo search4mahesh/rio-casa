@@ -13,6 +13,7 @@ import { today } from "@/lib/dates";
 import { Resend } from "resend";
 import { ok, fail } from "@/lib/api-response";
 import { escapeHtml, escapeHtmlWithBreaks } from "@/lib/html-email";
+import { PROPERTY } from "@/lib/property";
 
 const schema = z.object({
   bookingId: z.string(),
@@ -424,15 +425,15 @@ export async function POST(req: NextRequest) {
     // throws, which is all a trailing `.catch()` here used to catch (B-37).
     try {
       const { error: sendError } = await resend.emails.send({
-        from: process.env.EMAIL_FROM ?? "bookings@riocasa.in",
+        from: process.env.EMAIL_FROM ?? PROPERTY.bookingsEmail,
         to: booking.guestEmail,
-        subject: `Booking Confirmed — ${partyRooms.length > 1 ? booking.bookingNumber.split("/")[0] : booking.bookingNumber} | Rio Casa`,
+        subject: `Booking Confirmed — ${partyRooms.length > 1 ? booking.bookingNumber.split("/")[0] : booking.bookingNumber} | ${PROPERTY.name}`,
         html: `
           <div style="font-family:Georgia,serif;max-width:600px;margin:auto;padding:24px;color:#2C2416;">
             <h1 style="color:#4A6741;font-size:26px;margin-bottom:4px;">Booking Confirmed!</h1>
             <p style="color:#6b7280;font-size:13px;margin-top:0;">${partyRooms.length > 1 ? booking.bookingNumber.split("/")[0] : booking.bookingNumber}</p>
             <p>Dear ${escapeHtml(booking.guestName)},</p>
-            <p>Your stay at <strong>Rio Casa, Mahabaleshwar</strong> is confirmed. We look forward to welcoming you!</p>
+            <p>Your stay at <strong>${PROPERTY.name}, ${PROPERTY.city}</strong> is confirmed. We look forward to welcoming you!</p>
             <hr style="border-color:#e5e7eb;margin:20px 0;" />
             <table style="width:100%;border-collapse:collapse;font-size:14px;">
               <tr><td style="padding:6px 0;color:#6b7280;">${partyRooms.length > 1 ? "Rooms" : "Room"}</td><td style="padding:6px 0;font-weight:bold;">${escapeHtml(roomsLine)}</td></tr>
@@ -449,8 +450,8 @@ export async function POST(req: NextRequest) {
             <hr style="border-color:#e5e7eb;margin:20px 0;" />
             ${booking.specialRequests ? `<p style="font-size:13px;"><strong>Special Requests:</strong> ${escapeHtmlWithBreaks(booking.specialRequests)}</p>` : ""}
             <p style="font-size:13px;color:#6b7280;">
-              For any queries, call us at +91 98765 43210 or email info@riocasa.in<br/>
-              Rio Casa Resort, Mahabaleshwar, Satara District, Maharashtra — 412806
+              For any queries, call us at ${PROPERTY.phone} or email ${PROPERTY.email}<br/>
+              ${PROPERTY.billingName}, ${PROPERTY.address}
             </p>
           </div>
         `,

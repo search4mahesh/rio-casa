@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { absoluteUrl } from "@/lib/site-url";
+import { BRAND, PROPERTY } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
 // Per-page title and description.
@@ -36,8 +37,12 @@ import { absoluteUrl } from "@/lib/site-url";
  */
 export async function pageMetadata(key: string, path?: string): Promise<Metadata> {
   const t = await getTranslations("meta");
-  const title = t(`${key}.title`);
-  const description = t(`${key}.description`);
+  // The copy names the property through ICU parameters rather than spelling it
+  // out, so the name lives in lib/property.ts alone. Every meta string is read
+  // here, which is what makes one set of values enough.
+  const values = { property: PROPERTY.name, city: PROPERTY.city };
+  const title = t(`${key}.title`, values);
+  const description = t(`${key}.description`, values);
 
   if (!path) return { title, description };
 
@@ -53,11 +58,11 @@ export async function pageMetadata(key: string, path?: string): Promise<Metadata
       // The root layout's template does not apply to Open Graph, so the brand
       // is written out here rather than left off (B-52 is about the <title>
       // tag, which the template *does* wrap).
-      title: `${title} | Rio Casa Mahabaleshwar`,
+      title: `${title} | ${BRAND}`,
       description,
     },
     twitter: {
-      title: `${title} | Rio Casa Mahabaleshwar`,
+      title: `${title} | ${BRAND}`,
       description,
     },
   };

@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/api-auth";
 import { ok, failValidation, fail } from "@/lib/api-response";
 import { dateOnly, today as todayDate, isDayString } from "@/lib/dates";
 import { escapeHtml } from "@/lib/html-email";
+import { PROPERTY } from "@/lib/property";
 
 // ─── Audience resolver ────────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ export async function POST(req: NextRequest) {
         // credit `sentCount` for every recipient regardless, so a bad key
         // reported "sent to N guests" for a campaign that reached nobody (B-37).
         const { error: sendError } = await resend.emails.send({
-          from: "Rio Casa <hello@riocasa.com>",
+          from: process.env.EMAIL_FROM ?? PROPERTY.bookingsEmail,
           to: r.email!,
           subject: substituteTags(subject!, r),
           // The template is staff-authored and may legitimately carry markup;

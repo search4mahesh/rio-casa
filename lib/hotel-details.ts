@@ -28,6 +28,8 @@
  * Bracket classes rather than `\d` — the same habit migration SQL needs here
  * (B-22), and harmless in JavaScript.
  */
+import { PROPERTY } from "@/lib/property";
+
 export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 
 /**
@@ -88,10 +90,8 @@ export function hotelBillingDetails(): HotelBillingDetails {
 
   return {
     gstin: (problem ? PLACEHOLDER_GSTIN : process.env.HOTEL_GSTIN!.trim().toUpperCase()),
-    name: process.env.HOTEL_NAME?.trim() || "Rio Casa Resort",
-    address:
-      process.env.HOTEL_ADDRESS?.trim() ||
-      "Mahabaleshwar, Satara District, Maharashtra - 412806",
+    name: process.env.HOTEL_NAME?.trim() || PROPERTY.billingName,
+    address: process.env.HOTEL_ADDRESS?.trim() || PROPERTY.billingAddress,
   };
 }
 
@@ -107,10 +107,8 @@ export function hotelDetailsForDisplay(): HotelBillingDetails & { problem: strin
   const problem = gstinProblem(process.env.HOTEL_GSTIN);
   return {
     gstin: problem ? "" : process.env.HOTEL_GSTIN!.trim().toUpperCase(),
-    name: process.env.HOTEL_NAME?.trim() || "Rio Casa Resort",
-    address:
-      process.env.HOTEL_ADDRESS?.trim() ||
-      "Mahabaleshwar, Satara District, Maharashtra - 412806",
+    name: process.env.HOTEL_NAME?.trim() || PROPERTY.billingName,
+    address: process.env.HOTEL_ADDRESS?.trim() || PROPERTY.billingAddress,
     problem,
   };
 }

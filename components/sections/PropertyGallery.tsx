@@ -1,7 +1,8 @@
 import Image from "next/image";
+import { PROPERTY } from "@/lib/property";
 
 const photos = [
-  { src: "/images/hero/exterior-courtyard.jpg",  alt: "Rio Casa courtyard",            span: "col-span-2 row-span-2" },
+  { src: "/images/hero/exterior-courtyard.jpg",  alt: `${PROPERTY.name} courtyard`,     span: "col-span-2 row-span-2" },
   { src: "/images/rooms/balcony-chairs.jpg",     alt: "Private balcony with rattan chairs", span: "" },
   { src: "/images/rooms/premium-bathtub.jpg",    alt: "Luxury soaking bathtub",         span: "" },
   { src: "/images/hero/exterior-wide.jpg",       alt: "Resort exterior wide view",      span: "col-span-2" },
@@ -16,7 +17,7 @@ export default function PropertyGallery() {
       <div className="container-resort">
         <div className="text-center mb-10">
           <p className="section-subheading mb-2">A Closer Look</p>
-          <h2 className="section-heading">Rio Casa in Pictures</h2>
+          <h2 className="section-heading">{PROPERTY.name} in Pictures</h2>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 auto-rows-[180px]">

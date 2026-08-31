@@ -25,12 +25,14 @@ Severity:
 
 ## Open
 
-Nothing open.
+| ID | Severity | Summary | Where |
+|---|---|---|---|
+| B-73 | Medium | With `NEXT_PUBLIC_WHATSAPP_NUMBER` unset, the floating WhatsApp button and the UPI confirmation screen both fall back to `919876543210` — a real number belonging to someone else, handed a guest's booking enquiry. `app/[locale]/booking/error.tsx` already gets this right: it renders no button rather than a wrong one | `components/layout/WhatsAppButton.tsx`, `app/[locale]/booking/confirmation/page.tsx` |
 
 Add a row when you find something you are not fixing in the same change — the
-table header lives with the [Fixed](#fixed) section below, and the format is
-the same: **what input produces what wrong output**. An entry you cannot write
-that line for is a code-quality note and belongs in a `/simplify` pass.
+format is the same as [Fixed](#fixed) below: **what input produces what wrong
+output**. An entry you cannot write that line for is a code-quality note and
+belongs in a `/simplify` pass.
 
 ---
 
@@ -38,6 +40,9 @@ that line for is a code-quality note and belongs in a `/simplify` pass.
 
 | ID | Severity | Summary | Fixed in |
 |---|---|---|---|
+| B-70 | High | Every tax invoice emailed to a guest carried the GSTIN `27AAAPL1234C1ZV`, hardcoded in the mail template — not `HOTEL_GSTIN`, and not the `hotelGstin` the invoice row snapshots. B-62 corrected what was written to the database and left the copy the guest actually receives | `app/api/admin/invoices/[id]/email/route.ts` |
+| B-71 | Low | A guest named `<a href="…">Approve refund</a>` had it rendered as a live link in the invoice email. B-63 escaped the three senders it found; this is a fourth | `app/api/admin/invoices/[id]/email/route.ts`, `lib/html-email.ts` |
+| B-72 | Medium | The invoice mail sent `from: invoices@riocasa.com` and the campaign mail from `hello@riocasa.com` — a domain the property does not use (`EMAIL_FROM` is `.in`), and both ignored `EMAIL_FROM` entirely. An unverified sender domain is rejected by Resend, so staff saw "Invoice emailed" for mail that never left | `app/api/admin/invoices/[id]/email/route.ts`, `app/api/admin/communications/route.ts` |
 | B-69 | Medium | `audit_log` was written by seventeen code paths and read by none — every "who did this" the system recorded was unreachable without `prisma studio`, and the table had no index but its primary key | `app/api/admin/audit/route.ts`, `components/admin/panels/AuditTrail.tsx`, migration `12_audit_log_indexes`, `lib/labels.ts`, `lib/dates.ts` (`propertyDayStartInstant`), `lib/admin-nav.ts` |
 | B-68 | High | Any front-desk user could take a room off the calendar and put it back, with no record of who did either — the one write that removes inventory without leaving a booking behind | `app/api/admin/blocked-dates/route.ts`, `app/api/admin/blocked-dates/[id]/route.ts`, migration `11_blocked_dates_attribution`, `components/admin/panels/BlockedDates.tsx`, `lib/admin-nav.ts`, `app/admin/(protected)/calendar/page.tsx` |
 | B-53 | Low | `Package`, `Testimonial`, `BlogPost` and `GalleryImage` were defined in the schema and read by nothing; the site served hardcoded copies, and "Monsoon Magic" was priced two ways | `lib/site-content.ts`, `prisma/seed-content.ts`, migration `10_content_english_only`, packages/blog/gallery pages, `components/sections/Testimonials.tsx`, `components/admin/panels/{Packages,Testimonials}.tsx` |

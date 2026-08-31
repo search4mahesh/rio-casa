@@ -1,5 +1,6 @@
 import { useTranslations } from "next-intl";
 import { MapPin, Clock } from "lucide-react";
+import { PROPERTY } from "@/lib/property";
 
 const distances = [
   { from: "Pune", km: "120 km", time: "3 hrs" },
@@ -15,7 +16,7 @@ export default function LocationSection() {
     <section className="py-20 bg-earth-bg">
       <div className="container-resort">
         <div className="text-center mb-12">
-          <p className="section-subheading mb-2">{t("locationSubtitle")}</p>
+          <p className="section-subheading mb-2">{t("locationSubtitle", { city: PROPERTY.city })}</p>
           <h2 className="section-heading">{t("locationTitle")}</h2>
         </div>
 
@@ -23,14 +24,14 @@ export default function LocationSection() {
           {/* Map embed */}
           <div className="rounded-sm overflow-hidden shadow-sm h-80 bg-primary-100 flex items-center justify-center">
             <iframe
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d30382.48!2d73.6579!3d17.9237!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bc23e44e0c78083%3A0x4d52534b5ed33ef4!2sMahabaleshwar%2C%20Maharashtra!5e0!3m2!1sen!2sin!4v1680000000000!5m2!1sen!2sin"
+              src={PROPERTY.mapEmbedUrl}
               width="100%"
               height="100%"
               style={{ border: 0 }}
               allowFullScreen
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
-              title="Rio Casa Location"
+              title={`${PROPERTY.name} location`}
             />
           </div>
 
@@ -39,7 +40,7 @@ export default function LocationSection() {
             <div className="flex items-center gap-2 mb-6">
               <MapPin size={18} className="text-primary" />
               <p className="font-sans text-sm text-earth-text/70">
-                Mahabaleshwar, Satara District, Maharashtra — 412806
+                {PROPERTY.address}
               </p>
             </div>
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { MapPin, Phone, Mail } from "lucide-react";
+import { PROPERTY, telHref } from "@/lib/property";
 
 function InstagramIcon() {
   return (
@@ -37,8 +38,8 @@ export default function Footer({ locale }: { locale: string }) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand */}
           <div className="md:col-span-1">
-            <p className="font-serif text-2xl text-earth-white mb-2">Rio Casa</p>
-            <p className="text-xs tracking-widest uppercase text-accent-300 mb-4">Mahabaleshwar</p>
+            <p className="font-serif text-2xl text-earth-white mb-2">{PROPERTY.name}</p>
+            <p className="text-xs tracking-widest uppercase text-accent-300 mb-4">{PROPERTY.city}</p>
             <p className="text-sm leading-relaxed">{t("tagline")}</p>
           </div>
 
@@ -78,19 +79,19 @@ export default function Footer({ locale }: { locale: string }) {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <MapPin size={15} className="mt-0.5 shrink-0 text-accent-300" />
-                <span>{t("address")}</span>
+                <span>{PROPERTY.address}</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone size={15} className="shrink-0 text-accent-300" />
-                {/* Strip the display spacing — a tel: URI must be dialable. */}
-                <a href={`tel:${t("phone").replace(/[^\d+]/g, "")}`} className="hover:text-accent-300 transition-colors">
-                  {t("phone")}
+                {/* telHref strips the display spacing — a tel: URI must be dialable. */}
+                <a href={telHref()} className="hover:text-accent-300 transition-colors">
+                  {PROPERTY.phone}
                 </a>
               </li>
               <li className="flex items-center gap-2">
                 <Mail size={15} className="shrink-0 text-accent-300" />
-                <a href={`mailto:${t("email")}`} className="hover:text-accent-300 transition-colors">
-                  {t("email")}
+                <a href={`mailto:${PROPERTY.email}`} className="hover:text-accent-300 transition-colors">
+                  {PROPERTY.email}
                 </a>
               </li>
             </ul>
@@ -103,7 +104,7 @@ export default function Footer({ locale }: { locale: string }) {
             </p>
             <div className="flex gap-3">
               <a
-                href="https://instagram.com/riocasamahabaleshwar"
+                href={PROPERTY.social.instagram}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-9 h-9 rounded-full border border-earth-white/20 flex items-center justify-center hover:bg-accent hover:border-accent transition-colors"
@@ -112,7 +113,7 @@ export default function Footer({ locale }: { locale: string }) {
                 <InstagramIcon />
               </a>
               <a
-                href="https://facebook.com/riocasamahabaleshwar"
+                href={PROPERTY.social.facebook}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-9 h-9 rounded-full border border-earth-white/20 flex items-center justify-center hover:bg-accent hover:border-accent transition-colors"
@@ -125,7 +126,7 @@ export default function Footer({ locale }: { locale: string }) {
         </div>
 
         <div className="border-t border-earth-white/10 mt-10 pt-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-earth-white/50">
-          <p>{t("copyright", { year })}</p>
+          <p>{t("copyright", { year, property: PROPERTY.name })}</p>
           <Link href={`${prefix}/privacy`} className="hover:text-earth-white/80 transition-colors">
             {t("privacyPolicy")}
           </Link>

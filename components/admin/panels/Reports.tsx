@@ -5,6 +5,7 @@ import { ROOM_TYPE_LABEL } from "@/lib/labels";
 import { today, dateOnly, toDayString, addDays, addMonths, startOfMonth } from "@/lib/dates";
 import { apiJson } from "@/lib/api-client";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { PROPERTY } from "@/lib/property";
 
 type Report = {
   from: string;
@@ -82,7 +83,7 @@ function wholeMonthAgo(monthsAgo: number): { from: string; to: string } {
 
 function exportCSV(report: Report) {
   const rows: string[] = [];
-  rows.push(`"Rio Casa Resort — Performance Report"`);
+  rows.push(`"${PROPERTY.billingName} — Performance Report"`);
   rows.push(`"Period","${report.from.split("T")[0]} to ${report.to.split("T")[0]} (${report.daysInRange} days)"`);
   rows.push("");
   rows.push(`"KPI","Value"`);

@@ -3,6 +3,8 @@ import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/api-auth";
 import { okMessage, fail } from "@/lib/api-response";
+import { escapeHtml } from "@/lib/html-email";
+import { PROPERTY } from "@/lib/property";
 
 // POST /api/admin/invoices/[id]/email — email invoice to the guest
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -39,11 +41,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const html = `
     <div style="font-family: 'Helvetica', Arial, sans-serif; max-width: 600px; margin: auto; color: #2C2416;">
       <div style="background: #4A6741; color: white; padding: 24px; text-align: center;">
-        <h1 style="margin: 0; font-size: 22px; letter-spacing: 1px;">Rio Casa Resort</h1>
-        <p style="margin: 4px 0 0; font-size: 12px; opacity: 0.9;">Mahabaleshwar, Maharashtra</p>
+        <h1 style="margin: 0; font-size: 22px; letter-spacing: 1px;">${PROPERTY.billingName}</h1>
+        <p style="margin: 4px 0 0; font-size: 12px; opacity: 0.9;">${PROPERTY.city}, ${PROPERTY.region}</p>
       </div>
       <div style="padding: 28px 24px;">
-        <p>Dear ${invoice.guest.firstName} ${invoice.guest.lastName},</p>
+        <p>Dear ${escapeHtml(invoice.guest.firstName)} ${escapeHtml(invoice.guest.lastName)},</p>
         <p>Thank you for staying with us. Please find your tax invoice details below.</p>
         <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
           <tr><td style="padding: 8px 0; color: #777;">Invoice Number:</td><td style="text-align: right; font-weight: 600;">${invoice.invoiceNumber}</td></tr>
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           <a href="${printUrl}" style="display: inline-block; background: #4A6741; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">View Full Invoice</a>
         </p>
         <p style="font-size: 12px; color: #777; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
-          Rio Casa Resort · Mahabaleshwar, Maharashtra · GSTIN: 27AAAPL1234C1ZV<br/>
+          ${escapeHtml(invoice.hotelName)} · ${escapeHtml(invoice.hotelAddress)} · GSTIN: ${escapeHtml(invoice.hotelGstin)}<br/>
           For any queries, reply to this email.
         </p>
       </div>
@@ -71,9 +73,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // "Invoice emailed to X" (B-37) — the guest never got it, and the invoice
     // list showed a status that wasn't true.
     const { error: sendError } = await resend.emails.send({
-      from: "Rio Casa <invoices@riocasa.com>",
+      from: process.env.EMAIL_FROM ?? PROPERTY.bookingsEmail,
       to: toEmail,
-      subject: `Tax Invoice ${invoice.invoiceNumber} — Rio Casa Resort`,
+      subject: `Tax Invoice ${invoice.invoiceNumber} — ${PROPERTY.billingName}`,
       html,
     });
     if (sendError) {

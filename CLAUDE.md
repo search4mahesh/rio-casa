@@ -734,6 +734,54 @@ fallback renders after hydration. `curl` shows the shell and makes a working
 boundary look broken. `node scripts/shot.mjs` prints the boundary's own
 `console.error` line, which is the quickest confirmation it engaged.
 
+## Property identity — `lib/property.ts`
+Everything true about the property — its name, where it is, how to reach it —
+is stated **once**, in `PROPERTY`. It used to be stated wherever it was
+needed: the root layout, the title template in two more files, the schema.org
+graph, the footer, the navbar, the hero, the map embed, the WhatsApp prefill,
+the confirmation email, the invoice mail and the printed invoice. Around thirty
+literals for a dozen facts, none aware of the others — so "Rio Casa", "Rio Casa
+Resort" and "Rio Casa Mahabaleshwar" all coexisted, and B-52 shipped because
+the brand was written in two places that could not see each other.
+
+- **Facts here, copy in `messages/en.json`.** The name and address are facts;
+  "Your serene escape in the Sahyadri hills" is copy. Copy that needs to *name*
+  the property takes it as an ICU parameter — `"© {year} {property}. All rights
+  reserved."` — so the sentence stays translatable and the name stays
+  single-sourced. **Pass the values at the call site**: next-intl does not fall
+  back, so a string that says `{property}` and is read without one renders the
+  raw placeholder to the visitor. Every `meta` string gets `property` and
+  `city` from `pageMetadata`; everything else passes its own.
+- **Secrets and per-environment values stay in the environment.** `HOTEL_GSTIN`
+  is deliberately *not* here — it fails shut in production (B-62), and a
+  committed fallback is what that rule exists to prevent. Same for
+  `NEXT_PUBLIC_SITE_URL` (`lib/site-url.ts`) and the WhatsApp number. What lives
+  here is what is true regardless of where the app is deployed.
+- **`billingName` / `billingAddress` are separate from `name` / `address`.** A
+  GST invoice carries the registered entity, which need not be the trading
+  name; they are the fallbacks `HOTEL_NAME` and `HOTEL_ADDRESS` fall back *to*.
+  On a document already issued, read the invoice's own snapshot
+  (`invoice.hotelName`, `hotelGstin`) rather than `PROPERTY` — the identity a
+  tax invoice carries is the one it was issued under (B-62, B-70).
+- **`BRAND`, `SITE_TITLE`, `TITLE_TEMPLATE`, `ADMIN_BRAND` are derived**, never
+  restated. The title suffix alone was written out three times across two
+  files.
+- **It imports nothing.** It is read by client components, server components,
+  route handlers and `app/layout.tsx`, so it has to be usable from all of them.
+- **This is not multi-tenancy.** A second property under the same firm gets its
+  own deployment — own database, own environment, own domain — and this is the
+  file that differs between them. Do not add a `propertyId` column in
+  anticipation; a column nothing filters on is worse than none, because it
+  looks like scoping exists.
+
+`__tests__/unit/lib/property-identity.test.ts` fails the build if a property
+fact reappears as a literal anywhere under `app/`, `components/` or `lib/`, or
+in `messages/en.json`, or if a parameterised string is read without its
+values. Comments are stripped first — prose *about* the property is
+documentation, not a hardcoded fact. The allowlist is short and each entry
+carries its reason: `app/global-error.tsx` (depends on nothing by design) and
+the editorial-copy modules.
+
 ## Invoicing identity — `lib/hotel-details.ts`
 `HOTEL_GSTIN` fell back to `27XXXXX0000X1ZX`, and that placeholder was
 snapshotted onto every `Invoice` row at check-out and printed on the tax

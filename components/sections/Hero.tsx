@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
+import { PROPERTY } from "@/lib/property";
 
 export default function Hero({ locale }: { locale: string }) {
   const t = useTranslations("hero");
@@ -14,7 +15,7 @@ export default function Hero({ locale }: { locale: string }) {
       {/* Background */}
       <Image
         src="/images/hero/hero-night.jpg"
-        alt="Rio Casa Resort at night"
+        alt={`${PROPERTY.billingName} at night`}
         fill
         priority
         className="object-cover object-center"
@@ -25,11 +26,11 @@ export default function Hero({ locale }: { locale: string }) {
       {/* Content */}
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto animate-fade-in">
         <p className="font-sans text-sm tracking-[0.3em] uppercase text-accent mb-4 opacity-0 animate-slide-up [animation-delay:200ms] [animation-fill-mode:forwards]">
-          Mahabaleshwar, Maharashtra
+          {PROPERTY.city}, {PROPERTY.region}
         </p>
 
         <h1 className="font-serif text-5xl md:text-7xl text-earth-white leading-tight mb-4 opacity-0 animate-slide-up [animation-delay:400ms] [animation-fill-mode:forwards]">
-          Rio Casa
+          {PROPERTY.name}
         </h1>
 
         <p className="font-serif text-xl md:text-2xl italic text-earth-white/90 mb-3 opacity-0 animate-slide-up [animation-delay:600ms] [animation-fill-mode:forwards]">
@@ -37,7 +38,7 @@ export default function Hero({ locale }: { locale: string }) {
         </p>
 
         <p className="font-sans text-sm text-earth-white/70 mb-10 opacity-0 animate-slide-up [animation-delay:800ms] [animation-fill-mode:forwards]">
-          {t("subTagline")}
+          {t("subTagline", { city: PROPERTY.city })}
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center opacity-0 animate-slide-up [animation-delay:1000ms] [animation-fill-mode:forwards]">

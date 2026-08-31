@@ -6,6 +6,7 @@ import { useToast, Toast } from "@/components/ui/Toast";
 import { Field } from "@/components/ui/Field";
 import { apiJson } from "@/lib/api-client";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwords";
+import { PROPERTY } from "@/lib/property";
 
 type StaffMember = {
   id: string;
@@ -239,7 +240,7 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
             {inp("Full Name *", "name", { required: true, placeholder: "e.g. Priya Sharma" })}
-            {inp("Email *", "email", { required: true, type: "email", placeholder: "priya@riocasa.in" })}
+            {inp("Email *", "email", { required: true, type: "email", placeholder: `priya@${PROPERTY.email.split("@")[1]}` })}
             {inp("Phone", "phone", { type: "tel", placeholder: "9876543210" })}
 
             <div>

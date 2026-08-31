@@ -1,5 +1,6 @@
 import { absoluteUrl } from "@/lib/site-url";
 import type { RoomCategory } from "@/lib/room-catalogue";
+import { PROPERTY } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
 // schema.org structured data.
@@ -64,19 +65,19 @@ export function hotelSchema(opts: {
     "@context": "https://schema.org",
     "@type": "Resort",
     "@id": HOTEL_ID,
-    name: "Rio Casa",
+    name: PROPERTY.name,
     description,
     url: absoluteUrl("/"),
     telephone: phone,
     email,
-    image: [absoluteUrl("/images/hero/exterior-front.jpg"), absoluteUrl("/images/hero/exterior-wide.jpg")],
+    image: [absoluteUrl(PROPERTY.images.og), absoluteUrl(PROPERTY.images.exteriorWide)],
     address: {
       "@type": "PostalAddress",
       streetAddress: address,
-      addressLocality: "Mahabaleshwar",
-      addressRegion: "Maharashtra",
-      postalCode: "412806",
-      addressCountry: "IN",
+      addressLocality: PROPERTY.city,
+      addressRegion: PROPERTY.region,
+      postalCode: PROPERTY.postalCode,
+      addressCountry: PROPERTY.addressCountry,
     },
     geo: geo(),
     priceRange: priceRange(categories),

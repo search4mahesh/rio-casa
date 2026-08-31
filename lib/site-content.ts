@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { PROPERTY } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
 // Editorial content the site shows: packages, testimonials, blog posts and
@@ -194,7 +195,7 @@ export async function getGalleryImages(): Promise<SiteGalleryImage[]> {
     // An empty alt on a decorative-looking photo is still a photo a screen
     // reader cannot describe. Falling back to the category is a poor
     // description but a real one.
-    altText: g.altText ?? `${g.category} photograph at Rio Casa`,
+    altText: g.altText ?? `${g.category} photograph at ${PROPERTY.name}`,
     category: g.category,
   }));
 }

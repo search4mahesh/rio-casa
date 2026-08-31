@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getBlogPost } from "@/lib/site-content";
 import { absoluteUrl } from "@/lib/site-url";
+import { BRAND } from "@/lib/property";
 
 // Was statically generated from a hardcoded array. Posts live in `blog_posts`
 // now (B-53), so the set of slugs is not known at build time — and a post
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     openGraph: {
       type: "article",
       url: absoluteUrl(path),
-      title: `${post.title} | Rio Casa Mahabaleshwar`,
+      title: `${post.title} | ${BRAND}`,
       description: post.excerpt,
       publishedTime: post.publishedAt?.toISOString(),
     },

@@ -1,6 +1,7 @@
 import { useTranslations } from "next-intl";
 import { Leaf, Heart, Mountain } from "lucide-react";
 import { pageMetadata } from "@/lib/page-metadata";
+import { PROPERTY } from "@/lib/property";
 
 export const generateMetadata = () => pageMetadata("about", "/about");
 
@@ -12,7 +13,7 @@ export default function AboutPage() {
       {/* Hero */}
       <section className="py-20 bg-primary text-earth-white text-center">
         <p className="section-subheading text-accent mb-2">{t("subtitle")}</p>
-        <h1 className="font-serif text-4xl md:text-6xl text-earth-white">{t("title")}</h1>
+        <h1 className="font-serif text-4xl md:text-6xl text-earth-white">{t("title", { property: PROPERTY.name })}</h1>
       </section>
 
       {/* Story */}
@@ -51,7 +52,7 @@ export default function AboutPage() {
       {/* Mahabaleshwar section */}
       <section className="py-16">
         <div className="container-resort max-w-3xl text-center">
-          <h2 className="section-heading mb-6">{t("mahabaleshwarTitle")}</h2>
+          <h2 className="section-heading mb-6">{t("placeTitle", { city: PROPERTY.city })}</h2>
           <p className="font-sans text-earth-text/70 leading-relaxed mb-8">
             Mahabaleshwar is Maharashtra&rsquo;s crown jewel of hill stations. Famous for its strawberry farms, viewpoints like Arthur&rsquo;s Seat and Elephant&rsquo;s Head, Venna Lake boating, and the ancient Mahabaleshwar Temple — it&rsquo;s a destination that calls you back every season.
           </p>

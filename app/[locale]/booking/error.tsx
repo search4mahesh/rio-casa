@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, MessageCircle } from "lucide-react";
+import { PROPERTY } from "@/lib/property";
 
 /**
  * Error boundary for the booking flow specifically.
@@ -36,7 +37,7 @@ export default function BookingError({
   const phone = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
   const waUrl = phone
     ? `https://wa.me/${phone}?text=${encodeURIComponent(
-        "Hi! I was trying to book a room at Rio Casa and the website ran into a problem. Could you help me book?"
+        `Hi! I was trying to book a room at ${PROPERTY.name} and the website ran into a problem. Could you help me book?`
       )}`
     : null;
 

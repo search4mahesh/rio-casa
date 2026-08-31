@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Menu, X } from "lucide-react";
+import { PROPERTY } from "@/lib/property";
 
 export default function Navbar({ locale }: { locale: string }) {
   const t = useTranslations("nav");
@@ -25,8 +26,8 @@ export default function Navbar({ locale }: { locale: string }) {
       <div className="container-resort flex items-center justify-between h-16">
         {/* Logo */}
         <Link href="/" className="flex flex-col leading-none">
-          <span className="font-serif text-xl font-semibold text-primary">Rio Casa</span>
-          <span className="font-sans text-xs text-accent tracking-widest uppercase">Mahabaleshwar</span>
+          <span className="font-serif text-xl font-semibold text-primary">{PROPERTY.name}</span>
+          <span className="font-sans text-xs text-accent tracking-widest uppercase">{PROPERTY.city}</span>
         </Link>
 
         {/* Desktop nav */}

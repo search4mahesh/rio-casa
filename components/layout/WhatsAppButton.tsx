@@ -2,6 +2,7 @@
 
 import { MessageCircle } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { PROPERTY } from "@/lib/property";
 
 export default function WhatsAppButton() {
   const pathname = usePathname();
@@ -19,7 +20,7 @@ export default function WhatsAppButton() {
 
   const phone = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "919876543210";
   const message = encodeURIComponent(
-    "Hi! I'd like to book a room at Rio Casa, Mahabaleshwar. Please assist."
+    `Hi! I'd like to book a room at ${PROPERTY.name}, ${PROPERTY.city}. Please assist.`
   );
   const url = `https://wa.me/${phone}?text=${message}`;
 

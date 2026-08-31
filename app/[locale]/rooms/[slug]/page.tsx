@@ -8,6 +8,7 @@ import { isDayString } from "@/lib/dates";
 import { absoluteUrl } from "@/lib/site-url";
 import JsonLd from "@/components/seo/JsonLd";
 import { roomSchema, breadcrumbSchema } from "@/lib/structured-data";
+import { PROPERTY, BRAND } from "@/lib/property";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   // canonical would invite it to be indexed anyway.
   if (!room) return { title: "Room not found", robots: { index: false } };
 
-  const description = `${room.name} at Rio Casa, Mahabaleshwar — from ₹${room.pricePerNight.toLocaleString("en-IN")} per night, up to ${room.maxGuests} guests. Book direct.`;
+  const description = `${room.name} at ${PROPERTY.name}, ${PROPERTY.city} — from ₹${room.pricePerNight.toLocaleString("en-IN")} per night, up to ${room.maxGuests} guests. Book direct.`;
   const path = `/rooms/${room.slug}`;
 
   return {
@@ -35,7 +36,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     alternates: { canonical: path },
     openGraph: {
       url: absoluteUrl(path),
-      title: `${room.name} | Rio Casa Mahabaleshwar`,
+      title: `${room.name} | ${BRAND}`,
       description,
       images: [{ url: room.marketing.heroImage, alt: room.marketing.heroAlt }],
     },
