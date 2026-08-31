@@ -116,7 +116,7 @@ export const PROPERTY: PropertyIdentity = {
   upiId: "riocasa@paytm",
 
   description:
-    "Experience nature's serenity at Rio Casa, a boutique resort nestled in the hills of Mahabaleshwar. Book rooms, explore packages, and discover Mahabaleshwar's beauty.",
+    "Experience nature's serenity at Rio Casa, a boutique resort nestled in the hills of Mahabaleshwar. Book rooms direct and discover Mahabaleshwar's beauty.",
   schemaDescription:
     "A boutique resort in the Sahyadri hills at Mahabaleshwar, Maharashtra — rooms, suites and family stays, bookable direct.",
   keywords: [

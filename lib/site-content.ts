@@ -2,19 +2,18 @@ import { prisma } from "@/lib/prisma";
 import { PROPERTY } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
-// Editorial content the site shows: packages, testimonials, blog posts and
-// gallery images.
+// Editorial content the site shows: testimonials, blog posts and gallery
+// images.
 //
-// All four models were fully defined in `schema.prisma` and read by nothing.
-// The site served hardcoded copies instead, and the two sources drifted: the
-// page advertised Honeymoon Escape, Weekend Getaway and Corporate Retreat,
-// none of which existed in the database, while Romantic Getaway and Family Fun
-// Pack sat there unadvertised — and "Monsoon Magic" appeared in both at two
-// different prices (B-53).
+// These models were fully defined in `schema.prisma` and read by nothing. The
+// site served hardcoded copies instead, and the two sources drifted — the
+// reason it mattered is not tidiness: **editing content was a code change and
+// a deploy** (B-53).
 //
-// The reason it mattered is not tidiness: **editing a package price was a code
-// change and a deploy.** `Package.validFrom`/`validTo` show seasonal packages
-// were intended from the start, and a hardcoded page cannot expire one.
+// Packages were the fourth reader here and are gone: the property does not
+// sell packages, so `/packages`, its admin panel and this module's
+// `getPackages` were removed. The `packages` table and the `Package` model are
+// deliberately still in place — nothing reads them.
 //
 // Everything here is server-only and returns plain objects, so pages stay
 // server components. Each reader is deliberately narrow — the site asks for
@@ -22,17 +21,6 @@ import { PROPERTY } from "@/lib/property";
 // or an unpublished post cannot reach a visitor by someone forgetting a filter
 // at the call site.
 // ─────────────────────────────────────────────────────────────
-
-export interface SitePackage {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  inclusions: string[];
-  imageUrl: string | null;
-  /** Rendered as a badge on the card, e.g. "Jul–Sep only". */
-  availability: string | null;
-}
 
 export interface SiteTestimonial {
   id: string;
@@ -60,43 +48,6 @@ export interface SiteGalleryImage {
   url: string;
   altText: string;
   category: string;
-}
-
-/** `validFrom`/`validTo` as the short label the card shows, or null. */
-function availabilityLabel(from: Date | null, to: Date | null): string | null {
-  if (!from || !to) return null;
-  const month = (d: Date) => d.toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" });
-  return `${month(from)}–${month(to)} only`;
-}
-
-/**
- * Packages on sale today.
- *
- * A package outside its `validFrom`/`validTo` window is not returned at all —
- * that window is the reason the columns exist, and the hardcoded page could
- * only ever express it as a badge someone had to remember to remove.
- */
-export async function getPackages(now = new Date()): Promise<SitePackage[]> {
-  const rows = await prisma.package.findMany({
-    where: {
-      isActive: true,
-      AND: [
-        { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
-        { OR: [{ validTo: null }, { validTo: { gte: now } }] },
-      ],
-    },
-    orderBy: { price: "asc" },
-  });
-
-  return rows.map((p) => ({
-    id: p.id,
-    name: p.nameEn,
-    description: p.descEn,
-    price: p.price,
-    inclusions: p.inclusions,
-    imageUrl: p.imageUrl,
-    availability: availabilityLabel(p.validFrom, p.validTo),
-  }));
 }
 
 /**

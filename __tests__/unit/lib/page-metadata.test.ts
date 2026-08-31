@@ -1,6 +1,6 @@
 /**
  * B-52 — eleven of the thirteen public pages inherited one title and one
- * description from the root layout, so `/rooms/luxury`, `/packages`,
+ * description from the root layout, so `/rooms/luxury`, `/gallery`,
  * `/contact` and the rest were indistinguishable in a browser tab and competed
  * with each other in search for a single identical snippet.
  *
@@ -21,7 +21,6 @@ const messages = JSON.parse(readFileSync("messages/en.json", "utf8")) as {
 const PAGES: Array<{ route: string; key?: string; file: string }> = [
   { route: "/about", key: "about", file: "app/[locale]/about/page.tsx" },
   { route: "/rooms", key: "rooms", file: "app/[locale]/rooms/page.tsx" },
-  { route: "/packages", key: "packages", file: "app/[locale]/packages/page.tsx" },
   { route: "/dining", key: "dining", file: "app/[locale]/dining/page.tsx" },
   { route: "/blog", key: "blog", file: "app/[locale]/blog/page.tsx" },
   { route: "/booking", key: "booking", file: "app/[locale]/booking/page.tsx" },

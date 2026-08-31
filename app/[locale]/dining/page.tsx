@@ -1,16 +1,18 @@
 import { useTranslations } from "next-intl";
-import { Waves, Flame, Wifi, Car, Dumbbell, Trees } from "lucide-react";
+import { Waves, Wifi, Car, Trees } from "lucide-react";
 import { pageMetadata } from "@/lib/page-metadata";
 
 export const generateMetadata = () => pageMetadata("dining", "/dining");
 
-const amenities = [
-  { icon: Waves, name: "Swimming Pool", desc: "Temperature-controlled outdoor pool with valley views." },
-  { icon: Flame, name: "Bonfire", desc: "Nightly bonfire under the stars — perfect for chilly evenings." },
+// Only what the property actually has. The pool is under construction, so it
+// carries the same "Coming Soon" badge as the home-page strip rather than being
+// described in the present tense; Nature Walks are unguided, so the card names
+// them and claims nothing further.
+const amenities: { icon: typeof Waves; name: string; desc?: string; comingSoon?: boolean }[] = [
+  { icon: Waves, name: "Swimming Pool", desc: "Temperature-controlled outdoor pool with valley views.", comingSoon: true },
   { icon: Wifi, name: "Free Wi-Fi", desc: "High-speed internet across the entire property." },
   { icon: Car, name: "Free Parking", desc: "Secure covered parking for all guests." },
-  { icon: Trees, name: "Nature Walks", desc: "Guided trails through coffee plantations and forest paths." },
-  { icon: Dumbbell, name: "Fitness Centre", desc: "Basic gym with cardio and weight equipment." },
+  { icon: Trees, name: "Nature Walks" },
 ];
 
 const nearbyActivities = [
@@ -71,14 +73,19 @@ export default function DiningPage() {
       <section className="py-16 bg-primary-50/30">
         <div className="container-resort">
           <h2 className="section-heading text-center mb-12">{t("amenitiesTitle")}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {amenities.map(({ icon: Icon, name, desc }) => (
-              <div key={name} className="bg-earth-white rounded-sm p-6 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {amenities.map(({ icon: Icon, name, desc, comingSoon }) => (
+              <div key={name} className="bg-earth-white rounded-sm p-6 shadow-sm relative">
+                {comingSoon && (
+                  <span className="absolute top-4 right-4 bg-accent text-white text-[10px] font-sans font-semibold px-2 py-0.5 rounded-full leading-tight">
+                    Coming Soon
+                  </span>
+                )}
                 <div className="w-12 h-12 rounded-full bg-primary-50 flex items-center justify-center mb-4">
                   <Icon size={22} className="text-primary" />
                 </div>
-                <h3 className="font-serif text-lg mb-2">{name}</h3>
-                <p className="font-sans text-sm text-earth-text/70">{desc}</p>
+                <h3 className={`font-serif text-lg${desc ? " mb-2" : ""}`}>{name}</h3>
+                {desc && <p className="font-sans text-sm text-earth-text/70">{desc}</p>}
               </div>
             ))}
           </div>

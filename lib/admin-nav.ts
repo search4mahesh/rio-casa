@@ -99,7 +99,6 @@ export const NAV: NavItem[] = [
     tabs: [
       { slug: "rates",    label: "Rate Plans",     minRole: "manager" },
       { slug: "promos",   label: "Promo Codes",    minRole: "manager" },
-      { slug: "packages",     label: "Packages",     minRole: "manager" },
       { slug: "testimonials", label: "Testimonials", minRole: "manager" },
       // OTA reviews (Google, Booking.com…) — a different model from the
       // testimonials above, which are quotes the property publishes itself.

@@ -54,7 +54,6 @@ export default function Footer({ locale }: { locale: string }) {
                 ["about", "/about"],
                 ["rooms", "/rooms"],
                 ["gallery", "/gallery"],
-                ["packages", "/packages"],
                 ["dining", "/dining"],
                 ["blog", "/blog"],
                 ["contact", "/contact"],

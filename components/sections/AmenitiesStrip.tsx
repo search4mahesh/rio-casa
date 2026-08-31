@@ -1,10 +1,9 @@
 "use client";
 
-import { Waves, Flame, UtensilsCrossed, Mountain, Car, Wifi } from "lucide-react";
+import { Waves, UtensilsCrossed, Mountain, Car, Wifi } from "lucide-react";
 
 const amenities = [
   { icon: Waves,            label: "Swimming Pool", comingSoon: true  },
-  { icon: Flame,            label: "Bonfire",        comingSoon: false },
   { icon: UtensilsCrossed,  label: "Restaurant",     comingSoon: false },
   { icon: Mountain,         label: "Nature Walks",   comingSoon: false },
   { icon: Car,              label: "Free Parking",   comingSoon: false },
@@ -15,7 +14,7 @@ export default function AmenitiesStrip() {
   return (
     <section className="bg-primary py-8">
       <div className="container-resort">
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
           {amenities.map(({ icon: Icon, label, comingSoon }) => (
             <div key={label} className="flex flex-col items-center gap-2">
               {comingSoon ? (

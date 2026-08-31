@@ -4,7 +4,6 @@
     "about": "About",
     "rooms": "Rooms",
     "gallery": "Gallery",
-    "packages": "Packages",
     "dining": "Dining & Amenities",
     "blog": "Blog",
     "contact": "Contact",
@@ -19,8 +18,6 @@
   "home": {
     "featuredRoomsTitle": "Our Rooms & Suites",
     "featuredRoomsSubtitle": "Curated spaces designed for rest and rejuvenation",
-    "packagesTitle": "Special Packages",
-    "packagesSubtitle": "Crafted experiences for every kind of traveller",
     "testimonialsTitle": "What Our Guests Say",
     "locationTitle": "Find Us",
     "locationSubtitle": "In the heart of {city}"
@@ -84,15 +81,6 @@
     "promoApply": "Apply",
     "promoChecking": "Checking…",
     "promoApplied": "Code applied."
-  },
-  "packages": {
-    "title": "Packages & Offers",
-    "subtitle": "Special experiences crafted just for you",
-    "includes": "Package Includes",
-    "bookPackage": "Book This Package",
-    "validity": "Valid",
-    "none": "No packages are on offer just now — please get in touch and we will put something together.",
-    "loadError": "We could not load our packages just now. Please refresh, or get in touch and we will help."
   },
   "dining": {
     "title": "Dining & Amenities",
@@ -169,10 +157,6 @@
     "gallery": {
       "title": "Gallery",
       "description": "Photographs of the rooms, balconies, bathrooms and grounds at {property}, {city}."
-    },
-    "packages": {
-      "title": "Packages & Offers",
-      "description": "Curated stay packages at {property} {city} — honeymoon, weekend, monsoon and corporate retreats."
     },
     "dining": {
       "title": "Dining & Amenities",

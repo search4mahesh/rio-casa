@@ -2,7 +2,7 @@
 
 ## Project Overview
 Full-featured resort website for **Rio Casa**, Mahabaleshwar, Maharashtra.
-Goals: direct bookings, brand presence, event/package promotion.
+Goals: direct bookings, brand presence, event promotion.
 
 ## Known bugs — `BUGS.md`
 Defects live in `BUGS.md`, with stable ids (`B-04`) you can cite in commit
@@ -20,7 +20,7 @@ no failure attached belong in a `/simplify` pass, not there.
 - **Next.js 14** — App Router, TypeScript, `app/` directory
 - **Tailwind CSS v3** — design tokens in `tailwind.config.js`
 - **next-intl** — string store only. **English (`en`) is the only locale.**
-- **Prisma 7 + PostgreSQL** (Neon) — bookings, rooms, packages, blog, testimonials
+- **Prisma 7 + PostgreSQL** (Neon) — bookings, rooms, blog, testimonials
 - **Razorpay** — payments (cards, UPI, net banking)
 - **Resend** — transactional booking confirmation emails
 - **Framer Motion** — page/section animations
@@ -38,7 +38,7 @@ app/                  Next.js App Router pages
     contact/          POST contact form
 components/
   layout/             Navbar, Footer, WhatsAppButton
-  sections/           Hero, RoomGrid, PackageCards, Testimonials, etc.
+  sections/           Hero, RoomGrid, FeaturedRooms, Testimonials, etc.
   booking/            BookingWizard, DatePicker, RoomSelector, PaymentStep
   ui/                 Shared primitives (Button, Card, Input, Badge)
 lib/
@@ -48,7 +48,7 @@ lib/
 messages/
   en.json             All UI strings — NEVER hardcode text
 prisma/
-  schema.prisma       DB schema (Room, Booking, Package, Testimonial, BlogPost)
+  schema.prisma       DB schema (Room, Booking, Testimonial, BlogPost)
 ```
 
 ## Strict Rules
@@ -353,7 +353,8 @@ npx tsx prisma/repair-data.ts         # report drifted derived state (--apply to
 npx tsx prisma/close-overdue-checkouts.ts  # stays never checked out (--apply to close)
 npx tsx prisma/seed-demo.ts           # demo data; idempotent (--prune drops old duplicates)
 npx tsx prisma/repair-invoice-gstin.ts     # invoices issued under the placeholder GSTIN (--apply to fix)
-npx tsx prisma/seed-content.ts        # packages, testimonials, blog, gallery (--exclusive retires the rest)
+npx tsx prisma/seed-content.ts        # testimonials, blog, gallery (--exclusive retires the rest)
+                                      # also writes `packages`, which nothing reads — see Editorial content
 ```
 
 ## Scheduled Jobs (`vercel.json` → `crons`)
@@ -809,26 +810,20 @@ invoice handed to the guest. All 35 invoices on file carried it (B-62).
   because the value is snapshotted. See B-62 in BUGS.md.
 
 ## Editorial content — `lib/site-content.ts`
-Packages, testimonials, blog posts and gallery images are **rows, not
-literals**. All four models were defined in the schema and read by nothing
-while the site served hardcoded copies, which drifted: the page advertised
-three packages that did not exist in `packages`, ignored two that did, and
-priced "Monsoon Magic" two ways (B-53). Editing a price was a code change and
+Testimonials, blog posts and gallery images are **rows, not literals**. These
+models were defined in the schema and read by nothing while the site served
+hardcoded copies, which drifted (B-53). Editing content was a code change and
 a deploy.
 
 - **Every reader answers "what should be shown", never "all rows".**
-  `getPackages()` filters on `isActive` *and* the validity window,
-  `getTestimonials()` on `isApproved`, `getBlogPost()` on `isPublished` as well
-  as the slug. A draft must not be readable by anyone who guesses its URL just
-  because the index does not link it.
-- **`validFrom`/`validTo` are the point of the packages table.** A seasonal
-  package leaves the page on its own; the hardcoded version could only express
-  it as a badge someone had to remember to remove.
+  `getTestimonials()` filters on `isApproved`, `getBlogPost()` on `isPublished`
+  as well as the slug. A draft must not be readable by anyone who guesses its
+  URL just because the index does not link it.
 - **Content pages are `force-dynamic`.** They are editable from the admin
-  panel, and a statically rendered page would serve yesterday's prices until
+  panel, and a statically rendered page would serve yesterday's content until
   the next deploy.
-- **A failed load is not an empty page.** "No packages" tells a visitor the
-  property offers none, when in truth we never managed to ask — the same
+- **A failed load is not an empty page.** "No posts" tells a visitor the
+  property has none, when in truth we never managed to ask — the same
   distinction `ErrorState` exists for in the admin panels (B-39).
 - **`lib/blog-posts.ts` is seed input only.** No page reads it. Editing it
   changes what a fresh seed writes, not what the site serves.
@@ -838,9 +833,22 @@ a deploy.
 rather than deleting it, which is what keeps `seed-demo.ts`'s invented guest
 reviews from publishing as real ones now that the site reads the table.
 
-The Hindi and Marathi columns on `packages` and `blog_posts` are nullable and
-unused. The site is English-only by decision (see **Strings**), so nothing
-writes them; do not start filling them in.
+The Hindi and Marathi columns on `blog_posts` are nullable and unused. The site
+is English-only by decision (see **Strings**), so nothing writes them; do not
+start filling them in.
+
+### Packages were removed
+The property does not sell packages, so **there is no `/packages` page, no
+Setup → Packages tab, no `/api/admin/packages` routes and no `getPackages()`**.
+The nav link, the footer link, the sitemap entry and the `packages` /
+`meta.packages` copy in `messages/en.json` went with them.
+
+**The `Package` model and the `packages` table are deliberately still there,
+and nothing reads them.** They were kept so the existing rows survive if the
+property ever starts selling packages again; `prisma/seed-content.ts` still
+writes them, which is inert. Do not treat the table as live content, and do not
+wire a new reader to it without asking — the reason it has none is a decision
+about what the property offers, not an oversight.
 
 ## Email HTML — `lib/html-email.ts`
 **Escape every interpolated value in an email body.** All three senders

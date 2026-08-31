@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * B-53 — `Package`, `Testimonial`, `BlogPost` and `GalleryImage` were defined
- * in the schema and read by nothing, while the site served hardcoded copies
- * that drifted from them.
+ * B-53 — `Testimonial`, `BlogPost` and `GalleryImage` were defined in the
+ * schema and read by nothing, while the site served hardcoded copies that
+ * drifted from them. (`Package` was the fourth; the property does not sell
+ * packages, so that reader and its page are gone.)
  *
  * What these pin is the filtering. Each reader answers "what should be shown",
  * so a draft post or an unapproved testimonial cannot reach a visitor by
@@ -12,7 +13,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    package: { findMany: vi.fn() },
     testimonial: { findMany: vi.fn() },
     blogPost: { findMany: vi.fn(), findFirst: vi.fn() },
     galleryImage: { findMany: vi.fn() },
@@ -20,7 +20,6 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import {
-  getPackages,
   getTestimonials,
   getBlogPosts,
   getBlogPost,
@@ -29,74 +28,12 @@ import {
 import { prisma } from "@/lib/prisma";
 
 const db = prisma as unknown as {
-  package: { findMany: ReturnType<typeof vi.fn> };
   testimonial: { findMany: ReturnType<typeof vi.fn> };
   blogPost: { findMany: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
   galleryImage: { findMany: ReturnType<typeof vi.fn> };
 };
 
 beforeEach(() => vi.clearAllMocks());
-
-describe("getPackages", () => {
-  beforeEach(() => db.package.findMany.mockResolvedValue([]));
-
-  it("asks only for active packages", async () => {
-    await getPackages();
-    expect(db.package.findMany.mock.calls[0][0].where.isActive).toBe(true);
-  });
-
-  // The validity window is the reason validFrom/validTo exist. A hardcoded
-  // page could only express it as a badge someone had to remember to remove.
-  it("excludes packages whose window has not opened or has closed", async () => {
-    const now = new Date("2026-09-15T00:00:00Z");
-    await getPackages(now);
-
-    const { AND } = db.package.findMany.mock.calls[0][0].where;
-    expect(AND).toEqual([
-      { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
-      { OR: [{ validTo: null }, { validTo: { gte: now } }] },
-    ]);
-  });
-
-  it("treats a package with no window as always on sale", async () => {
-    const { AND } = (await getPackages(), db.package.findMany.mock.calls[0][0].where);
-    expect(AND[0].OR).toContainEqual({ validFrom: null });
-    expect(AND[1].OR).toContainEqual({ validTo: null });
-  });
-
-  it("turns a window into the badge the card shows", async () => {
-    db.package.findMany.mockResolvedValue([
-      {
-        id: "p1", nameEn: "Monsoon Magic", descEn: "…", price: 11000,
-        inclusions: [], imageUrl: null,
-        validFrom: new Date("2026-07-01T00:00:00Z"),
-        validTo: new Date("2026-09-30T00:00:00Z"),
-      },
-    ]);
-
-    // Derived, not hardcoded: `en-IN` abbreviates September as "Sept", not
-    // "Sep", and hardcoding either spelling makes this test about the locale
-    // data rather than about the label.
-    const month = (iso: string) =>
-      new Date(iso).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" });
-
-    const [pkg] = await getPackages();
-    expect(pkg.availability).toBe(`${month("2026-07-01")}–${month("2026-09-30")} only`);
-  });
-
-  it("has no badge when the package runs year-round", async () => {
-    db.package.findMany.mockResolvedValue([
-      { id: "p1", nameEn: "Weekend Getaway", descEn: "…", price: 9500, inclusions: [], imageUrl: null, validFrom: null, validTo: null },
-    ]);
-
-    expect((await getPackages())[0].availability).toBeNull();
-  });
-
-  it("orders by price, cheapest first", async () => {
-    await getPackages();
-    expect(db.package.findMany.mock.calls[0][0].orderBy).toEqual({ price: "asc" });
-  });
-});
 
 describe("getTestimonials", () => {
   beforeEach(() => db.testimonial.findMany.mockResolvedValue([]));

@@ -12,7 +12,7 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => {
     const map: Record<string, string> = {
       home: "Home", about: "About", rooms: "Rooms", gallery: "Gallery",
-      packages: "Packages", dining: "Dining", blog: "Blog", bookNow: "Book Now",
+      dining: "Dining", blog: "Blog", bookNow: "Book Now",
     };
     return map[key] ?? key;
   },
@@ -34,7 +34,7 @@ describe("Navbar", () => {
   it("renders all navigation links", () => {
     render(<Navbar locale="en" />);
     expect(screen.getAllByText("Rooms").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Packages").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Dining").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Gallery").length).toBeGreaterThan(0);
   });
 

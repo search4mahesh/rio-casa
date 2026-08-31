@@ -45,7 +45,7 @@ belongs in a `/simplify` pass.
 | B-72 | Medium | The invoice mail sent `from: invoices@riocasa.com` and the campaign mail from `hello@riocasa.com` — a domain the property does not use (`EMAIL_FROM` is `.in`), and both ignored `EMAIL_FROM` entirely. An unverified sender domain is rejected by Resend, so staff saw "Invoice emailed" for mail that never left | `app/api/admin/invoices/[id]/email/route.ts`, `app/api/admin/communications/route.ts` |
 | B-69 | Medium | `audit_log` was written by seventeen code paths and read by none — every "who did this" the system recorded was unreachable without `prisma studio`, and the table had no index but its primary key | `app/api/admin/audit/route.ts`, `components/admin/panels/AuditTrail.tsx`, migration `12_audit_log_indexes`, `lib/labels.ts`, `lib/dates.ts` (`propertyDayStartInstant`), `lib/admin-nav.ts` |
 | B-68 | High | Any front-desk user could take a room off the calendar and put it back, with no record of who did either — the one write that removes inventory without leaving a booking behind | `app/api/admin/blocked-dates/route.ts`, `app/api/admin/blocked-dates/[id]/route.ts`, migration `11_blocked_dates_attribution`, `components/admin/panels/BlockedDates.tsx`, `lib/admin-nav.ts`, `app/admin/(protected)/calendar/page.tsx` |
-| B-53 | Low | `Package`, `Testimonial`, `BlogPost` and `GalleryImage` were defined in the schema and read by nothing; the site served hardcoded copies, and "Monsoon Magic" was priced two ways | `lib/site-content.ts`, `prisma/seed-content.ts`, migration `10_content_english_only`, packages/blog/gallery pages, `components/sections/Testimonials.tsx`, `components/admin/panels/{Packages,Testimonials}.tsx` |
+| B-53 | Low | `Package`, `Testimonial`, `BlogPost` and `GalleryImage` were defined in the schema and read by nothing; the site served hardcoded copies, and "Monsoon Magic" was priced two ways | `lib/site-content.ts`, `prisma/seed-content.ts`, migration `10_content_english_only`, blog/gallery pages, `components/sections/Testimonials.tsx`, `components/admin/panels/Testimonials.tsx` |
 | B-63 | Low | Guest input was interpolated unescaped into the HTML of all three emails this application sends | `lib/html-email.ts`, `app/api/contact/route.ts`, `app/api/payment/verify/route.ts`, `app/api/admin/communications/route.ts` |
 | B-62 | Medium | All 35 invoices on file were issued under the placeholder GSTIN `27XXXXX0000X1ZX` | `lib/hotel-details.ts`, `lib/invoice-service.ts`, `prisma/backfill-invoices.ts`, `prisma/repair-invoice-gstin.ts`, `components/admin/panels/HotelSettings.tsx` |
 | B-67 | Medium | No error boundary anywhere: a render error dropped the visitor on Next's own error screen, mid-checkout included | `app/global-error.tsx`, `app/not-found.tsx`, `app/[locale]/error.tsx`, `app/[locale]/not-found.tsx`, `app/[locale]/booking/error.tsx`, `app/admin/(protected)/error.tsx` |
@@ -965,7 +965,10 @@ Two deliberate changes came with it:
   them `isActive: false` / `isApproved: false`. They are still there, and
   Setup → Testimonials can publish any of them.
 
-**The packages page lost its "2 nights / 3 days" line.** `Package` has no
-duration column and inventing one for a value already stated in every
-package's inclusions ("Deluxe Garden View Room (2 nights)") was the worse
-trade. Add a column if the standalone line is wanted back.
+**The packages half has since been removed entirely.** The property does not
+sell packages, so `/packages`, the Setup → Packages tab, `/api/admin/packages`
+and `getPackages()` are gone, along with the nav and footer links, the sitemap
+entry and the `packages` copy in `messages/en.json`. The `Package` model and
+the `packages` table were deliberately kept — the rows survive, and nothing
+reads them. Everything above about testimonials, posts and gallery images
+still holds.

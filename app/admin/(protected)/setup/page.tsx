@@ -6,7 +6,6 @@ import HubTabs from "@/components/admin/HubTabs";
 import RatePlansPanel from "@/components/admin/panels/RatePlans";
 import PromosPanel from "@/components/admin/panels/Promos";
 import ReviewsPanel from "@/components/admin/panels/Reviews";
-import PackagesPanel from "@/components/admin/panels/Packages";
 import TestimonialsPanel from "@/components/admin/panels/Testimonials";
 import CommunicationsPanel from "@/components/admin/panels/Communications";
 import ShiftsPanel from "@/components/admin/panels/Shifts";
@@ -19,7 +18,6 @@ const HUB = NAV.find((n) => n.href === "/admin/setup")!;
 const PANELS: Record<string, React.ComponentType> = {
   rates:        RatePlansPanel,
   promos:       PromosPanel,
-  packages:     PackagesPanel,
   testimonials: TestimonialsPanel,
   reviews:      ReviewsPanel,
   messages:     CommunicationsPanel,
