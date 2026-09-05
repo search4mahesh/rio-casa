@@ -4,13 +4,19 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Users, Star, ArrowLeft, Check, Bath, BedDouble, Wifi, Tv, Wind, Droplets } from "lucide-react";
 import { getRoomCategory } from "@/lib/room-catalogue";
-import { isDayString } from "@/lib/dates";
+import { catalogueAvailability } from "@/lib/booking-service";
+import { addDays, dateOnly, today, toDayString } from "@/lib/dates";
+import { humanDay, readStay } from "@/lib/stay-params";
+import StaySearchForm from "@/components/booking/StaySearchForm";
 import { absoluteUrl } from "@/lib/site-url";
 import JsonLd from "@/components/seo/JsonLd";
 import { roomSchema, breadcrumbSchema } from "@/lib/structured-data";
 import { PROPERTY, BRAND } from "@/lib/property";
 
 export const dynamic = "force-dynamic";
+
+/** Days ahead to look for the next free stay, matching /rooms. */
+const HORIZON_DAYS = 60;
 
 /**
  * Resolved from the same live inventory the page renders, so a room type that
@@ -72,16 +78,81 @@ export default async function RoomDetailPage({
 
   const t = await getTranslations("rooms");
 
-  // Up to four amenities we have an icon for, shown as quick highlights.
-  // Only a complete, real pair is forwarded. Half a range, or a day that does
-  // not exist, is left off entirely so the wizard falls back to its defaults
-  // rather than opening on a blank date input.
-  const { checkIn, checkOut } = searchParams;
-  const carryDates =
-    checkIn && checkOut && isDayString(checkIn) && isDayString(checkOut) && checkOut > checkIn;
-  const bookHref = carryDates
-    ? `/booking?room=${room.slug}&checkIn=${checkIn}&checkOut=${checkOut}`
-    : `/booking?room=${room.slug}`;
+  // The same reader /rooms uses, so the pair of dates a guest clicked through
+  // with means the same thing on both pages. Only a complete, real, future
+  // range is forwarded: half a range, or a day that does not exist, is left
+  // off so the wizard falls back to its defaults rather than opening on a
+  // blank date input.
+  const stay = readStay(searchParams);
+  const tomorrow = toDayString(addDays(today(), 1));
+  const bookHref =
+    stay.kind === "stay"
+      ? `/booking?room=${room.slug}&checkIn=${toDayString(stay.checkIn)}&checkOut=${toDayString(stay.checkOut)}`
+      : `/booking?room=${room.slug}`;
+
+  // What this room type actually costs the guest in availability terms.
+  // /rooms resolves this for every card and then threw it away at the link:
+  // a guest went from a card reading "2 left · next free 2 Sept" to a detail
+  // page that made no claim at all, which reads as the answer having changed.
+  // Resolved through `catalogueAvailability` rather than a query of this
+  // page’s own, for the reason in CLAUDE.md: one implementation of "free".
+  let freeCount: number | null = null;
+  let nextFree: string | null = null;
+  if (stay.kind === "stay") {
+    const { freeByType, nextFreeByType } = await catalogueAvailability(
+      stay.checkIn,
+      stay.checkOut,
+      HORIZON_DAYS
+    );
+    freeCount = freeByType[room.roomType] ?? 0;
+    if (freeCount === 0) nextFree = nextFreeByType[room.roomType] ?? null;
+  }
+  const soldOut = freeCount === 0;
+
+  /**
+   * The one action this page offers, rendered wherever it is needed.
+   *
+   * A booked-out room offers the next date that works rather than a button
+   * leading to the same empty answer — the same rule the catalogue card
+   * follows. With no date to offer inside the horizon, the way out is the rest
+   * of the property, not this room.
+   *
+   * A function rather than two copies, because it now renders twice: in the
+   * pricing card and in the bar pinned to the bottom of a phone. A bar
+   * offering "Book This Room" for a room the card just said was taken is the
+   * failure this shape rules out.
+   */
+  const bookAction = (className: string) => {
+    if (!soldOut) {
+      return (
+        <Link href={bookHref} className={`btn-primary ${className}`}>
+          {t("bookRoom")}
+        </Link>
+      );
+    }
+    if (nextFree) {
+      return (
+        <Link
+          href={`/rooms/${room.slug}?checkIn=${nextFree}&checkOut=${toDayString(
+            addDays(dateOnly(nextFree), stay.kind === "stay" ? stay.nights : 1)
+          )}`}
+          className={`btn-outline ${className}`}
+        >
+          {t("seeNextFree", { date: humanDay(nextFree) })}
+        </Link>
+      );
+    }
+    return (
+      <Link
+        href={`/rooms?checkIn=${toDayString(stay.kind === "stay" ? stay.checkIn : today())}&checkOut=${toDayString(
+          stay.kind === "stay" ? stay.checkOut : addDays(today(), 1)
+        )}`}
+        className={`btn-outline ${className}`}
+      >
+        {t("seeOtherRooms")}
+      </Link>
+    );
+  };
 
   const highlights = room.amenities
     .filter((a) => AMENITY_ICON[a])
@@ -231,11 +302,68 @@ export default async function RoomDetailPage({
                 <span className="font-sans text-xs text-earth-text/70">+taxes</span>
               </div>
               <p className="font-sans text-xs text-earth-text/70 mb-4">Extra bed charges apply on request</p>
-              <Link href={bookHref} className="btn-primary w-full text-center block">
-                {t("bookRoom")}
-              </Link>
+
+              {/* The dates, askable here rather than back on the catalogue.
+                  A guest who arrives on this page from a search result has
+                  no dates at all, and sending them to /rooms to set some is
+                  sending them away from the room they came to look at. */}
+              <StaySearchForm
+                minCheckIn={tomorrow}
+                defaultCheckIn={stay.kind === "stay" ? toDayString(stay.checkIn) : searchParams.checkIn}
+                defaultCheckOut={stay.kind === "stay" ? toDayString(stay.checkOut) : searchParams.checkOut}
+                heading={t("checkThisRoom")}
+                className="border border-primary-200 rounded-sm p-4 mb-4"
+              >
+                {stay.kind === "error" && (
+                  <p className="font-sans text-sm text-red-600 mt-3">{t(stay.message)}</p>
+                )}
+              </StaySearchForm>
+
+              {/* What the catalogue already knew, carried through the link.
+                  Only ever stated when there is a stay to measure against —
+                  "available" means nothing without one. */}
+              {freeCount !== null && freeCount > 0 && (
+                <p className={`font-sans text-sm mb-3 ${freeCount <= 2 ? "text-accent" : "text-primary"}`}>
+                  {freeCount === 1 ? t("oneFreeForYourDates") : t("freeForYourDates", { count: freeCount })}
+                </p>
+              )}
+              {soldOut && (
+                <p className="font-sans text-sm text-earth-text/70 mb-3">
+                  {t("soldOutForYourDates")}
+                  {" "}
+                  {nextFree
+                    ? t("nextFree", { date: humanDay(nextFree) })
+                    : t("noNextFree", { days: HORIZON_DAYS })}
+                </p>
+              )}
+
+              {bookAction("w-full text-center block")}
             </div>
           </div>
+        </div>
+
+        {/* The price and the action, pinned to the bottom of the viewport on a
+            phone.
+
+            In flow they sit at the very end of a long single column — below
+            the photographs, the description, the highlights and the full
+            amenity list — so the one thing a guest came to do was several
+            screens past where they landed.
+
+            `sticky`, not `fixed`, for the reason the booking wizard’s total
+            bar is: it releases at the end of the content instead of sitting
+            over the footer for the rest of the page. Full-bleed via negative
+            margins that undo the container’s padding, then put it back
+            inside. Hidden from `lg` up, where the pricing card is already in
+            view beside the photographs. */}
+        <div className="lg:hidden sticky bottom-0 -mx-4 sm:-mx-6 mt-10 px-4 sm:px-6 py-3 bg-earth-white border-t border-primary-200 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-serif text-xl text-primary leading-none">
+              {t("fromPrice", { price: room.pricePerNight.toLocaleString("en-IN") })}
+            </p>
+            <p className="font-sans text-xs text-earth-text/70 mt-0.5">{t("perNight")}</p>
+          </div>
+          {bookAction("text-sm py-2.5 px-5 whitespace-nowrap shrink-0")}
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { CONTENT_REVALIDATE_SECONDS, TESTIMONIALS_TAG, cachedRead } from "@/lib/content-cache";
 import { PROPERTY } from "@/lib/property";
 
 // ─────────────────────────────────────────────────────────────
@@ -28,7 +29,21 @@ export interface SiteTestimonial {
   location: string | null;
   review: string;
   rating: number;
-  stayDate: Date | null;
+  /**
+   * ISO instant, **not** a `Date`.
+   *
+   * This reader is wrapped in `cachedRead`, and Next’s data cache stores what
+   * it is given as JSON — so a `Date` goes in and a string comes back on every
+   * cache hit. Typing it as `Date` did not make it one: it made the home page
+   * call `toLocaleDateString` on a string, which crashed `/` at prerender and
+   * would have 500’d it on the first cache hit in production.
+   *
+   * Converted here, below the cache, so the pass-through path `cachedRead`
+   * takes outside a request returns the same shape as the cached one — the
+   * failure mode of fixing it at the call site is that scripts and pages
+   * disagree about the type of the same field.
+   */
+  stayDate: string | null;
 }
 
 export interface SiteBlogPost {
@@ -57,7 +72,7 @@ export interface SiteGalleryImage {
  * panel to approve through and no page that would have read an approved one.
  * Both ends exist now: Setup → Testimonials, and this.
  */
-export async function getTestimonials(limit?: number): Promise<SiteTestimonial[]> {
+async function readTestimonials(limit?: number): Promise<SiteTestimonial[]> {
   const rows = await prisma.testimonial.findMany({
     where: { isApproved: true },
     orderBy: [{ stayDate: "desc" }, { createdAt: "desc" }],
@@ -70,9 +85,22 @@ export async function getTestimonials(limit?: number): Promise<SiteTestimonial[]
     location: t.location,
     review: t.review,
     rating: t.rating,
-    stayDate: t.stayDate,
+    stayDate: t.stayDate ? t.stayDate.toISOString() : null,
   }));
 }
+
+/**
+ * Cached behind `TESTIMONIALS_TAG`, so the home page does not read the
+ * database for every visitor, and Setup -> Testimonials still takes effect at
+ * once: those routes call `revalidateTag`. The TTL is the backstop for anything
+ * that changes the table without going through them (a seed script, Prisma
+ * Studio) — see `lib/content-cache.ts` for why time, not tags, is the floor.
+ */
+export const getTestimonials = cachedRead(
+  readTestimonials,
+  ["site-testimonials"],
+  { tags: [TESTIMONIALS_TAG], revalidate: CONTENT_REVALIDATE_SECONDS }
+);
 
 /** Published posts, newest first. */
 export async function getBlogPosts(): Promise<SiteBlogPost[]> {

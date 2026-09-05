@@ -33,11 +33,15 @@ export async function GET(req: NextRequest) {
     : status === "all" ? {}
     : { handledAt: null };
 
-  const [total, openCount, inquiries] = await Promise.all([
+  // On the default view `where` already *is* the open filter, so asking for
+  // both counts issued the identical COUNT(*) twice in one request.
+  const openView = status !== "handled" && status !== "all";
+
+  const [total, openCountOrNull, inquiries] = await Promise.all([
     prisma.contactInquiry.count({ where }),
     // Always reported, whichever view is being shown, so the tab that says
     // "Open" can carry the number without a second request.
-    prisma.contactInquiry.count({ where: { handledAt: null } }),
+    openView ? null : prisma.contactInquiry.count({ where: { handledAt: null } }),
     prisma.contactInquiry.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -45,6 +49,8 @@ export async function GET(req: NextRequest) {
       take: pageSize,
     }),
   ]);
+
+  const openCount = openCountOrNull ?? total;
 
   return ok({ inquiries, total, openCount, page, pageSize });
 }

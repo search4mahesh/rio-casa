@@ -215,7 +215,9 @@ describe("getAvailableRooms", () => {
   });
 
   it("excludes rooms that have a conflicting booking", async () => {
-    mockPrisma.booking.findMany.mockResolvedValue([{ roomId: "r1" }]);
+    mockPrisma.booking.findMany.mockResolvedValue([
+      { roomId: "r1", checkIn: tomorrow, checkOut: nextWeek },
+    ]);
     const rooms = await getAvailableRooms(tomorrow, nextWeek, 1);
     expect(rooms.map((r) => r.id)).not.toContain("r1");
     expect(rooms).toHaveLength(2);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, sep } from "node:path";
 import { adminHubMetadata, adminMetadata, adminSectionMetadata, ADMIN_TITLE_TEMPLATE } from "@/lib/admin-metadata";
 import { NAV } from "@/lib/admin-nav";
 
@@ -64,10 +64,39 @@ describe("adminSectionMetadata", () => {
   });
 });
 
+/**
+ * Node's own `fs`, not `grep` through `execSync`.
+ *
+ * Spawning a subprocess from inside a vitest worker fails intermittently under
+ * a full parallel run on Windows — seen twice in five runs, alongside
+ * `Failed to start forks worker` timeouts, while passing every time this file
+ * was run alone (B-75). A random red on an otherwise green suite is worse than
+ * a slow one: it teaches everyone to re-run CI instead of reading it. The old
+ * `|| true` guarded grep's exit code, which was never the problem — the spawn
+ * itself was.
+ */
+function filesNamed(dir: string, name: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules" || entry === ".next") continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) filesNamed(full, name, out);
+    else if (entry === name) out.push(full.split(sep).join("/"));
+  }
+  return out;
+}
+
+function sourceFilesUnder(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules" || entry === ".next") continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) sourceFilesUnder(full, out);
+    else if (/\.tsx?$/.test(entry)) out.push(full.split(sep).join("/"));
+  }
+  return out;
+}
+
 describe("the admin panel titles itself", () => {
-  const adminPages = execSync('grep -rl "" app/admin --include=page.tsx', { encoding: "utf8" })
-    .trim().split("\n").filter(Boolean)
-    .map((f) => f.replace(/\\/g, "/"));
+  const adminPages = filesNamed("app/admin", "page.tsx");
 
   it("finds the admin pages", () => {
     expect(adminPages.length).toBeGreaterThan(10);
@@ -108,10 +137,16 @@ describe("the admin panel titles itself", () => {
   });
 
   it("the template is defined once, not restated per file", () => {
-    const restated = execSync('grep -rn "Rio Casa Admin" app lib --include=*.ts --include=*.tsx || true',
-      { encoding: "utf8" })
-      .trim().split("\n").filter(Boolean)
-      .filter((l) => /template:\s*["'`]%s/.test(l));
+    const restated: string[] = [];
+    for (const file of [...sourceFilesUnder("app"), ...sourceFilesUnder("lib")]) {
+      const src = readFileSync(file, "utf8");
+      if (!src.includes("Rio Casa Admin")) continue;
+      src.split(/\r?\n/).forEach((line, i) => {
+        if (/template:\s*["'`]%s/.test(line) && line.includes("Rio Casa Admin")) {
+          restated.push(`${file}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
 
     expect(restated, `The suffix belongs in ADMIN_TITLE_TEMPLATE:\n${restated.join("\n")}`).toEqual([]);
   });

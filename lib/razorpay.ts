@@ -52,3 +52,52 @@ export async function fetchOrderPaymentState(orderId: string): Promise<OrderPaym
     return "unknown";
   }
 }
+
+/**
+ * Verify a Razorpay **webhook** delivery.
+ *
+ * A different secret and a different payload from `verifySignature` above, and
+ * the two must not be confused:
+ *
+ * - The checkout signature is an HMAC over `orderId|paymentId`, keyed by
+ *   `RAZORPAY_KEY_SECRET`. It comes back through the guest's browser.
+ * - A webhook signature is an HMAC over the **raw request body**, keyed by
+ *   `RAZORPAY_WEBHOOK_SECRET` — the value entered when the webhook is created
+ *   in the Razorpay dashboard. It arrives server to server.
+ *
+ * The body must be the bytes as sent. `JSON.parse` followed by
+ * `JSON.stringify` reorders keys and drops whitespace, and the HMAC then never
+ * matches — so callers read `await req.text()` and parse only after this
+ * returns true.
+ *
+ * Returns false rather than throwing on a malformed or absent signature: an
+ * unverified delivery is simply not one we act on. Missing configuration is
+ * the caller's business to distinguish, via `webhookSecretConfigured()`.
+ */
+export function verifyWebhookSignature(rawBody: string, signature: string | null): boolean {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret || !signature) return false;
+
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+
+  // Constant-time, so a caller cannot learn the expected digest a byte at a
+  // time from how long the comparison takes. `timingSafeEqual` throws on a
+  // length mismatch, which is itself an early exit — the length check has to
+  // come first, and a wrong-length signature is wrong anyway.
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(signature, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * Whether this deployment is configured to accept webhooks at all.
+ *
+ * Separated from verification so the route can answer "not configured" with a
+ * 503 rather than a 401. The distinction matters to whoever is reading the
+ * logs: a 401 means someone sent us a bad signature, a 503 means we are
+ * dropping deliveries Razorpay is making correctly.
+ */
+export function webhookSecretConfigured(): boolean {
+  return Boolean(process.env.RAZORPAY_WEBHOOK_SECRET);
+}

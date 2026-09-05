@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
-import { today as todayDate, addDays, toDayString } from "@/lib/dates";
+import { today as todayDate, addDays, toDayString, daysBetween } from "@/lib/dates";
 import { fetchOrderPaymentState } from "@/lib/razorpay";
 import { Prisma } from "@/lib/generated/prisma/client";
 import {
@@ -163,96 +163,65 @@ export async function checkAvailability(
   };
 }
 
-// Check all rooms available for a date range
-export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests = 1) {
-  // Same two guards `checkAvailability` applies to a single room. Without them
-  // the room *list* answered "available" for a range `checkAvailability` and
-  // `createBooking` both refuse, so /rooms offered stays nobody could book
-  // (B-42). The list and the single-room check must agree.
-  if (checkIn >= checkOut) return [];
-  if (checkIn < todayDate()) return [];
+// ─────────────────────────────────────────────
+// ONE OCCUPANCY MODEL, THREE QUESTIONS
+// ─────────────────────────────────────────────
+// "Is this room free?" is asked three ways on the public site: for one stay
+// (`getAvailableRooms`), for the next sixty days (`nextAvailableByType`), and
+// for both at once when /rooms renders with dates (`catalogueAvailability`).
+// Two of those used to carry their own copy of the predicate — a SQL overlap
+// test in one, an in-memory night-set in the other — which is exactly the
+// drift the catalogue-vs-wizard rule exists to prevent. There is now one
+// loader and one test, and the only thing that varies between callers is how
+// wide a window they read.
 
-  const allRooms = await prisma.room.findMany({
-    // Capacity counts the rollaway. `maxGuests` is the beds already in the
-    // room; a room that takes an extra bed sleeps one more, and filtering on
-    // `maxGuests` alone is why a party of five was told a property with five
-    // empty rooms was full (B-57).
-    where: {
-      isActive: true,
-      OR: [
-        { maxGuests: { gte: minGuests } },
-        { extraBed: true, maxGuests: { gte: minGuests - 1 } },
-      ],
-    },
-    // Ordered on purpose. The wizard shows one card per room type and keeps
-    // the first of each, so without this the room a guest is offered — and its
-    // price — was whatever Postgres happened to return first. Cheapest first
-    // matches how `getRoomCategories` prices a category, so /rooms and the
-    // wizard cannot quote different numbers for the same type (B-55).
-    orderBy: [{ pricePerNight: "asc" }, { roomNumber: "asc" }],
-  });
-
-  // Rooms with conflicting bookings
-  const bookedRoomIds = await prisma.booking.findMany({
-    where: {
-      roomId: { in: allRooms.map((r) => r.id) },
-      status: { notIn: ["cancelled", "no_show"] },
-      paymentStatus: { notIn: ["failed"] },
-      checkIn: { lt: checkOut },
-      checkOut: { gt: checkIn },
-    },
-    select: { roomId: true },
-    distinct: ["roomId"],
-  });
-  const bookedSet = new Set(bookedRoomIds.map((b) => b.roomId));
-
-  // Rooms with blocked dates
-  const blockedRoomIds = await prisma.blockedDate.findMany({
-    where: {
-      OR: [
-        { roomId: { in: allRooms.map((r) => r.id) } },
-        { roomId: null },
-      ],
-      blockDate: { gte: checkIn, lt: checkOut },
-    },
-    select: { roomId: true },
-  });
-  const blockedSet = new Set(blockedRoomIds.map((b) => b.roomId));
-
-  return allRooms.filter((r) => !bookedSet.has(r.id) && !blockedSet.has(r.id) && !blockedSet.has(null));
+/**
+ * Rooms that could sleep a party of `minGuests`, cheapest first.
+ *
+ * Capacity counts the rollaway. `maxGuests` is the beds already in the room; a
+ * room that takes an extra bed sleeps one more, and filtering on `maxGuests`
+ * alone is why a party of five was told a property with five empty rooms was
+ * full (B-57).
+ */
+function activeRoomsWhere(minGuests: number) {
+  return {
+    isActive: true,
+    OR: [
+      { maxGuests: { gte: minGuests } },
+      { extraBed: true, maxGuests: { gte: minGuests - 1 } },
+    ],
+  };
 }
 
 /**
- * For each room type, the first day within the horizon on which `nights`
- * consecutive nights are free in at least one room of that type.
- *
- * Answers the question a guest actually has when their dates come back empty —
- * "when could I come instead?" — so /rooms can offer a date rather than only
- * closing the door. `null` for a type means nothing inside the horizon.
- *
- * One bookings query and an in-memory scan, not a query per candidate day: the
- * horizon is sixty days across four room types, and 240 round trips to render
- * one page is not a trade worth making.
- *
- * The busy set is built from the same predicate `getAvailableRooms` uses —
- * cancelled, no-show and failed bookings do not hold a room, and a blocked date
- * with no `roomId` closes every room. A type free on the day it is asked about
- * simply returns that day.
+ * Load-bearing. The wizard shows one card per room type and keeps the first of
+ * each, so without an explicit order the room a guest is offered — and its
+ * price — was whatever Postgres happened to return first. Cheapest first
+ * matches how `getRoomCategories` prices a category, so /rooms and the wizard
+ * cannot quote different numbers for the same type (B-55).
  */
-export async function nextAvailableByType(
-  nights: number,
-  from: Date,
-  horizonDays = 60
-): Promise<Record<string, string | null>> {
-  const start = from < todayDate() ? todayDate() : from;
-  const end = addDays(start, horizonDays + nights);
+const ROOM_ORDER = [{ pricePerNight: "asc" as const }, { roomNumber: "asc" as const }];
 
-  const rooms = await prisma.room.findMany({
-    where: { isActive: true },
-    select: { id: true, roomType: true },
-  });
-  if (rooms.length === 0 || nights < 1) return {};
-  const roomIds = rooms.map((r) => r.id);
+/** The nights a room cannot take a guest on, keyed by room id. */
+type Occupancy = Map<string, Set<string>>;
+
+/**
+ * Every night the given rooms are already spoken for, across `[start, end)`.
+ *
+ * Two queries whatever the width of the window — which is what lets /rooms
+ * answer both "free for these dates?" and "when else?" from a single read. A
+ * cancelled, no-show or failed booking does not hold a room; a blocked date
+ * with no `roomId` closes every room.
+ */
+async function loadOccupancy(roomIds: string[], start: Date, end: Date): Promise<Occupancy> {
+  const busy: Occupancy = new Map();
+  if (roomIds.length === 0) return busy;
+
+  const markBusy = (roomId: string, day: Date) => {
+    let set = busy.get(roomId);
+    if (!set) busy.set(roomId, (set = new Set<string>()));
+    set.add(toDayString(day));
+  };
 
   const bookings = await prisma.booking.findMany({
     where: {
@@ -273,16 +242,10 @@ export async function nextAvailableByType(
     select: { roomId: true, blockDate: true },
   });
 
-  // Nights each room cannot take a guest on. A stay occupies its check-in night
-  // through the night before check-out, so the walk is half-open like every
-  // other range here — and clamped to the horizon, because a booking running
-  // from last year would otherwise be walked a day at a time to reach it.
-  const busy = new Map<string, Set<string>>();
-  const markBusy = (roomId: string, day: Date) => {
-    let set = busy.get(roomId);
-    if (!set) busy.set(roomId, (set = new Set<string>()));
-    set.add(toDayString(day));
-  };
+  // A stay occupies its check-in night through the night before check-out, so
+  // the walk is half-open like every other range here — and clamped to the
+  // window, because a booking running from last year would otherwise be walked
+  // a day at a time to reach it.
   for (const b of bookings) {
     const first = b.checkIn < start ? start : b.checkIn;
     const last = b.checkOut > end ? end : b.checkOut;
@@ -293,27 +256,169 @@ export async function nextAvailableByType(
     else for (const id of roomIds) markBusy(id, b.blockDate);
   }
 
+  return busy;
+}
+
+/**
+ * Whether one room is free for all `nights` nights running from `day`.
+ *
+ * The single definition of "free". Two half-open ranges overlap exactly when
+ * they share a night, so this agrees with the SQL overlap predicate it
+ * replaced rather than approximating it.
+ */
+function isFreeForStay(busy: Occupancy, roomId: string, day: Date, nights: number): boolean {
+  const set = busy.get(roomId);
+  if (!set) return true;
+  for (let n = 0; n < nights; n++) {
+    if (set.has(toDayString(addDays(day, n)))) return false;
+  }
+  return true;
+}
+
+/**
+ * The two guards `checkAvailability` applies to a single room. Without them
+ * the room *list* answered "available" for a range `checkAvailability` and
+ * `createBooking` both refuse, so /rooms offered stays nobody could book
+ * (B-42). The list and the single-room check must agree.
+ */
+function stayIsAskable(checkIn: Date, checkOut: Date): boolean {
+  return checkIn < checkOut && checkIn >= todayDate();
+}
+
+/**
+ * For each type present in `rooms`, the first day within the horizon on which
+ * `nights` consecutive nights are free in at least one room of that type.
+ * `null` means nothing inside the horizon.
+ *
+ * An in-memory scan, not a query per candidate day: the horizon is sixty days
+ * across four room types, and 240 round trips to render one page is not a
+ * trade worth making.
+ */
+function scanForNextFree(
+  rooms: { id: string; roomType: string }[],
+  busy: Occupancy,
+  start: Date,
+  nights: number,
+  horizonDays: number
+): Record<string, string | null> {
   const result: Record<string, string | null> = {};
   for (const type of new Set(rooms.map((r) => r.roomType))) {
     const ofType = rooms.filter((r) => r.roomType === type);
     result[type] = null;
     for (let offset = 0; offset < horizonDays; offset++) {
       const day = addDays(start, offset);
-      const anyFree = ofType.some((room) => {
-        const set = busy.get(room.id);
-        if (!set) return true;
-        for (let n = 0; n < nights; n++) {
-          if (set.has(toDayString(addDays(day, n)))) return false;
-        }
-        return true;
-      });
-      if (anyFree) {
+      if (ofType.some((room) => isFreeForStay(busy, room.id, day, nights))) {
         result[type] = toDayString(day);
         break;
       }
     }
   }
   return result;
+}
+
+// Check all rooms available for a date range
+export async function getAvailableRooms(checkIn: Date, checkOut: Date, minGuests = 1) {
+  if (!stayIsAskable(checkIn, checkOut)) return [];
+
+  const allRooms = await prisma.room.findMany({
+    where: activeRoomsWhere(minGuests),
+    orderBy: ROOM_ORDER,
+  });
+
+  const busy = await loadOccupancy(allRooms.map((r) => r.id), checkIn, checkOut);
+  const nights = daysBetween(checkIn, checkOut);
+  return allRooms.filter((r) => isFreeForStay(busy, r.id, checkIn, nights));
+}
+
+/**
+ * For each room type, the first day within the horizon on which `nights`
+ * consecutive nights are free in at least one room of that type.
+ *
+ * Answers the question a guest actually has when their dates come back empty —
+ * "when could I come instead?" — so /rooms can offer a date rather than only
+ * closing the door. `null` for a type means nothing inside the horizon.
+ *
+ * When the caller also needs the counts for the requested stay, reach for
+ * `catalogueAvailability` instead: it answers both out of one read.
+ */
+export async function nextAvailableByType(
+  nights: number,
+  from: Date,
+  horizonDays = 60
+): Promise<Record<string, string | null>> {
+  if (nights < 1) return {};
+  const start = from < todayDate() ? todayDate() : from;
+
+  const rooms = await prisma.room.findMany({
+    where: { isActive: true },
+    select: { id: true, roomType: true },
+  });
+  if (rooms.length === 0) return {};
+
+  const busy = await loadOccupancy(
+    rooms.map((r) => r.id),
+    start,
+    addDays(start, horizonDays + nights)
+  );
+  return scanForNextFree(rooms, busy, start, nights, horizonDays);
+}
+
+/**
+ * Everything `/rooms` needs to make an availability claim, in three round
+ * trips rather than seven.
+ *
+ * The page asks two questions: how many rooms of each type are free for the
+ * requested stay, and — for the types with none — when that stay would next
+ * fit. The horizon window is a strict superset of the stay, so reading it once
+ * answers both and the second question costs no extra round trip.
+ *
+ * Both answers come out of the same `loadOccupancy` / `isFreeForStay` pair
+ * `getAvailableRooms` uses, so the catalogue and the wizard still cannot
+ * disagree about what is free. That property now holds because there is one
+ * implementation of "free", rather than because two call sites remembered to
+ * call the same function.
+ */
+export async function catalogueAvailability(
+  checkIn: Date,
+  checkOut: Date,
+  horizonDays = 60,
+  minGuests = 1
+): Promise<{
+  freeByType: Record<string, number>;
+  nextFreeByType: Record<string, string | null>;
+}> {
+  if (!stayIsAskable(checkIn, checkOut)) return { freeByType: {}, nextFreeByType: {} };
+
+  const rooms = await prisma.room.findMany({
+    where: activeRoomsWhere(minGuests),
+    orderBy: ROOM_ORDER,
+    select: { id: true, roomType: true },
+  });
+  if (rooms.length === 0) return { freeByType: {}, nextFreeByType: {} };
+
+  const nights = daysBetween(checkIn, checkOut);
+  // The scan needs `nights` beyond its last candidate day, and the stay itself
+  // sits at the start of that window — so one read covers both questions.
+  const busy = await loadOccupancy(
+    rooms.map((r) => r.id),
+    checkIn,
+    addDays(checkIn, horizonDays + nights)
+  );
+
+  const freeByType: Record<string, number> = {};
+  for (const room of rooms) {
+    freeByType[room.roomType] ??= 0;
+    if (isFreeForStay(busy, room.id, checkIn, nights)) freeByType[room.roomType] += 1;
+  }
+
+  // Only the types that came back empty need a date suggesting — the common
+  // case is everything free and nothing to suggest.
+  const soldOut = rooms.filter((r) => freeByType[r.roomType] === 0);
+  const nextFreeByType = soldOut.length
+    ? scanForNextFree(soldOut, busy, checkIn, nights, horizonDays)
+    : {};
+
+  return { freeByType, nextFreeByType };
 }
 
 // ─────────────────────────────────────────────

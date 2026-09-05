@@ -37,17 +37,38 @@ export async function GET(req: NextRequest) {
     where.rating = ratingFilter;
   }
 
-  const [reviews, totalCount, respondedCount, avgRatingResult] = await Promise.all([
+  // The three KPI figures were three statements — `count()`, a second
+  // `count()` narrowed to `responded`, and an `_avg` — all over the whole
+  // table, unfiltered and differing only in what they asked about the same
+  // rows. One `groupBy` answers all three: `responded` has two values, so the
+  // grouped counts give the total and the responded share, and the rating sum
+  // over the same groups gives the mean.
+  //
+  // Exact, not an approximation: the mean is the summed rating over the summed
+  // count, which is what `_avg` computes. Ratings are integers, so no precision
+  // is lost recombining them here.
+  const [reviews, stats] = await Promise.all([
     prisma.reviewLog.findMany({ where, orderBy: { datePosted: "desc" }, take: 200 }),
-    prisma.reviewLog.count(),
-    prisma.reviewLog.count({ where: { responded: true } }),
-    prisma.reviewLog.aggregate({ _avg: { rating: true } }),
+    prisma.reviewLog.groupBy({
+      by: ["responded"],
+      _count: { _all: true },
+      _sum: { rating: true },
+    }),
   ]);
 
+  let total = 0;
+  let respondedCount = 0;
+  let ratingSum = 0;
+  for (const group of stats) {
+    total += group._count._all;
+    ratingSum += group._sum.rating ?? 0;
+    if (group.responded) respondedCount = group._count._all;
+  }
+
   return ok({ reviews, kpi: {
-      total: totalCount,
-      avgRating: avgRatingResult._avg.rating ?? 0,
-      respondedPct: totalCount > 0 ? (respondedCount / totalCount) * 100 : 0,
+      total,
+      avgRating: total > 0 ? ratingSum / total : 0,
+      respondedPct: total > 0 ? (respondedCount / total) * 100 : 0,
     } });
 }
 

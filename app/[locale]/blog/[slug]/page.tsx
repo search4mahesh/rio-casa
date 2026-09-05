@@ -4,12 +4,19 @@ import { ArrowLeft } from "lucide-react";
 import { getBlogPost } from "@/lib/site-content";
 import { absoluteUrl } from "@/lib/site-url";
 import { BRAND } from "@/lib/property";
+import { CONTENT_REVALIDATE_SECONDS } from "@/lib/content-cache";
 
 // Was statically generated from a hardcoded array. Posts live in `blog_posts`
 // now (B-53), so the set of slugs is not known at build time — and a post
 // published from the admin panel should appear without a deploy, which is the
 // whole point of moving it.
-export const dynamic = "force-dynamic";
+// Revalidated on a timer rather than read per visitor. `force-dynamic` was
+// the right correction to B-74 (this page was prerendered at build, so this post
+// went stale until the next deploy) but it made every visitor pay a database
+// round trip — and, on a property this quiet, often the ~1.9s connection
+// handshake that follows an idle pool. A minute is the window; see
+// `lib/content-cache.ts` for why the floor is time and not tags.
+export const revalidate = CONTENT_REVALIDATE_SECONDS;
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const post = await getBlogPost(params.slug);

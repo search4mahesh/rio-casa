@@ -53,6 +53,46 @@ describe("getTestimonials", () => {
     ]);
   });
 
+  /**
+   * B-78. `getTestimonials` is wrapped in `cachedRead`, and Next's data cache
+   * stores what it is handed as JSON — so a `Date` put in comes back out as a
+   * string on every cache hit. The interface said `Date`, the home page
+   * believed it and called `toLocaleDateString`, and `/` died at prerender
+   * with "toLocaleDateString is not a function".
+   *
+   * Pinned here rather than at the call site because both of `cachedRead`'s
+   * paths have to agree: a page reads through the cache, while
+   * `perf-queries.ts` and the `verify-*.ts` scripts read straight through. A
+   * conversion in the page would have left those two returning different types
+   * for the same field.
+   */
+  it("returns stayDate as a string, because the cache cannot hold a Date", async () => {
+    db.testimonial.findMany.mockResolvedValue([
+      {
+        id: "t1",
+        guestName: "A",
+        location: null,
+        review: "r",
+        rating: 5,
+        stayDate: new Date("2026-03-01T00:00:00.000Z"),
+      },
+    ]);
+
+    const [first] = await getTestimonials();
+    expect(typeof first.stayDate).toBe("string");
+    // Survives the round trip the cache actually performs.
+    expect(JSON.parse(JSON.stringify(first)).stayDate).toBe(first.stayDate);
+  });
+
+  it("leaves a missing stay date null rather than inventing one", async () => {
+    db.testimonial.findMany.mockResolvedValue([
+      { id: "t1", guestName: "A", location: null, review: "r", rating: 5, stayDate: null },
+    ]);
+
+    const [first] = await getTestimonials();
+    expect(first.stayDate).toBeNull();
+  });
+
   it("applies a limit when given one, and none otherwise", async () => {
     await getTestimonials(6);
     expect(db.testimonial.findMany.mock.calls[0][0].take).toBe(6);

@@ -1,14 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockFindMany, mockCount, mockAggregate, mockCreate, mockUpdate, mockDelete } = vi.hoisted(() => ({
+const { mockFindMany, mockGroupBy, mockCreate, mockUpdate, mockDelete } = vi.hoisted(() => ({
   mockFindMany: vi.fn().mockResolvedValue([]),
-  mockCount: vi.fn().mockResolvedValue(0),
-  mockAggregate: vi.fn().mockResolvedValue({ _avg: { rating: null } }),
+  // The three KPI figures come from one `groupBy` on `responded` rather than
+  // two counts and an average — same numbers, three fewer round trips.
+  mockGroupBy: vi.fn().mockResolvedValue([]),
   mockCreate: vi.fn().mockResolvedValue({ id: "r1" }),
   mockUpdate: vi.fn().mockResolvedValue({ id: "r1" }),
   mockDelete: vi.fn().mockResolvedValue({}),
 }));
+
+/** The grouped rows Postgres returns for `by: ["responded"]`. */
+function groups(respondedCount: number, respondedSum: number, openCount: number, openSum: number) {
+  return [
+    { responded: true, _count: { _all: respondedCount }, _sum: { rating: respondedSum } },
+    { responded: false, _count: { _all: openCount }, _sum: { rating: openSum } },
+  ];
+}
 
 vi.mock("@/lib/admin-auth", () => ({
   verifyAdminToken: vi.fn().mockResolvedValue({ staffId: "s1", role: "owner", name: "Admin", email: "a@a.com" }),
@@ -19,7 +28,7 @@ vi.mock("@/lib/admin-auth", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     reviewLog: {
-      findMany: mockFindMany, count: mockCount, aggregate: mockAggregate,
+      findMany: mockFindMany, groupBy: mockGroupBy,
       create: mockCreate, update: mockUpdate, delete: mockDelete,
     },
   },
@@ -48,8 +57,7 @@ const validReview = {
 describe("GET /api/admin/reviews", () => {
   beforeEach(() => {
     mockFindMany.mockReset(); mockFindMany.mockResolvedValue([]);
-    mockCount.mockReset(); mockCount.mockResolvedValue(0);
-    mockAggregate.mockReset(); mockAggregate.mockResolvedValue({ _avg: { rating: null } });
+    mockGroupBy.mockReset(); mockGroupBy.mockResolvedValue([]);
   });
 
   it("returns 401 without auth", async () => {
@@ -61,8 +69,9 @@ describe("GET /api/admin/reviews", () => {
 
   it("returns reviews + KPI", async () => {
     mockFindMany.mockResolvedValueOnce([{ id: "r1", rating: 5, platform: "google", guestName: "Test", reviewText: "Great", datePosted: new Date(), responded: false }]);
-    mockCount.mockResolvedValueOnce(10).mockResolvedValueOnce(6);
-    mockAggregate.mockResolvedValueOnce({ _avg: { rating: 4.5 } });
+    // 6 responded of 10, ratings summing to 45 — the same property the two
+    // counts and the `_avg` used to describe.
+    mockGroupBy.mockResolvedValueOnce(groups(6, 27, 4, 18));
     const res = await GET(makeReq("GET"));
     expect(res.status).toBe(200);
     const body = await res.json();

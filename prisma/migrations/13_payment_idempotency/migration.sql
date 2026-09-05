@@ -1,0 +1,43 @@
+-- ============================================================
+-- PAYMENT IDEMPOTENCY
+--
+-- `/api/payment/webhook` gives online payments a second settlement path
+-- alongside the guest's browser calling `/api/payment/verify`. Both usually
+-- fire for the same payment, seconds apart, and `settlePayment()` is built to
+-- be called twice — but its replay check is a read followed by a write, which
+-- two concurrent callers can both pass before either commits.
+--
+-- The failure that would produce is a duplicate `payments` row: the same money
+-- recorded twice against one booking, inflating every revenue report,
+-- reconciliation total and ADR the property has. This index makes it
+-- unrepresentable instead of merely unlikely — the second writer's INSERT
+-- fails, its whole transaction rolls back, and the application reads P2002 as
+-- "the other path got there first".
+--
+-- Same reasoning as `no_overlapping_bookings` in 1_double_booking_guard: the
+-- invariant that matters most is the one the database refuses to break. Unlike
+-- that one this *is* expressible in schema.prisma, so it is declared there as
+-- `@@unique([razorpayPaymentId, bookingId])` and this file only applies it to
+-- the existing database. The index name and column order match what Prisma
+-- generates, so `migrate status` sees no drift — do not add a partial `WHERE`
+-- here, however tempting, or every later `migrate diff` will try to correct it.
+--
+-- Cash, card-at-desk and OTA payments carry a NULL `razorpay_payment_id`, and
+-- NULLs are distinct in a Postgres unique index, so those rows are unaffected
+-- no matter how many of them a booking has.
+-- ============================================================
+
+-- Fails loudly if duplicates already exist rather than silently skipping them.
+-- Nothing in the codebase could have written one — the replay check has guarded
+-- the single settlement path since B-01 — but if this migration does fail here,
+-- the rows to look at are:
+--
+--   SELECT razorpay_payment_id, booking_id, count(*), sum(amount)
+--     FROM payments
+--    WHERE razorpay_payment_id IS NOT NULL
+--    GROUP BY 1, 2 HAVING count(*) > 1;
+--
+-- Resolve them by hand: a duplicate is money counted twice, so which row to
+-- keep is a bookkeeping decision, not one a migration should make.
+CREATE UNIQUE INDEX "payments_razorpay_payment_id_booking_id_key"
+  ON "payments" ("razorpay_payment_id", "booking_id");

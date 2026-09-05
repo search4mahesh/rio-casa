@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { CONTENT_REVALIDATE_SECONDS, ROOM_CATALOGUE_TAG, cachedRead } from "@/lib/content-cache";
 import { marketingFor, type RoomMarketing } from "@/lib/room-marketing";
 
 /**
@@ -56,7 +57,7 @@ function splitAmenities(lists: string[][]): { amenities: string[]; someRoomsAmen
   return { amenities, someRoomsAmenities };
 }
 
-export async function getRoomCategories(): Promise<RoomCategory[]> {
+async function readRoomCategories(): Promise<RoomCategory[]> {
   const rooms = await prisma.room.findMany({
     where: { isActive: true },
     orderBy: [{ pricePerNight: "asc" }, { roomNumber: "asc" }],
@@ -108,6 +109,27 @@ export async function getRoomCategories(): Promise<RoomCategory[]> {
 
   return [...byType.values()].sort((a, b) => a.pricePerNight - b.pricePerNight);
 }
+
+/**
+ * Cached, because `/rooms` and `/rooms/[slug]` read `searchParams` and are
+ * therefore dynamic whatever this module does — page-level revalidation cannot
+ * help them, so the catalogue read is cached on its own. It saves one of the
+ * four round trips `/rooms` makes with dates; the availability half stays live,
+ * because that is the half a guest acts on.
+ *
+ * `prisma/perf-queries.ts` will still report four. It runs outside a request,
+ * where `cachedRead` reads straight through by design, so the profiler measures
+ * the uncached path — the honest worst case, and the one a cold cache pays.
+ *
+ * No writer invalidates `ROOM_CATALOGUE_TAG` today: nothing in this
+ * application edits rooms. The TTL is what keeps a `seed-rooms.ts` run or a
+ * price changed in Prisma Studio from being invisible.
+ */
+export const getRoomCategories = cachedRead(
+  readRoomCategories,
+  ["room-categories"],
+  { tags: [ROOM_CATALOGUE_TAG], revalidate: CONTENT_REVALIDATE_SECONDS }
+);
 
 export async function getRoomCategory(slug: string): Promise<RoomCategory | null> {
   const categories = await getRoomCategories();

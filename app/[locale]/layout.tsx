@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import WhatsAppButton from "@/components/layout/WhatsAppButton";
+import SkipLink from "@/components/layout/SkipLink";
 
 const locales = ["en"];
 
@@ -37,8 +38,19 @@ export default async function LocaleLayout({
 
   return (
     <NextIntlClientProvider messages={messages}>
+      {/* Every page began with eight tab stops — seven nav links and Book
+          Now — before a keyboard user reached any of its content. Visually
+          hidden until focused, which is the whole point: the first Tab on
+          any page now offers a way past the header. */}
+      <SkipLink />
       <Navbar locale={locale} />
-      <main className="pt-16">{children}</main>
+      {/* `tabIndex={-1}` so the skip link actually moves focus here.
+          Browsers scroll to a fragment either way, but several leave focus
+          in the link, so the next Tab would carry straight on through the
+          nav the guest just asked to skip. */}
+      <main id="main-content" tabIndex={-1} className="pt-16 focus:outline-none">
+        {children}
+      </main>
       <Footer locale={locale} />
       <WhatsAppButton />
     </NextIntlClientProvider>

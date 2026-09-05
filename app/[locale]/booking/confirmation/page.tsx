@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { pageMetadata } from "@/lib/page-metadata";
 import { PROPERTY } from "@/lib/property";
+import { whatsappUrl } from "@/lib/whatsapp";
+import { BOOKING_HOLD_MINUTES } from "@/lib/booking-service";
 
 export const generateMetadata = () => pageMetadata("confirmation");
 
@@ -64,6 +66,15 @@ export default async function BookingConfirmationPage({
   const amount = Number(booking.totalAmount);
   const guests = booking.adults + booking.children;
 
+  // `am` is a plain decimal, never a locale-formatted string — "4,500" is not
+  // an amount any UPI app will parse. The note carries the booking number so
+  // an incoming transfer can be matched to a reservation without asking.
+  const upiUrl =
+    `upi://pay?pa=${encodeURIComponent(PROPERTY.upiId)}` +
+    `&pn=${encodeURIComponent(PROPERTY.billingName)}` +
+    `&am=${amount.toFixed(2)}&cu=INR` +
+    `&tn=${encodeURIComponent(booking.bookingNumber)}`;
+
   // A stale hold or a failed payment leaves the booking `cancelled` — the
   // room is already back on the calendar for someone else. Checking only
   // `paymentStatus` here (both "pending" and this booking's "failed" satisfy
@@ -99,22 +110,50 @@ export default async function BookingConfirmationPage({
         {isUpi ? (
           <>
             <QrCode size={56} className="text-primary mx-auto mb-4" />
-            <h1 className="section-heading mb-4">Complete Your Payment</h1>
+            <h1 className="section-heading mb-4">{t("upiTitle")}</h1>
+            {/* The real hold window, not an invented one. This line used to
+                promise confirmation "within 15 minutes" while
+                `expireStalePaymentHolds()` swept the booking at
+                BOOKING_HOLD_MINUTES — 60 by default — so the only number the
+                guest was given was the one number that was not true. */}
             <p className="font-sans text-earth-text/70 mb-8">
-              Scan the QR code below with any UPI app to complete your booking.
+              {t("upiHold", { minutes: BOOKING_HOLD_MINUTES })}
             </p>
-            <div className="bg-earth-white rounded-sm shadow-sm p-8 mb-8 inline-block">
-              {/* Static UPI QR — replace /public/upi-qr.png with actual QR */}
-              <div className="w-48 h-48 bg-primary-100 flex items-center justify-center text-primary-400 text-sm mx-auto">
-                UPI QR Code
-              </div>
-              <p className="font-sans text-sm text-earth-text/70 mt-3">UPI ID: {PROPERTY.upiId}</p>
-              <p className="font-serif text-lg text-primary mt-1">
-                Amount: ₹{amount.toLocaleString("en-IN")}
+
+            <div className="bg-earth-white rounded-sm shadow-sm p-6 mb-8 text-left">
+              {/* A `upi:` deep link, not a QR code. This screen is reached on
+                  the phone the guest is holding, and a QR rendered on that
+                  same screen is the one thing that phone cannot scan — which
+                  is why the placeholder box that sat here for so long was
+                  never actually missed. The link hands the payee, the amount
+                  and the reference straight to GPay, PhonePe or Paytm, so
+                  there is nothing left to mistype. */}
+              <a href={upiUrl} className="btn-primary w-full text-center block">
+                {t("upiPayNow", { amount: amount.toLocaleString("en-IN") })}
+              </a>
+              <p className="font-sans text-xs text-earth-text/70 mt-2 text-center">
+                {t("upiOnThisPhone")}
               </p>
+
+              {/* The same details in a form a desktop visitor can use, since
+                  the deep link does nothing on a machine with no UPI app. */}
+              <div className="border-t border-primary-200 mt-5 pt-4 font-sans text-sm space-y-1">
+                <p className="text-earth-text/70">{t("upiManualHeading")}</p>
+                <p className="font-mono text-earth-text break-all">{PROPERTY.upiId}</p>
+                <p className="font-serif text-lg text-primary">
+                  ₹{amount.toLocaleString("en-IN")}
+                </p>
+                <p className="text-earth-text/70 text-xs pt-1">
+                  {t("upiReference", { reference: booking.bookingNumber })}
+                </p>
+              </div>
             </div>
+
             <p className="font-sans text-sm text-earth-text/70 mb-8">
-              After payment, WhatsApp us the screenshot at {PROPERTY.phone} and we will confirm your booking within 15 minutes.
+              {/* WhatsApp is only offered when a number is configured — same
+                  rule as `ConfirmationActions` below (B-73). With none, the
+                  phone number is the way to reach the property. */}
+              {whatsappUrl("") ? t("upiAfterWhatsApp") : t("upiAfterPhone", { phone: PROPERTY.phone })}
             </p>
           </>
         ) : (
@@ -172,19 +211,25 @@ function ConfirmationActions({ reference }: { reference?: string }) {
     ? `Hi! I just made a booking at ${PROPERTY.name}. Booking reference: ${reference}`
     : `Hi! I just made a booking at ${PROPERTY.name} and need help confirming it.`;
 
+  // Rendered only when a number is configured. The fallback that used to sit
+  // here sent a guest's booking reference to a stranger's phone (B-73).
+  const waUrl = whatsappUrl(message);
+
   return (
     <div className="flex flex-col sm:flex-row gap-3 justify-center">
       <Link href="/" className="btn-outline">
         Back to Home
       </Link>
-      <a
-        href={`https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "919876543210"}?text=${encodeURIComponent(message)}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn-primary"
-      >
-        WhatsApp Us
-      </a>
+      {waUrl && (
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-primary"
+        >
+          WhatsApp Us
+        </a>
+      )}
     </div>
   );
 }

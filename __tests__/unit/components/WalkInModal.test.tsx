@@ -49,7 +49,11 @@ afterEach(() => {
 
 /** Fill the required fields and submit. */
 async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>, opts: { rate?: string } = {}) {
-  await waitFor(() => expect(screen.getByRole("option", { name: /Deluxe Room/ })).toBeTruthy());
+  // The room list arrives from an effect, so every one of these tests has to
+  // wait for it before it can choose a room. `findByRole` says that at the call
+  // site; the window it waits in is set once in __tests__/setup.ts, because 1s
+  // is too tight for a machine running the whole suite in parallel (B-77).
+  await screen.findByRole("option", { name: /Deluxe Room/ });
 
   // Two selects on this form — room, then payment method.
   await user.selectOptions(screen.getAllByRole("combobox")[0], "r1");
@@ -101,7 +105,7 @@ describe("WalkInModal — negotiated rate (B-12)", () => {
   it("shows the standard tariff as a hint once a room is chosen", async () => {
     const user = userEvent.setup();
     render(<WalkInModal onClose={() => {}} />);
-    await waitFor(() => expect(screen.getByRole("option", { name: /Deluxe Room/ })).toBeTruthy());
+    await screen.findByRole("option", { name: /Deluxe Room/ });
     await user.selectOptions(screen.getAllByRole("combobox")[0], "r1");
 
     expect(screen.getByPlaceholderText(/Standard: ₹5500/)).toBeTruthy();

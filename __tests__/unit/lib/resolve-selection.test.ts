@@ -99,7 +99,9 @@ describe("resolveSelection", () => {
     h.roomFindMany.mockResolvedValue([...FREE, room("r103", "standard", "Standard Room", 4500)]);
     expect(await resolve({ standard: 3 }, 6)).not.toBeNull();
 
-    h.bookingFindMany.mockResolvedValue([{ roomId: "r103" }]);
+    h.bookingFindMany.mockResolvedValue([
+      { roomId: "r103", checkIn: CHECK_IN, checkOut: CHECK_OUT },
+    ]);
     expect(await resolve({ standard: 3 }, 6)).toBeNull();
   });
 

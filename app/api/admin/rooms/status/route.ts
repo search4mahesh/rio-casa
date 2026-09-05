@@ -14,29 +14,97 @@ export async function GET(req: NextRequest) {
   const today = todayDate();
   const tomorrow = addDays(today, 1);
 
-  const [rooms, dueCheckins] = await Promise.all([
+  // Read flat and reassembled below, rather than as one nested `include`.
+  // A relation select is a round trip of its own, so the nested form issued
+  // five: rooms, statuses, the guest of each occupied room, the booking of
+  // each occupied room, and today's arrivals. This is the board staff keep
+  // open all day, and it was the heaviest request in the profiler.
+  //
+  // The shape returned is byte-for-byte what it was — `RoomBoard.tsx` reads
+  // `room.roomStatus.currentGuest` and `.currentBooking` and does not need to
+  // know any of this changed.
+  const [rooms, statuses] = await Promise.all([
     prisma.room.findMany({
       where: { isActive: true },
-      include: {
-        roomStatus: {
-          include: {
-            currentGuest: { select: { firstName: true, lastName: true, phone: true } },
-            currentBooking: { select: { id: true, checkOut: true, bookingNumber: true, adults: true, status: true } },
-          },
-        },
-      },
       orderBy: [{ floor: "asc" }, { roomNumber: "asc" }],
     }),
-    prisma.booking.findMany({
-      where: { checkIn: { gte: today, lt: tomorrow }, status: "confirmed" },
-      select: { id: true, roomId: true, guestName: true, bookingNumber: true },
-    }),
+    prisma.roomStatus.findMany(),
   ]);
 
-  const dueCheckinMap: Record<string, { id: string; guestName: string; bookingNumber: string }> = {};
-  for (const b of dueCheckins) dueCheckinMap[b.roomId] = b;
+  const statusByRoom = new Map(statuses.map((s) => [s.roomId, s]));
+  const currentBookingIds = statuses.map((s) => s.currentBookingId).filter((id): id is string => Boolean(id));
+  const currentGuestIds = statuses.map((s) => s.currentGuestId).filter((id): id is string => Boolean(id));
 
-  const enriched = rooms.map((r) => ({ ...r, dueCheckin: dueCheckinMap[r.id] ?? null }));
+  // The occupying bookings and today's arrivals are both `bookings` rows, so
+  // they are one statement with a widened predicate and split in memory — the
+  // same trade the night-audit summary makes for its adjacent windows. A
+  // booking can legitimately be in both sets (a room whose guest checks out and
+  // whose next guest arrives today), so membership is tested independently
+  // rather than by partitioning.
+  // An empty `in` matches nothing rather than everything, so no branch is
+  // needed for a property with no occupied rooms — the OR collapses to the
+  // arrivals half on its own.
+  const [bookings, guests] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        OR: [
+          { id: { in: currentBookingIds } },
+          { checkIn: { gte: today, lt: tomorrow }, status: "confirmed" },
+        ],
+      },
+      select: {
+        id: true, roomId: true, guestName: true, bookingNumber: true,
+        checkOut: true, adults: true, status: true, checkIn: true,
+      },
+    }),
+    // This one *is* skipped when there is nothing to look up: unlike the query
+    // above it has no second half to serve, so issuing it would buy nothing.
+    currentGuestIds.length > 0
+      ? prisma.guest.findMany({
+          where: { id: { in: currentGuestIds } },
+          select: { id: true, firstName: true, lastName: true, phone: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const bookingById = new Map(bookings.map((b) => [b.id, b]));
+  const guestById = new Map(guests.map((g) => [g.id, g]));
+
+  const dueCheckinMap: Record<string, { id: string; guestName: string; bookingNumber: string }> = {};
+  for (const b of bookings) {
+    // The arrivals half of the widened query above.
+    if (b.status === "confirmed" && b.checkIn >= today && b.checkIn < tomorrow) {
+      dueCheckinMap[b.roomId] = { id: b.id, guestName: b.guestName, bookingNumber: b.bookingNumber };
+    }
+  }
+
+  const enriched = rooms.map((room) => {
+    const status = statusByRoom.get(room.id) ?? null;
+    const guest = status?.currentGuestId ? guestById.get(status.currentGuestId) ?? null : null;
+    const booking = status?.currentBookingId ? bookingById.get(status.currentBookingId) ?? null : null;
+
+    return {
+      ...room,
+      roomStatus: status
+        ? {
+            ...status,
+            currentGuest: guest
+              ? { firstName: guest.firstName, lastName: guest.lastName, phone: guest.phone }
+              : null,
+            currentBooking: booking
+              ? {
+                  id: booking.id,
+                  checkOut: booking.checkOut,
+                  bookingNumber: booking.bookingNumber,
+                  adults: booking.adults,
+                  status: booking.status,
+                }
+              : null,
+          }
+        : null,
+      dueCheckin: dueCheckinMap[room.id] ?? null,
+    };
+  });
 
   return ok(enriched);
 }

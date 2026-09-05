@@ -3,13 +3,20 @@ import { getTranslations } from "next-intl/server";
 import { ArrowRight } from "lucide-react";
 import { getBlogPosts } from "@/lib/site-content";
 import { pageMetadata } from "@/lib/page-metadata";
+import { CONTENT_REVALIDATE_SECONDS } from "@/lib/content-cache";
 
 export const generateMetadata = () => pageMetadata("blog", "/blog");
 
 // Posts come from `blog_posts`, which nothing read for a long time while the
 // site served `BLOG_POSTS` from code (B-53). Publishing a post is now a row,
 // not a deploy — which is also what `isPublished` and `publishedAt` were for.
-export const dynamic = "force-dynamic";
+// Revalidated on a timer rather than read per visitor. `force-dynamic` was
+// the right correction to B-74 (this page was prerendered at build, so the published posts
+// went stale until the next deploy) but it made every visitor pay a database
+// round trip — and, on a property this quiet, often the ~1.9s connection
+// handshake that follows an idle pool. A minute is the window; see
+// `lib/content-cache.ts` for why the floor is time and not tags.
+export const revalidate = CONTENT_REVALIDATE_SECONDS;
 
 export default async function BlogPage({ params }: { params: { locale: string } }) {
   const t = await getTranslations("blog");

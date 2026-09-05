@@ -9,6 +9,16 @@ import FeaturedRooms from "@/components/sections/FeaturedRooms";
 import PropertyGallery from "@/components/sections/PropertyGallery";
 import Testimonials from "@/components/sections/Testimonials";
 import LocationSection from "@/components/sections/LocationSection";
+import { CONTENT_REVALIDATE_SECONDS } from "@/lib/content-cache";
+import { addDays, today, toDayString } from "@/lib/dates";
+
+// Revalidated on a timer rather than read per visitor. `force-dynamic` was
+// the right correction to B-74 (this page was prerendered at build, so the approved testimonials and the catalogue's price range
+// went stale until the next deploy) but it made every visitor pay a database
+// round trip — and, on a property this quiet, often the ~1.9s connection
+// handshake that follows an idle pool. A minute is the window; see
+// `lib/content-cache.ts` for why the floor is time and not tags.
+export const revalidate = CONTENT_REVALIDATE_SECONDS;
 
 export default async function HomePage({ params }: { params: { locale: string } }) {
   // The graph carries a price range and an amenity list, both derived from the
@@ -41,7 +51,11 @@ export default async function HomePage({ params }: { params: { locale: string } 
   return (
     <>
       {hotel && <JsonLd data={hotel} />}
-      <Hero locale={params.locale} />
+      {/* The earliest bookable check-in, resolved on the server. `today()`
+          answers in the property's timezone; computing it inside the hero's
+          client island would run it twice — once server-side, once on
+          hydration — and disagree either side of IST midnight. */}
+      <Hero minCheckIn={toDayString(addDays(today(), 1))} />
       <AmenitiesStrip />
       <FeaturedRooms locale={params.locale} />
       <PropertyGallery />
@@ -52,8 +66,14 @@ export default async function HomePage({ params }: { params: { locale: string } 
           location: x.location,
           review: x.review,
           rating: x.rating,
+          // A string, not a Date — `getTestimonials` is cached, and Next’s
+          // data cache hands back JSON. See SiteTestimonial.stayDate.
           stayDate: x.stayDate
-            ? x.stayDate.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" })
+            ? new Date(x.stayDate).toLocaleDateString("en-IN", {
+                month: "long",
+                year: "numeric",
+                timeZone: "UTC",
+              })
             : null,
         }))}
       />

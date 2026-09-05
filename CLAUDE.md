@@ -86,6 +86,128 @@ font-deva        Noto Sans Devanagari (Hindi/Marathi)
 Use the design tokens above, never raw hex (`bg-primary`, not `bg-[#4A6741]`).
 Exceptions are third-party brand colours (WhatsApp green, Razorpay theme).
 
+## Keyboard and screen reader
+The guest-facing site had none of this. Each item below names what a person
+could not do, not a rule that was broken.
+
+### The focus indicator is defined once, in `globals.css`
+`:focus-visible` gives **every** focusable element a two-tone ring: a light
+halo against the element and a dark outline outside it. Twelve controls — the
+contact form, both date forms, all four steps of the wizard — carried
+`focus:outline-none` paired with nothing but `focus:border-primary`, so a
+keyboard user got a 1px border changing colour where a focus ring belongs. The
+admin panels had been doing it correctly with `focus:ring-2` the whole time,
+which is why it survived: it looks handled if you grep for the string rather
+than for the pairing.
+
+- **Two tones, because no single colour survives every ground.** The site puts
+  focusable elements on cream pages, on a dark footer, over the hero photograph
+  and inside filled green buttons. A `currentColor` outline was tried first and
+  fails the last one outright — on `.btn-primary` `currentColor` is white, and
+  at a 2px offset that lands on the cream card behind it at about 1.05:1.
+- **`.input-resort` is the form-control class**, appearance only, with layout
+  utilities kept alongside it the way `.btn-admin` works. It deliberately sets
+  no `outline-none`: opting out of the indicator has to be said on purpose.
+- `__tests__/unit/components/focus-visible.test.ts` fails the build if
+  `outline-none` reappears anywhere guest-facing. Its allowlist has one entry,
+  `<main>`, which is a scroll target for the skip link rather than a control.
+
+### Every page starts with a way past the header
+`components/layout/SkipLink.tsx`, the first tab stop everywhere. Reaching the
+content of any page took eight tab stops — seven nav links and Book Now — on
+every page visited. It must *become visible* when focused: a skip link that
+stays `sr-only` is worse than none, because a sighted keyboard user watches
+their focus disappear into nothing. `<main>` carries `tabIndex={-1}` so focus
+actually lands there; several browsers scroll to the fragment but leave focus
+in the link, and the next Tab then walks back through the nav.
+
+### The navbar says where you are
+`aria-current="page"` plus weight and an underline. Neither existed, so the
+only way to tell which of seven pages you were on was to read the heading. A
+section link stays lit for its children (`/rooms` for `/rooms/family`), and
+`/en/rooms` normalises to `/rooms` before comparing — a nav that highlighted
+nothing on the prefixed URLs would be wrong in exactly the case nobody checks.
+
+The hamburger is a real disclosure: `aria-expanded`, `aria-controls`, and a
+panel that stays in the DOM behind the `hidden` attribute, because
+`aria-controls` naming an absent id is ignored. It closes on Escape and on any
+navigation it did not initiate, and locks body scroll while open.
+
+### The gallery viewer is not mouse-only
+Tiles are `<button>`, not `<div onClick>` — the old markup was not in the tab
+order, opened for no key, and announced as a photograph with no hint it did
+anything. The overlay is a `role="dialog" aria-modal` with Escape, arrow keys,
+a focus trap, focus restored to the tile that opened it, body-scroll lock, and
+a swipe on touch.
+
+- **The backdrop *is* the dialog.** Wrapping one in a `display: contents`
+  element lays out correctly but is known to drop the ARIA role in some
+  engines — and that role is the only thing making this announce as a modal.
+- **The trap is not optional.** Without it Tab walks into the grid underneath,
+  which is still in the document and now behind a full-screen overlay, so focus
+  goes somewhere the guest can neither see nor recover from.
+- `__tests__/unit/components/gallery-lightbox.test.tsx` asserts the behaviour a
+  keyboard user gets, not the attributes.
+
+### Tap targets are 44px, and the class says so once
+`.stepper-button` in `globals.css` is the −/+ pair on both of the wizard's
+counters. The room steppers were 32px and the guest counter 36px — the two
+most-pressed controls in the funnel, both under the guideline, and different
+sizes from each other for no reason anyone had decided. One class rather than
+four copies of the string, for the same reason `.input-resort` exists: two
+counters with their own literal is how they came to differ in the first place.
+
+The testimonial dots were 10px, under even the 24px WCAG 2.5.8 floor, and the
+only way through the set. **The visual dot stays 10px; the button around it is
+44px** — a 44px filled circle would be a different design, and what needed to
+grow was the target, not the mark. The row `flex-wrap`s, because six dots
+between two arrows at 44px is wider than a 390px phone.
+
+`__tests__/unit/components/touch-targets.test.tsx` pins the sizes and the
+carousel's behaviour. jsdom has no layout, so the size half asserts classes
+rather than boxes — the regression being guarded against is someone hand-writing
+a smaller size again, which is visible in the source.
+
+### A page that pins its own action hides the WhatsApp button
+`hasPinnedActionBar()` in `components/layout/WhatsAppButton.tsx`. The booking
+wizard pins its running total and "Continue"; `/rooms/[slug]` pins the price and
+"Book This Room". A floating button in that corner lands on the primary action,
+and nudging it up by a fixed amount does not help — the wizard's bar grows with
+the number of room types a party picks, so any offset is wrong for some
+selection. On a narrow screen it steps aside entirely; desktop has the room and
+keeps it. `/rooms` itself is deliberately not in the list: the catalogue pins
+nothing.
+
+**The room detail bar is `sticky`, not `fixed`** — same call as the wizard's, and
+for the same reason: it releases at the end of the content instead of sitting
+over the footer for the rest of the page. In flow the price and CTA sat at the
+very end of a long single column, below the photographs, the description, the
+highlights and the full amenity list, so the one thing a guest came to do was
+several screens past where they landed.
+
+**One definition of the action, rendered twice.** `bookAction(className)` on the
+detail page returns Book / See ‹date› / See what else is free from a single
+branch. A pinned bar offering "Book This Room" for a room the card above just
+said was taken is the failure that shape rules out.
+
+### Anything that changes without being asked for is announced
+`role="alert"` for failures, `role="status"` for progress, `aria-live` for
+figures that rewrite in place. The pressure point is the room step: the party
+tally (`2 rooms · sleeps 4 of 5`) is the *answer* to the −/+ press the guest
+just made, and without a live region the only way to learn it was to go looking
+for a line that had silently rewritten itself. Scope the region to the answer,
+not the enclosing box — the itemised quote sits in the same panel, and wrapping
+all of it reads the whole bill out again on every press.
+
+**`prefers-reduced-motion` collapses the durations; it does not switch the
+animations off.** The hero holds its content at `opacity-0` until an animation
+reveals it, so `animation: none` would leave the first screen permanently
+blank for exactly the people who asked for less movement. With
+`animation-fill-mode: forwards` a 0.01ms run lands on the end state at once.
+The delays are zeroed in the same block, or the content is merely invisible for
+less long. Anything new that reveals itself by animating has to survive that
+rule — check it with the OS setting on, not by reading the CSS.
+
 ## Shared UI (`components/ui/`)
 - `Toast` + `useToast` — transient admin confirmations. One implementation;
   don't hand-roll toast state, timers, or markup in a panel.
@@ -166,8 +288,12 @@ actually free: a count per card, or "Not available for these dates" plus the
 next date that works. The dates ride through to the wizard on the Book link, so
 the guest is not asked for them twice. Four things this depends on:
 
-- **The counts come from `getAvailableRooms`**, not a query of the page's own.
-  The catalogue and the wizard must not be able to disagree about what is free.
+- **The counts come from `catalogueAvailability`**, not a query of the page's
+  own. It resolves "free" through the same `loadOccupancy` / `isFreeForStay`
+  pair `getAvailableRooms` uses, so the catalogue and the wizard cannot
+  disagree about what is free. That now holds because there is **one**
+  implementation of the predicate, rather than because two call sites remember
+  to call the same function — which is what the rule was really asking for.
 - **A booked-out card stays on the page.** It describes a room the property
   owns; dropping it tells a visitor there is no family room at all. What changes
   is the claim it makes and the action it offers — "See 2 Sept" instead of
@@ -175,19 +301,69 @@ the guest is not asked for them twice. Four things this depends on:
 - **Without dates it makes no availability claim.** "Available" is meaningless
   until there is a stay to measure against, so the page says so rather than
   implying everything is free.
-- **`nextAvailableByType(nights, from)`** finds the first day the *whole* stay
-  fits, in one bookings query and an in-memory scan. A query per candidate day
-  would be 240 round trips to render one page.
+- **`catalogueAvailability(checkIn, checkOut, horizon)`** answers both of the
+  page's questions — the free count per type, and for the types with none, the
+  first day the *whole* stay fits — in **three round trips**: rooms, bookings,
+  blocked dates. The horizon window is a strict superset of the stay, so
+  reading it once serves both and the "when else?" answer is free. The page
+  totals four, the fourth being `getRoomCategories()` for the card copy; it was
+  seven when the two availability questions were separate calls, because rooms,
+  bookings and blocked dates were each read twice.
 
-The form is a plain `<form method="get">`, so the page stays a server component
-and the result is shareable. That is also why the date inputs use explicit
-`htmlFor` ids rather than `components/ui/Field` — `Field` passes the id through
-a render prop, and a function cannot cross the server/client boundary.
+  `nextAvailableByType(nights, from)` is still exported for callers that want
+  only the horizon answer. Both scan in memory rather than querying per
+  candidate day, which would be 240 round trips to render one page.
+
+### Asking for the dates — `components/booking/StaySearchForm.tsx`
+**Three places ask, one component answers**: the home page hero, `/rooms`, and
+`/rooms/[slug]`. They are one link apart and carry the same pair between them,
+so two forms that disagreed about which ranges are askable would let a guest
+click from a card quoting counts to a page quoting none.
+
+It is still a plain `<form method="get">`, so the dates land in the URL, the
+result is shareable and bookmarkable, and the pages stay server components. It
+is a **client island** for one reason a server component cannot cover: floor
+check-out at the day after check-in *while the guest is still choosing*. Both
+inputs used to be floored at tomorrow, so "check in on the 5th, check out on
+the 3rd" was reachable in the native picker and only rejected after a round
+trip. Being a client component is also why it can use `components/ui/Field`
+rather than hand-written `htmlFor` ids — `Field` passes the id through a render
+prop, and a function cannot cross the server/client boundary.
+
+`minCheckIn` is passed **in**, never computed inside. `today()` answers in the
+property's timezone, and a client component calling it during render computes
+it twice — once server-side, once on hydration — for a mismatch either side of
+IST midnight.
+
+`showNights` is off on `/rooms` only, where the page already summarises the
+submitted stay underneath: two counts of the same nights, one above the other,
+read as a bug rather than as live feedback.
+
+**The hero is where the question belongs.** It used to offer "Book Your Stay"
+and "Explore Rooms", both of which dropped the visitor somewhere that asked for
+the dates over again — so a visitor arriving from a search result had to find
+the catalogue before they could find out whether the property was free at all.
+
+### Reading the dates — `lib/stay-params.ts`
+`readStay()` and `humanDay()`, shared by `/rooms` and `/rooms/[slug]` for the
+same reason the form is. `readStay` keeps `none` and `error` apart on purpose:
+no dates is not a failure — the page simply makes no availability claim — while
+a broken range has to be said out loud, and **neither may render as "nothing is
+free"**.
 
 Dates arriving from a query string are validated with `isDayString` before use,
 in both pages and the wizard: `?checkIn=2026-02-30` parses as a `Date` but
 blanks a date input and makes `differenceInCalendarDays` return NaN, which
 disables Continue with nothing on screen to explain why.
+
+### `/rooms/[slug]` carries the answer through
+The detail page resolves availability too, through `catalogueAvailability` like
+the catalogue — not a query of its own. It used to read `?checkIn=&checkOut=`
+only to build the Book link, so a guest went from a card reading "2 left · next
+free 2 Sept" to a page making no claim at all, which reads as the answer having
+changed. Sold out, it offers the next date that works and keeps the stay's
+length; with no date inside the horizon, it offers the rest of the property
+rather than a button leading back to the same empty answer.
 
 ## Room categories (`lib/room-catalogue.ts`)
 The public site groups rooms by `roomType` — guests choose a kind of room, not
@@ -357,6 +533,20 @@ npx tsx prisma/seed-content.ts        # testimonials, blog, gallery (--exclusive
                                       # also writes `packages`, which nothing reads — see Editorial content
 ```
 
+## Deployment region — `vercel.json` → `regions`
+Functions are pinned to **`iad1`**, which is AWS `us-east-1` — the region
+`DATABASE_URL` points at. This was previously unset and happened to work,
+because `iad1` is also Vercel's default.
+
+That is exactly why it is written down now. Every number in **Performance
+testing** below is a count of round trips, and a round trip is only cheap while
+the function and the database are in the same region. Moving the project to
+`bom1` to be "closer to the guests" would put ~200ms of Atlantic between the
+function and Neon on *every one* of them — turning the `/rooms` page's 4 trips
+into most of a second of pure network, and undoing the work that got it down
+from 7. The right move if latency to Indian guests ever matters is to move the
+**database** and the functions together, not the functions alone.
+
 ## Scheduled Jobs (`vercel.json` → `crons`)
 | Path | Schedule (UTC) | Purpose |
 |---|---|---|
@@ -465,6 +655,42 @@ because incremental updates silently fell out of sync:
 fixes it. Idempotent and safe to re-run.
 
 ## Booking Flow
+
+The step indicator is **labelled and navigable backwards**. Four unlabelled
+circles used to be all of it: the guest could not see what the steps were, and
+from Details the only way back to the dates was to press Back twice. A
+completed step is a button; a future one is not, because every forward move is
+gated on something the guest may not have done yet, and those gates live on the
+steps' own Continue buttons.
+
+**The wizard remembers the stay between page loads** (`sessionStorage`, see
+`STAY_STORAGE_KEY`). A refresh, a stray back-swipe or closing the Razorpay
+modal and landing here again used to drop the guest on step 1 with the default
+"tomorrow, two nights" — four steps of input gone, with nothing on screen
+saying so. Three rules it keeps:
+
+- **The URL wins.** A guest who just clicked "Book This Room" for a stay in
+  October means October, not what they were browsing an hour ago.
+- **Only the dates and the party size.** The room selection is deliberately not
+  restored — availability moves, and re-offering a room since taken is worse
+  than asking again. Neither are name, email or phone: this page is opened on
+  shared and hotel-lobby machines, and remembering somebody's contact details
+  there is not a convenience.
+- **It says so, and offers a way out.** A form that quietly fills itself in
+  reads as a bug the first time.
+
+Restoring happens in an effect, not a `useState` initialiser: `sessionStorage`
+does not exist during the server render, and reading it where the two must
+agree is a hydration mismatch. `__tests__/setup.ts` clears per-tab storage
+before each test for the same reason — it outlives `cleanup()`, so the next
+test in a file otherwise starts on whatever the last one left behind.
+
+**Step 4 states the terms beside the button that agrees to them** — check-in
+and check-out times, what the total covers, that the room is held only while
+they pay, and who to call to change it. It used to ask for a card with none of
+that, all of which a guest goes looking for at exactly that moment and leaves
+the page to find.
+
 1. User picks dates → `/api/booking/availability?roomId=&checkIn=&checkOut=`
 2. User sets the party size and composes it from the free rooms →
    `GET /api/booking/quote` prices it.
@@ -561,9 +787,25 @@ error returns an empty 500, and a bare `res.json()` shows the guest
 `"Unexpected end of JSON input"`. Parse with `.catch(() => null)` and fall back
 to your own message.
 
+### Settlement — `lib/payment-settlement.ts`
+**Two routes report that money arrived; one function decides what it means.**
+`settlePayment()` owns the order/booking binding, the still-live check,
+reinstatement, the party, the payment rows and the confirmation email. The
+routes above it do only what is theirs — authenticating the caller and choosing
+a status code:
+
+| Route | Authenticates with | Arrives |
+|---|---|---|
+| `POST /api/payment/verify` | the checkout signature over `orderId\|paymentId` | from the guest's browser, fast |
+| `POST /api/payment/webhook` | `x-razorpay-signature` over the **raw body** | from Razorpay, whatever the browser did |
+
+Splitting the *routes* while sharing the *decision* is deliberate. Two payment
+paths with their own copy of "is this booking still live?" is the same shape as
+the two pricing paths and the two counter allocators, and both of those drifted.
+
 ### Payment verification binds the order to the booking
 `verifySignature` only proves Razorpay authorised a given **(order, payment)**
-pair. It says nothing about *whose* booking that is. `/api/payment/verify` must
+pair. It says nothing about *whose* booking that is. Settlement must
 therefore also check `booking.razorpayOrderId === razorpayOrderId` before
 marking anything paid — the column exists on the row for exactly this.
 
@@ -573,8 +815,76 @@ receives, then replay it against someone else's `bookingId`. Replaying a triple
 against *its own* booking is answered idempotently — no second `Payment` row, or
 the stay is double-counted in every revenue report.
 
-There is no Razorpay webhook. This route is the only path to `paid`, so nothing
-downstream compensates for a weak check here.
+The webhook reaches settlement having looked the booking up *by* that order id,
+so it cannot fail the check — which is the point. One binding, checked once,
+whichever way the news arrived.
+
+### The webhook is why a closed tab no longer loses a booking
+`/api/payment/verify` runs in the guest's browser. A closed tab, a dropped
+connection, or one 500 from that route left Razorpay holding the money and the
+booking at `pending` with no `Payment` row — absent from every revenue report
+until someone read a log line. `expireStalePaymentHolds()` covered half of it
+(it asks Razorpay, is told `"paid"`, and keeps the room) but nothing confirmed
+the booking or emailed the guest.
+
+- **`RAZORPAY_WEBHOOK_SECRET` is not `RAZORPAY_KEY_SECRET`.** It is the value
+  typed into the Razorpay dashboard when the webhook is created, and it signs
+  the **raw request body** — so the route reads `await req.text()` and parses
+  only after verifying. `JSON.parse` then `JSON.stringify` reorders keys and the
+  digest never matches again.
+- **It fails shut**, like `JWT_SECRET` and `CRON_SECRET`: unset means 503, not
+  "accept anything". So a deploy without the variable set has no webhook at all
+  and says so only in the log.
+- **A 2xx means "decided, stop retrying".** Razorpay redelivers on any non-2xx
+  for ~24 hours, so every settled outcome answers 200 — *including* a payment
+  recorded for refund, which is a decision no redelivery will change. Only a
+  genuinely transient failure is allowed to escape as a 5xx, because there a
+  retry is exactly what we want. This is why the same `unconfirmable` outcome is
+  a 409 to the guest and a 200 to Razorpay.
+- **`payment.authorized` is ignored on purpose.** An authorised, uncaptured
+  payment is a hold on a card, not money; confirming a stay against one promises
+  a room for funds that may never arrive. Only `payment.captured` and
+  `order.paid` settle.
+
+#### Registering the webhook
+The code is inert until three things line up, and two of them are outside this
+repository. **`npx tsx scripts/verify-webhook.ts` checks all three** against a
+running server and is safe to point at production — every delivery it sends
+names an order id no booking holds, so it proves the plumbing without settling
+anything.
+
+1. **`RAZORPAY_WEBHOOK_SECRET` in `.env`** for local work. Generated, not
+   chosen; it is gitignored and never printed to a terminal that logs.
+2. **The same value in the Vercel project**, or the route 503s every delivery
+   and says so only in the log.
+3. **A webhook in the Razorpay dashboard** at
+   `https://<domain>/api/payment/webhook`, subscribed to **`payment.captured`**
+   (and optionally `order.paid`), with that same secret in its Secret field.
+
+The failure mode worth knowing: a secret that disagrees between Vercel and the
+dashboard shows up *only* as failed deliveries in Razorpay's own dashboard —
+nothing in this application logs a wrong signature as a configuration problem,
+because a wrong signature is also what an attacker sends. `verify-webhook.ts`
+is what tells the two apart, which is why it exists rather than a `curl` in a
+comment.
+
+**Both paths usually fire for the same payment, seconds apart**, so concurrent
+settlement is the normal case rather than an edge. Three things keep it from
+double-counting a stay:
+
+- The replay check, which answers a *sequential* retry without writing.
+- **A unique index on `payments (razorpay_payment_id, booking_id)`**
+  (`13_payment_idempotency`), which makes a second row unrepresentable rather
+  than merely unlikely — the loser's whole transaction rolls back and P2002 is
+  read as "the other path got there first". Same reasoning as
+  `no_overlapping_bookings`: the invariant that matters most is the one the
+  database refuses to break. Cash and OTA payments carry a NULL
+  `razorpay_payment_id`, and NULLs are distinct in a Postgres unique index, so
+  they are unaffected.
+- `alreadyReinstatedBy`, for the narrower race where both paths try to reinstate
+  the same expired hold. Losing that race is a success, not a refund — but only
+  when the rooms came back *against this same payment id*, since a manager
+  reinstating by hand must not be mistaken for the money having been recorded.
 
 **It also checks the booking is still live.** The signature and the order check
 both pass for a booking `expireStalePaymentHolds()` has already cancelled — the
@@ -627,8 +937,24 @@ Two rules it must keep:
   payment landing mid-sweep cannot be undone.
 
 A UPI booking is left `pending` on purpose while staff confirm a transfer
-manually, and **will** be swept after the hold window — 60 minutes against the
-15 the confirmation screen promises.
+manually, and **will** be swept after the hold window. The confirmation screen
+therefore quotes `BOOKING_HOLD_MINUTES` itself rather than a number written
+into the copy: it used to promise confirmation "within 15 minutes" while the
+sweeper cancelled at 60, so the only figure the guest was given was the one
+that was not true.
+
+### The UPI screen is a `upi:` deep link, not a QR code
+`/booking/confirmation?method=upi` hands the payee, the amount and the booking
+number straight to GPay, PhonePe or Paytm, with the UPI ID and amount repeated
+underneath for a desktop visitor who has no UPI app to open. `am` is a plain
+decimal — `4,500` is not an amount any UPI app parses — and `tn` carries the
+booking number so an incoming transfer can be matched without asking.
+
+There was a placeholder grey box reading "UPI QR Code" here for a long time,
+with a comment saying to replace it. It was never missed because **this screen
+is reached on the phone the guest is holding, and that phone cannot scan a QR
+rendered on its own display.** If a printed or desk-side QR is ever wanted, it
+is a different surface, not this one.
 
 ## Pricing — `quoteStay` / `applyGst` (`lib/booking-service.ts`)
 **Every booking path prices through these two.** There were two implementations:
@@ -819,9 +1145,36 @@ a deploy.
   `getTestimonials()` filters on `isApproved`, `getBlogPost()` on `isPublished`
   as well as the slug. A draft must not be readable by anyone who guesses its
   URL just because the index does not link it.
-- **Content pages are `force-dynamic`.** They are editable from the admin
-  panel, and a statically rendered page would serve yesterday's content until
-  the next deploy.
+- **Content pages revalidate on a timer** (`CONTENT_REVALIDATE_SECONDS`, 60s —
+  `lib/content-cache.ts`). `force-dynamic` was the right correction to B-74 but
+  made every visitor pay a database round trip, and often the ~1.9s handshake
+  that follows an idle pool. `/`, `/blog`, `/blog/[slug]` and `/gallery` are now
+  ISR; the build's `prerender-manifest.json` is where to check what each route
+  actually got. `/rooms`, `/rooms/[slug]` and `/booking/confirmation` stay
+  dynamic — the first two read `searchParams`, and all three make claims that
+  must be current.
+- **The cache floor is time, not tags.** Nothing in this application writes
+  rooms, gallery images or blog posts — they change through `seed-content.ts`,
+  `seed-rooms.ts` or Prisma Studio. A cache invalidated only by
+  `revalidateTag` would never be invalidated for any of them, which is B-74
+  with a longer fuse. Tags are layered on top only where an in-app writer
+  exists: `/api/admin/testimonials/[id]` calls `revalidateTag` so Approve takes
+  effect at once instead of within the minute.
+- **Nothing behind `cachedRead` may return a `Date`.** Next's data cache stores
+  what it is handed as **JSON**, so a `Date` goes in and a string comes back on
+  every cache hit. `SiteTestimonial.stayDate` was typed `Date`, the home page
+  believed it and called `toLocaleDateString`, and `/` died — at prerender it
+  failed `next build`, and a deployed build would have 500'd the home page on
+  the first hit after each 60s window (B-78). Convert **below** the cache, in
+  the reader itself: fixing it at the call site would leave `cachedRead`'s two
+  paths — through the cache in a page, straight through in `perf-queries.ts`
+  and the `verify-*.ts` scripts — returning different types for one field.
+- **Cached readers use `cachedRead`, not `unstable_cache` directly.** Next's
+  data cache only exists inside a request, so a bare `unstable_cache` throws
+  `Invariant: incrementalCache missing` when `prisma/perf-queries.ts` or a
+  `verify-*.ts` script calls the same function. `cachedRead` reads straight
+  through in that case. It also means the profiler reports the *uncached* trip
+  count, which is the right worst case to watch.
 - **A failed load is not an empty page.** "No posts" tells a visitor the
   property has none, when in truth we never managed to ask — the same
   distinction `ErrorState` exists for in the admin panels (B-39).
@@ -927,6 +1280,31 @@ database client and was never actually asked.
   value. `notable` marks the actions that move money or remove inventory, and
   is the view's default filter.
 
+## Operational alerts — `lib/alerts.ts`
+The dashboard's "Needs attention" banner. Seventeen paths write `audit_log` and
+the settlement code shouts `PAYMENT RECEIVED FOR A CANCELLED BOOKING` into
+`console.error`, and until this existed the only reader for any of it was
+`/admin/setup?tab=audit` — which an owner has to think to open. Nobody watches a
+log stream for a 29-room property, so a guest's money could sit unrefunded
+until someone happened to wonder.
+
+- **Two things qualify, deliberately.** Money the property is holding that is
+  not its own (a payment taken for a stay that was cancelled and could not be
+  reinstated), and a stay the system still believes is in progress past its
+  departure day (B-51's class). Both need a human decision and neither appears
+  anywhere else in the panel. This is **not** a general error feed: an alert
+  nobody can act on trains people to ignore the ones they can.
+- **Matched on booking columns, not by reading `audit_log` JSON.** A cancelled
+  stay holding a `razorpayPaymentId` with no `refundAmount` set is the durable
+  fact; the audit row is a record of how it got that way. There is no
+  `refunded` payment status, so `refundAmount` being set is what marks one
+  handled.
+- **Front desk does not fetch the money half at all.** `getOperationalAlerts`
+  takes `includeMoney` and skips the query, rather than fetching it and hiding
+  it in the markup. An overdue checkout *is* theirs — they can walk to the room.
+- **The banner renders nothing when there is nothing.** A banner that is always
+  present stops being read.
+
 ## Inbound inquiries
 `/admin/guests?tab=inquiries` reads `contact_inquiries`, which `/api/contact`
 writes. For a long time nothing read it at all, so a submission reached staff
@@ -990,6 +1368,19 @@ and reading it as `booking.perNight` is how the booking wizard once showed
 guests "₹5,500 booking.perNight". Missing keys log
 `IntlError: MISSING_MESSAGE` in the console; that error is worth grepping for
 after touching copy.
+
+**A list of keys and the list that reads them have to agree.** The gallery's
+filter labels are the worked example: `categories` in `GalleryGrid.tsx` names
+the four filters the page offers, and each needs a key under
+`gallery.categories`. A filter with no key renders `categories.<name>` to the
+visitor as a button label.
+
+For a long time the component held its own literal map of those labels, which
+is the only reason a `gallery.categories` namespace could sit in the string
+store completely unread — with `dining` and `events` entries matching no filter
+and no row in `gallery_images`, reading as live options nobody could reach.
+`gallery-lightbox.test.tsx` now checks both directions. Mocked component tests
+cannot: they supply their own message map, which is exactly the blind spot.
 
 ## Running Locally
 ```bash
@@ -1161,6 +1552,7 @@ applied, not replayed. The migrations are:
 | `8_rate_limits` | `rate_limits` — fixed-window request counters for the three public endpoints |
 | `9_contact_inquiry_handled` | `contact_inquiries.handled_at` / `handled_by`, plus a partial index for the open view |
 | `10_content_english_only` | `packages` Hindi/Marathi columns made nullable, duplicate packages and testimonials removed, `packages.name_en` made unique, `blog_posts.excerpt`/`category` added, content indexes |
+| `13_payment_idempotency` | Unique index on `payments (razorpay_payment_id, booking_id)` — two settlement paths now race for every online payment |
 
 **`\d` does not work in this database's regex operator.** `'LB-20260727-01' ~
 '^LB-\d{8}-\d+$'` evaluates *false* on Neon while the `[0-9]` form is true, so
@@ -1194,6 +1586,103 @@ fast check that something still renders. For interactive testing, console
 errors, or network inspection, the `chrome-devtools` MCP server in `.mcp.json`
 drives a real Chrome. See the `run-app` and `test-in-chrome` skills.
 
+### Performance testing
+Four harnesses. The first three are read-only and safe against the live
+database; the fourth writes and cleans up after itself.
+
+| Script | Measures |
+|---|---|
+| `npx tsx prisma/perf-queries.ts` | **round trips per request** — instruments the Prisma singleton and runs the real page-data functions and route handlers in-process |
+| `npx tsx scripts/perf-http.ts` | **what the visitor waits for** — TTFB and total against a running server |
+| `npx tsx scripts/perf-load.ts` | **throughput and the saturation knee** — concurrent GETs at rising concurrency |
+| `npx tsx scripts/perf-client.ts` | **what the browser pays** — LCP, CLS, main-thread blocking and bytes, in Chromium at phone size |
+| `npx tsx prisma/verify-booking-race.ts n` | the **write** path: n simultaneous bookings for one room, exactly one winner |
+| `npx tsx scripts/verify-webhook.ts` | that `/api/payment/webhook` is reachable, its secret matches, and the raw body survives the request path — read-only, safe against production |
+
+**Count round trips, do not trust the clock.** `DATABASE_URL` is a Neon
+endpoint in us-east-1: a statement costs ~250ms from a laptop in India and a
+couple of ms from a Vercel function in the same region, so an absolute timing
+taken locally says almost nothing about production. The statement *count* is
+identical in both places, which is why it is the headline column — and it is
+the thing a change can quietly make worse.
+
+Measured on 2 Sep 2026, the queries themselves are not the problem: `EXPLAIN
+ANALYZE` puts the calendar's month window at **0.07ms** over 169 bookings, and
+the seq scans are the right plan at that size. Everything else is the wire.
+Four shapes to watch for, because all of them add trips without looking like
+they do:
+
+- **A `findMany` with a relation `select` is two round trips**, not one — and
+  a select *shared* across several lists pays that per list.
+  `/api/admin/night-audit/summary` shared one `bookingSelect` carrying
+  `room: { select: … }` across four `findMany` calls and issued ten statements,
+  four of them the identical rooms query. It now reads the ~29 rooms once and
+  attaches them in memory: 5 trips. Prefer a join key plus an in-memory
+  `Map` over a relation select on any list a request reads more than once.
+- **Two lists that differ only by a bound are one query and a filter.** That
+  same route read today's arrivals and yesterday's no-shows as separate
+  statements, and due departures as a third alongside in-house — adjacent
+  windows over the same predicate. Reading the wider window once and splitting
+  it in memory is exact, not an approximation, as long as the sort order is
+  shared. Watch for it in the profiler's "issued more than once" section: it
+  matches on SQL *text*, so a parameterised statement run twice with different
+  bounds shows up there and is usually this shape.
+- **A nested `include` costs a trip per relation, at every level.**
+  `/api/admin/rooms/status` — the board the front desk keeps open all day, and
+  the heaviest request in the profiler at 6 trips — asked for rooms with
+  `roomStatus` and, inside that, `currentGuest` and `currentBooking`. Four
+  statements before today's arrivals were even counted. Read flat and
+  reassembled through `Map`s it is 5, and the JSON it returns is unchanged, so
+  `RoomBoard.tsx` never had to know. The occupying bookings and today's
+  arrivals also collapsed into one widened `bookings` query — the shape above,
+  applied to two sets that differ by predicate rather than by bound. A booking
+  can be in both (a room whose guest leaves and whose next guest arrives the
+  same day), so membership is tested independently rather than by partitioning.
+- **Several aggregates over one table are one `groupBy`.**
+  `/api/admin/reviews` issued a `count()`, a second `count()` narrowed to
+  `responded`, and an `_avg` of the rating — three statements, all unfiltered,
+  differing only in what they asked about the same rows. One
+  `groupBy({ by: ["responded"], _count, _sum })` answers all three and takes the
+  route from 5 trips to 3. The mean is recombined as summed rating over summed
+  count, which is what `_avg` computes — exact, not an approximation, and
+  ratings are integers so nothing is lost.
+- **The pool pays a ~1.7s TLS handshake whenever it has to grow.** Concurrent
+  handshakes overlap, so opening five connections costs what opening one does
+  — but the first `Promise.all` in a process is slow even when a connection is
+  already warm, and on Vercel every scaled-up instance pays it again.
+
+`perf-http.ts` must point at `npm run build && npm start`. Against `next dev`
+the first number is a route compile and the rest measure a build that never
+ships.
+
+**Throughput is `DATABASE_POOL_MAX / (trips × RTT)`**, and the measured numbers
+land within ~15% of it at every level: the 2-trip availability endpoint peaked
+at 41 req/s, `/rooms` at 10 and the night-audit summary at 9, where the formula
+predicts 40, 11 and 8. Those were measured at 2, 7 and 10 trips; `/rooms` has
+since been cut to 4 and the summary to 5, so both ceilings are now higher than
+the figures above. The same pass took `/api/admin/rooms/status` from 6 to 5 and
+`/api/admin/reviews` from 5 to 3. Past the knee, latency climbs while
+throughput stays flat — requests are queueing for a connection, not for
+Postgres. So **cutting a request's trip count raises the ceiling for every
+other request too**, because it hands the connection back sooner. No errors
+appeared at any level up to 32 concurrent; the pool settings hold.
+
+**Two server-side caches make a first measurement lie**, and both were mistaken
+for page problems before being tracked down:
+
+- **The pool closes idle connections after 30s** (`idleTimeoutMillis`), so the
+  next database-backed page pays the ~1.9s handshake again — reproduced three
+  times, with the prerendered home page answering in 31ms throughout. On a
+  property this quiet, that is not an edge case; it is what a typical visitor
+  arriving from a search result gets.
+- **`next/image` optimises on demand**, caching per (image, width) under
+  `.next/cache/images`. With that cache cleared, LCP on `/` was 1108ms against
+  192ms warm. `perf-client.ts` therefore loads each page twice and reports the
+  second.
+
+`verify-booking-race.ts` must be piped to `tail`, never `head` — SIGPIPE kills
+it before cleanup and leaves a booking that fails every later run.
+
 ## Environment Variables
 See `.env.example` — the committed template. Copy it and fill in real values
 (`cp .env.example .env.local`). `.env` itself is gitignored, so a fresh clone
@@ -1207,5 +1696,10 @@ has no copy of it; the template is what a new checkout starts from.
   development fallback is public, so reaching it in production would let anyone
   who can read this repository mint an `owner` token. Fails shut, like
   `CRON_SECRET`.
+- `RAZORPAY_WEBHOOK_SECRET` — signs deliveries to `/api/payment/webhook`. Not
+  the key secret: it is the value entered in the Razorpay dashboard when the
+  webhook is created. **Unset means every delivery 503s**, so a guest who closes
+  the tab mid-checkout is rescued only by the next hold sweep. Fails shut, like
+  `JWT_SECRET` and `CRON_SECRET`.
 - `BOOKING_HOLD_MINUTES` — optional, default 60. How long an unpaid website
   booking keeps its room before `expireStalePaymentHolds()` voids it.

@@ -59,8 +59,23 @@ interface AvailableRoom {
  */
 const MAX_PARTY = 20;
 
+/** Where this browser remembers the stay between page loads. Session-scoped,
+ *  so it does not outlive the tab — see the restore effect for what is and is
+ *  not kept here. */
+const STAY_STORAGE_KEY = "riocasa.booking.stay";
+
 const STEPS = ["dates", "room", "details", "payment"] as const;
 type Step = (typeof STEPS)[number];
+
+/** Each step’s name in `messages/en.json`, spelled out rather than derived:
+ *  a key built by string surgery is one typo away from rendering its own path
+ *  to the guest, and next-intl does not fall back. */
+const STEP_LABEL_KEY = {
+  dates: "stepDates",
+  room: "stepRoom",
+  details: "stepDetails",
+  payment: "stepPayment",
+} as const;
 
 /**
  * What the stay costs, priced by the server.
@@ -186,6 +201,84 @@ export default function BookingWizard({
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
 
   const nights = differenceInCalendarDays(new Date(checkOut), new Date(checkIn));
+
+  /**
+   * Bring back the stay this browser was last looking at.
+   *
+   * A refresh, a stray back-swipe, or closing the Razorpay modal and landing
+   * on the page again used to drop the guest on step 1 with the default
+   * "tomorrow, two nights" — four steps of input gone, and no sign that
+   * anything had been lost. Restoring the dates and the party size puts them
+   * one press of Continue from where they were.
+   *
+   * Deliberately narrow. The room selection is *not* restored: availability
+   * moves, and re-offering a room that has since been taken is worse than
+   * asking again. Neither are the guest’s name, email or phone — this is a
+   * page people open on shared and hotel-lobby machines, and remembering
+   * somebody’s contact details there is not a convenience.
+   *
+   * Restored in an effect rather than in the `useState` initialiser because
+   * `sessionStorage` does not exist during the server render, and reading it
+   * where the two must agree is a hydration mismatch.
+   */
+  const [restoredStay, setRestoredStay] = useState(false);
+  const [storageChecked, setStorageChecked] = useState(false);
+
+  useEffect(() => {
+    try {
+      // The URL wins. A guest who just clicked "Book This Room" for a stay in
+      // October means October, not what they were browsing an hour ago.
+      if (usable) return;
+      const raw = sessionStorage.getItem(STAY_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { checkIn?: string; checkOut?: string; guests?: number };
+      if (!saved.checkIn || !saved.checkOut) return;
+      if (!isDayString(saved.checkIn) || !isDayString(saved.checkOut)) return;
+      // Same validation the query string gets, for the same reason: a stay
+      // that has since fallen into the past, or one saved backwards by an
+      // older build, is worse than the default pair.
+      if (saved.checkOut <= saved.checkIn) return;
+      if (saved.checkIn < format(today, "yyyy-MM-dd")) return;
+
+      setCheckIn(saved.checkIn);
+      setCheckOut(saved.checkOut);
+      if (Number.isInteger(saved.guests) && saved.guests! >= 1 && saved.guests! <= MAX_PARTY) {
+        setGuests(saved.guests!);
+      }
+      setRestoredStay(true);
+    } catch {
+      // Private mode, a disabled store, a value some other tab corrupted.
+      // None of it is worth a broken wizard — the defaults are already right.
+    } finally {
+      setStorageChecked(true);
+    }
+    // Once, on mount. Re-running it would fight the guest for the inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Gated on the read having happened, so the first render cannot write the
+  // defaults over the stay it is about to restore.
+  useEffect(() => {
+    if (!storageChecked) return;
+    try {
+      sessionStorage.setItem(STAY_STORAGE_KEY, JSON.stringify({ checkIn, checkOut, guests }));
+    } catch {
+      // Full or unavailable. Losing the memory is not losing the booking.
+    }
+  }, [storageChecked, checkIn, checkOut, guests]);
+
+  /** Throw the remembered stay away and go back to the defaults. */
+  function startAgain() {
+    try {
+      sessionStorage.removeItem(STAY_STORAGE_KEY);
+    } catch {
+      /* nothing to clear */
+    }
+    setCheckIn(defaultIn);
+    setCheckOut(defaultOut);
+    setGuests(2);
+    setRestoredStay(false);
+  }
 
   // The categories a guest chooses between, folded out of the free-room list.
   // Same function the server uses, so the capacity and price shown here are the
@@ -515,27 +608,65 @@ export default function BookingWizard({
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Step indicator */}
-      <div className="flex items-center mb-8">
-        {STEPS.map((s, i) => (
-          <div key={s} className="flex items-center flex-1">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-sans font-semibold transition-colors ${
-                i < stepIndex
-                  ? "bg-primary text-white"
-                  : i === stepIndex
-                  ? "bg-primary text-white"
-                  : "bg-primary-100 text-primary-400"
-              }`}
-            >
-              {i < stepIndex ? <Check size={14} /> : i + 1}
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className={`flex-1 h-0.5 mx-1 ${i < stepIndex ? "bg-primary" : "bg-primary-100"}`} />
-            )}
-          </div>
-        ))}
-      </div>
+      {/* Step indicator.
+
+          Four unlabelled circles used to be all of this: the guest could not
+          see what the four steps were, and from Details the only way back to
+          the dates was to press Back twice. A completed step is a button now.
+          Backwards only — every forward move is gated on something the guest
+          may not have done yet (a housed party, valid details), and those
+          gates live on the steps’ own Continue buttons. */}
+      <nav aria-label={t("title")} className="mb-8">
+        <ol className="flex items-start">
+          {STEPS.map((s, i) => {
+            const label = t(STEP_LABEL_KEY[s]);
+            const done = i < stepIndex;
+            const current = i === stepIndex;
+            return (
+              <li
+                key={s}
+                aria-current={current ? "step" : undefined}
+                className={`flex items-start ${i < STEPS.length - 1 ? "flex-1" : ""}`}
+              >
+                <div className="flex flex-col items-center gap-1.5 w-16 shrink-0">
+                  {done ? (
+                    <button
+                      type="button"
+                      onClick={() => setStep(s)}
+                      aria-label={t("stepGoBack", { step: label })}
+                      className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-600 transition-colors"
+                    >
+                      <Check size={14} />
+                    </button>
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-sans font-semibold ${
+                        current ? "bg-primary text-white" : "bg-primary-100 text-primary-400"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                  )}
+                  <span
+                    className={`font-sans text-xs text-center leading-tight ${
+                      current ? "text-primary font-medium" : "text-earth-text/60"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div
+                    aria-hidden="true"
+                    className={`flex-1 h-0.5 mt-4 ${done ? "bg-primary" : "bg-primary-100"}`}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
       {/* Step 1 — Dates */}
       {step === "dates" && (
@@ -553,7 +684,7 @@ export default function BookingWizard({
                   value={checkIn}
                   min={format(addDays(today, 1), "yyyy-MM-dd")}
                   onChange={(e) => setCheckIn(e.target.value)}
-                  className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary"
+                  className="input-resort w-full"
                 />
               )}
             </Field>
@@ -565,7 +696,7 @@ export default function BookingWizard({
                   value={checkOut}
                   min={format(addDays(new Date(checkIn), 1), "yyyy-MM-dd")}
                   onChange={(e) => setCheckOut(e.target.value)}
-                  className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary"
+                  className="input-resort w-full"
                 />
               )}
             </Field>
@@ -573,8 +704,20 @@ export default function BookingWizard({
           {/* The party size lives on the room step, next to the capacity it
               governs — see the note on `setPartySize`. */}
           {nights > 0 && (
-            <p className="font-sans text-sm text-primary-600 mb-6">
+            <p className={`font-sans text-sm text-primary-600 ${restoredStay ? "mb-2" : "mb-6"}`}>
               {nights} {nights === 1 ? "night" : "nights"} selected
+            </p>
+          )}
+
+          {/* Say so when the dates were remembered rather than chosen here. A
+              form that quietly fills itself in reads as a bug the first time,
+              and there has to be a way out of it. */}
+          {restoredStay && (
+            <p className="font-sans text-xs text-earth-text/70 mb-6 flex flex-wrap items-center gap-x-3">
+              <span>{t("restored")}</span>
+              <button type="button" onClick={startAgain} className="text-primary underline">
+                {t("restoredClear")}
+              </button>
             </p>
           )}
           <button
@@ -612,17 +755,19 @@ export default function BookingWizard({
               {t("guests")}
             </span>
             <div className="flex items-center gap-3" role="group" aria-labelledby={guestsLabelId}>
-              <button type="button" aria-label={t("guestsDecrease")} onClick={() => setPartySize(guests - 1)} disabled={guests <= 1} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30">−</button>
+              <button type="button" aria-label={t("guestsDecrease")} onClick={() => setPartySize(guests - 1)} disabled={guests <= 1} className="stepper-button">−</button>
               <div className="flex items-center gap-2 font-sans text-earth-text"><Users size={16} className="text-primary" />{guests}</div>
-              <button type="button" aria-label={t("guestsIncrease")} onClick={() => setPartySize(guests + 1)} disabled={guests >= MAX_PARTY} className="w-9 h-9 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30">+</button>
+              <button type="button" aria-label={t("guestsIncrease")} onClick={() => setPartySize(guests + 1)} disabled={guests >= MAX_PARTY} className="stepper-button">+</button>
             </div>
           </div>
 
           {roomsLoading && (
-            <p className="font-sans text-sm text-earth-text/70 text-center py-8">Checking availability…</p>
+            <p role="status" className="font-sans text-sm text-earth-text/70 text-center py-8">
+              Checking availability…
+            </p>
           )}
           {roomsError && (
-            <p className="font-sans text-sm text-red-500 mb-4">{roomsError}</p>
+            <p role="alert" className="font-sans text-sm text-red-500 mb-4">{roomsError}</p>
           )}
 
           {/* The property genuinely has nothing free. Distinct from "nothing
@@ -630,7 +775,7 @@ export default function BookingWizard({
               tell a party the resort was full while every room stood empty
               (B-57). */}
           {!roomsLoading && categories.length === 0 && !roomsError && (
-            <p className="font-sans text-sm text-earth-text/70 text-center py-8">
+            <p role="status" className="font-sans text-sm text-earth-text/70 text-center py-8">
               No rooms available for the selected dates.
             </p>
           )}
@@ -740,7 +885,7 @@ export default function BookingWizard({
                         aria-label={`One fewer ${cat.name}`}
                         onClick={() => setRoomCount(cat.roomType, taken - 1)}
                         disabled={taken === 0}
-                        className="w-8 h-8 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30"
+                        className="stepper-button"
                       >
                         −
                       </button>
@@ -750,7 +895,7 @@ export default function BookingWizard({
                         aria-label={`One more ${cat.name}`}
                         onClick={() => setRoomCount(cat.roomType, taken + 1)}
                         disabled={taken >= cat.count}
-                        className="w-8 h-8 rounded-full border border-primary-200 flex items-center justify-center text-primary hover:bg-primary-50 disabled:opacity-30"
+                        className="stepper-button"
                       >
                         +
                       </button>
@@ -781,27 +926,38 @@ export default function BookingWizard({
                 partyHoused ? "bg-primary-50 text-primary" : "border border-accent/40 bg-accent/5 text-earth-text"
               }`}
             >
-              <p className="flex items-center gap-2">
-                <BedDouble size={15} className="shrink-0" />
-                {selectedRooms} {selectedRooms === 1 ? "room" : "rooms"}
-                {plan.totalExtraBeds > 0 && (
-                  <> · {plan.totalExtraBeds} extra {plan.totalExtraBeds === 1 ? "bed" : "beds"}</>
-                )}
-                {" · "}
-                sleeps {plan.capacity} of {guests}
-              </p>
+              {/* Announced on every change. This is the answer to the −/+
+                  press the guest just made — whether the party now fits —
+                  and without a live region the only way to learn it was to
+                  go looking for a line that had silently rewritten itself.
 
-              {!partyHoused && (
-                <p className="mt-1 text-earth-text/70">
-                  Add {guests - plan.capacity} more{" "}
-                  {guests - plan.capacity === 1 ? "space" : "spaces"} to continue.
+                  Scoped to the tally and the shortfall, deliberately: the
+                  itemised quote below is inside this same box, and putting
+                  the region around all of it would read every line of the
+                  bill out again on each press. */}
+              <div aria-live="polite">
+                <p className="flex items-center gap-2">
+                  <BedDouble size={15} className="shrink-0" aria-hidden="true" />
+                  {selectedRooms} {selectedRooms === 1 ? "room" : "rooms"}
+                  {plan.totalExtraBeds > 0 && (
+                    <> · {plan.totalExtraBeds} extra {plan.totalExtraBeds === 1 ? "bed" : "beds"}</>
+                  )}
+                  {" · "}
+                  sleeps {plan.capacity} of {guests}
                 </p>
-              )}
+
+                {!partyHoused && (
+                  <p className="mt-1 text-earth-text/70">
+                    Add {guests - plan.capacity} more{" "}
+                    {guests - plan.capacity === 1 ? "space" : "spaces"} to continue.
+                  </p>
+                )}
+              </div>
 
               {partyHoused && (
                 <div className="mt-2">
-                  {quoteLoading && <p>{t("priceLoading")}</p>}
-                  {!quoteLoading && !quote && <p>{t("priceUnavailable")}</p>}
+                  {quoteLoading && <p role="status">{t("priceLoading")}</p>}
+                  {!quoteLoading && !quote && <p role="status">{t("priceUnavailable")}</p>}
 
                   {/* Itemised so the total is checkable against the per-night
                       prices above it. Every figure here is the server's — see
@@ -883,30 +1039,30 @@ export default function BookingWizard({
             <Field label={<>{t("name")} *</>} labelClassName={LABEL_CLASS}>
               {(id) => (
                 <>
-                  <input id={id} {...register("guestName")} placeholder="Rahul Sharma" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-                  {errors.guestName && <p className="text-red-500 text-xs mt-1">{errors.guestName.message}</p>}
+                  <input id={id} {...register("guestName")} placeholder="Rahul Sharma" className="input-resort w-full" />
+                  {errors.guestName && <p role="alert" className="text-red-500 text-xs mt-1">{errors.guestName.message}</p>}
                 </>
               )}
             </Field>
             <Field label={<>{t("email")} *</>} labelClassName={LABEL_CLASS}>
               {(id) => (
                 <>
-                  <input id={id} {...register("guestEmail")} type="email" placeholder="rahul@email.com" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-                  {errors.guestEmail && <p className="text-red-500 text-xs mt-1">{errors.guestEmail.message}</p>}
+                  <input id={id} {...register("guestEmail")} type="email" placeholder="rahul@email.com" className="input-resort w-full" />
+                  {errors.guestEmail && <p role="alert" className="text-red-500 text-xs mt-1">{errors.guestEmail.message}</p>}
                 </>
               )}
             </Field>
             <Field label={<>{t("phone")} *</>} labelClassName={LABEL_CLASS}>
               {(id) => (
                 <>
-                  <input id={id} {...register("guestPhone")} type="tel" placeholder="98765 43210" className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-                  {errors.guestPhone && <p className="text-red-500 text-xs mt-1">{errors.guestPhone.message}</p>}
+                  <input id={id} {...register("guestPhone")} type="tel" placeholder="98765 43210" className="input-resort w-full" />
+                  {errors.guestPhone && <p role="alert" className="text-red-500 text-xs mt-1">{errors.guestPhone.message}</p>}
                 </>
               )}
             </Field>
             <Field label={t("specialRequests")} labelClassName={LABEL_CLASS}>
               {(id) => (
-                <textarea id={id} {...register("specialRequests")} rows={3} placeholder={t("specialRequestsPlaceholder")} className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary resize-none" />
+                <textarea id={id} {...register("specialRequests")} rows={3} placeholder={t("specialRequestsPlaceholder")} className="input-resort w-full resize-none" />
               )}
             </Field>
           </div>
@@ -977,7 +1133,7 @@ export default function BookingWizard({
                   </div>
                 </>
               ) : (
-                <div className="border-t border-primary-200 pt-2 mt-2 text-earth-text/70">
+                <div role="status" className="border-t border-primary-200 pt-2 mt-2 text-earth-text/70">
                   {quoteLoading ? t("priceLoading") : t("priceUnavailable")}
                 </div>
               )}
@@ -1005,7 +1161,7 @@ export default function BookingWizard({
                     }
                   }}
                       placeholder={t("promoPlaceholder")}
-                      className="flex-1 border border-primary-200 rounded-sm px-3 py-2 font-sans text-sm focus:outline-none focus:border-primary"
+                      className="input-resort flex-1"
                     />
                     <button
                       type="button"
@@ -1018,11 +1174,14 @@ export default function BookingWizard({
                   </div>
                 )}
               </Field>
+              {/* Announced either way. Pressing Apply used to change a line of
+                  text well below the button and say nothing at all to anyone
+                  not watching that line. */}
               {promoPreview && !promoPreview.valid && (
-                <p className="text-red-500 text-xs mt-1">{promoPreview.reason}</p>
+                <p role="alert" className="text-red-500 text-xs mt-1">{promoPreview.reason}</p>
               )}
               {appliedPromoCode && promoPreview?.valid && (
-                <p className="text-primary text-xs mt-1">{t("promoApplied")}</p>
+                <p role="status" className="text-primary text-xs mt-1">{t("promoApplied")}</p>
               )}
             </div>
 
@@ -1052,7 +1211,29 @@ export default function BookingWizard({
               </button>
             </div>
 
-            {error && <p className="text-red-500 font-sans text-sm mb-4">{error}</p>}
+            {/* What the guest is agreeing to, beside the button that agrees to
+                it. This screen asked for a card with no check-in times, no
+                statement of what the total covers, and nothing about how to
+                change the booking — all of which a guest goes looking for at
+                exactly this moment, and leaves the page to find. */}
+            <div className="border border-primary-200 rounded-sm p-4 mb-6 font-sans text-xs text-earth-text/70 space-y-1.5">
+              <p className="font-medium text-earth-text text-sm">{t("policyTitle")}</p>
+              <p>{t("policyTimes")}</p>
+              <p>{t("policyTotal")}</p>
+              <p>{t("policyHold")}</p>
+              {/* The number is passed in rather than written into the string:
+                  it is a property fact, and `lib/property.ts` is where those
+                  are stated. */}
+              <p>{t("policyChanges", { phone: PROPERTY.phone })}</p>
+            </div>
+
+            {/* Announced, not just shown. A guest who presses Confirm and is
+                refused hears nothing otherwise. */}
+            {error && (
+              <p role="alert" className="text-red-500 font-sans text-sm mb-4">
+                {error}
+              </p>
+            )}
 
             <div className="flex gap-3">
               <button type="button" onClick={() => setStep("details")} className="btn-outline flex-1">← Back</button>

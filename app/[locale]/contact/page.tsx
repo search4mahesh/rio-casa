@@ -88,38 +88,48 @@ export default function ContactPage() {
           {/* Form */}
           <div className="md:col-span-3 bg-earth-white rounded-sm shadow-sm p-6 sm:p-8">
             {submitted ? (
-              <p className="font-sans text-primary text-center py-8">{t("success")}</p>
+              // The form is replaced by this, so a screen reader user gets no
+              // cue at all without a live region: the fields they were in are
+              // simply gone.
+              <p role="status" className="font-sans text-primary text-center py-8">
+                {t("success")}
+              </p>
             ) : (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 {error && (
-                  <div className="p-3 rounded-sm bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
+                  <div
+                    role="alert"
+                    className="p-3 rounded-sm bg-red-50 border border-red-200 text-red-700 text-sm"
+                  >
+                    {error}
+                  </div>
                 )}
 
                 <div>
                   <label htmlFor={`${fieldId}-name`} className="font-sans text-sm text-earth-text/70 block mb-1">{t("name")} *</label>
                   <input id={`${fieldId}-name`} {...register("name")}
-                    className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-                  {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+                    className="input-resort w-full" />
+                  {errors.name && <p role="alert" className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
                 </div>
 
                 <div>
                   <label htmlFor={`${fieldId}-email`} className="font-sans text-sm text-earth-text/70 block mb-1">{t("email")} *</label>
                   <input id={`${fieldId}-email`} type="email" {...register("email")}
-                    className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
-                  {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+                    className="input-resort w-full" />
+                  {errors.email && <p role="alert" className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
 
                 <div>
                   <label htmlFor={`${fieldId}-phone`} className="font-sans text-sm text-earth-text/70 block mb-1">{t("phone")}</label>
                   <input id={`${fieldId}-phone`} type="tel" {...register("phone")}
-                    className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary" />
+                    className="input-resort w-full" />
                 </div>
 
                 <div>
                   <label htmlFor={`${fieldId}-message`} className="font-sans text-sm text-earth-text/70 block mb-1">{t("message")} *</label>
                   <textarea id={`${fieldId}-message`} rows={4} placeholder={t("messagePlaceholder")} {...register("message")}
-                    className="w-full border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm focus:outline-none focus:border-primary resize-none" />
-                  {errors.message && <p className="text-red-500 text-xs mt-1">{errors.message.message}</p>}
+                    className="input-resort w-full resize-none" />
+                  {errors.message && <p role="alert" className="text-red-500 text-xs mt-1">{errors.message.message}</p>}
                 </div>
 
                 <button type="submit" disabled={isSubmitting} className="btn-primary w-full">

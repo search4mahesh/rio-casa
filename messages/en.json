@@ -7,20 +7,31 @@
     "dining": "Dining & Amenities",
     "blog": "Blog",
     "contact": "Contact",
-    "bookNow": "Book Now"
+    "bookNow": "Book Now",
+    "skipToContent": "Skip to content",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "primary": "Primary"
   },
   "hero": {
     "tagline": "Where Nature Meets Luxury",
     "subTagline": "Nestled in the misty hills of {city}",
     "cta": "Book Your Stay",
-    "exploreRooms": "Explore Rooms"
+    "exploreRooms": "Explore Rooms",
+    "searchHeading": "Check availability for your dates",
+    "browseRooms": "Or browse all rooms"
   },
   "home": {
     "featuredRoomsTitle": "Our Rooms & Suites",
     "featuredRoomsSubtitle": "Curated spaces designed for rest and rejuvenation",
     "testimonialsTitle": "What Our Guests Say",
     "locationTitle": "Find Us",
-    "locationSubtitle": "In the heart of {city}"
+    "locationSubtitle": "In the heart of {city}",
+    "testimonialGoTo": "Show testimonial {index} of {total}",
+    "testimonialsLabel": "Guest reviews",
+    "testimonialPrevious": "Previous review",
+    "testimonialNext": "Next review",
+    "testimonialRating": "Rated {rating} out of 5"
   },
   "rooms": {
     "title": "Rooms & Suites",
@@ -46,7 +57,16 @@
     "noNextFree": "No free dates in the next {days} days — please call us",
     "seeNextFree": "See {date}",
     "invalidRange": "Check-out must be after check-in.",
-    "pastCheckIn": "Choose a check-in date from today onwards."
+    "pastCheckIn": "Choose a check-in date from today onwards.",
+    "nightCount": "{count} nights",
+    "oneNight": "1 night",
+    "stayPolicy": "All rooms take an extra bed on request (charges apply). Check-in from 12:00 PM · Check-out by 11:00 AM.",
+    "checkThisRoom": "Check this room for your dates",
+    "freeForYourDates": "{count} of these rooms are free for your dates",
+    "oneFreeForYourDates": "One of these rooms is free for your dates",
+    "soldOutForYourDates": "This room is taken for your dates",
+    "seeOtherRooms": "See what else is free",
+    "fromPrice": "from ₹{price}"
   },
   "booking": {
     "title": "Book Your Stay",
@@ -80,7 +100,30 @@
     "promoPlaceholder": "Enter code",
     "promoApply": "Apply",
     "promoChecking": "Checking…",
-    "promoApplied": "Code applied."
+    "promoApplied": "Code applied.",
+    "stepDates": "Dates",
+    "stepRoom": "Rooms",
+    "stepDetails": "Details",
+    "stepPayment": "Payment",
+    "stepGoBack": "Go back to {step}",
+    "stepCurrent": "{step}, current step",
+    "stepDone": "{step}, completed",
+    "stepTodo": "{step}, not yet reached",
+    "policyTitle": "Before you pay",
+    "policyTimes": "Check-in from 12:00 PM · Check-out by 11:00 AM.",
+    "policyTotal": "The total above is what you pay now, GST included.",
+    "policyHold": "Your room is held while you pay. If the payment is not completed, the room goes back on the calendar.",
+    "policyChanges": "To change or cancel this booking, call us on {phone}.",
+    "restored": "We kept the dates and rooms you chose earlier.",
+    "restoredClear": "Start again",
+    "upiTitle": "Complete your payment",
+    "upiHold": "Your room is held for {minutes} minutes while you pay.",
+    "upiPayNow": "Pay ₹{amount} with a UPI app",
+    "upiOnThisPhone": "Opens GPay, PhonePe, Paytm or any other UPI app on this device.",
+    "upiManualHeading": "Or pay manually to",
+    "upiReference": "Put booking number {reference} in the payment note so we can match it.",
+    "upiAfterWhatsApp": "Once you have paid, send us the confirmation on WhatsApp and we will confirm your booking.",
+    "upiAfterPhone": "Once you have paid, call us on {phone} and we will confirm your booking."
   },
   "dining": {
     "title": "Dining & Amenities",
@@ -93,13 +136,19 @@
     "title": "Gallery",
     "subtitle": "Moments captured at {property}",
     "categories": {
-      "all": "All",
+      "all": "All Photos",
       "rooms": "Rooms",
-      "dining": "Dining",
       "amenities": "Amenities",
-      "nature": "Nature",
-      "events": "Events"
-    }
+      "nature": "Exterior & Views"
+    },
+    "lightboxLabel": "Photo viewer",
+    "close": "Close",
+    "previous": "Previous photo",
+    "next": "Next photo",
+    "viewPhoto": "View {alt}",
+    "photoPosition": "{index} of {total}",
+    "filterLabel": "Filter photographs",
+    "photoCount": "{count} photos"
   },
   "about": {
     "title": "About {property}",

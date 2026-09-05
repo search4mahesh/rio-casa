@@ -16,6 +16,64 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-serif;
   }
+
+  /* One visible focus indicator for everything the keyboard can reach.
+
+     Every public form control used to carry `focus:outline-none` paired
+     with nothing but `focus:border-primary` — a 1px border changing
+     colour, which is what a keyboard user got instead of a focus ring
+     on the contact form, the date pickers and all four fields of the
+     booking wizard. The admin panels had been doing this correctly with
+     `focus:ring-2` all along.
+
+     **Two tones, not one.** The indicator has to be visible on the cream
+     pages, on the dark footer, over the hero photograph and around a
+     filled green button — and no single colour manages all four. A
+     `currentColor` outline fails the last one outright: on `.btn-primary`
+     `currentColor` is white, and at a 2px offset that lands on the cream
+     card behind the button at about 1.05:1, which is no indicator at all
+     on the most important control on the site.
+
+     So a light halo sits against the element and a dark outline sits
+     outside it. Whichever ground the element is on, one of the two
+     contrasts with it. An `outline` rather than a ring utility because it
+     follows the element's own shape; the halo is a `box-shadow` at zero
+     offset so the two are flush.
+
+     `:focus-visible`, not `:focus`, so a mouse click on a button does not
+     leave a ring behind. Text inputs match it however they were focused,
+     which is what we want for them. */
+  :focus-visible {
+    outline: 2px solid theme('colors.earth.text');
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px theme('colors.earth.white');
+  }
+}
+
+/* Motion is a preference, and this site had no answer for it: the hero holds
+   its content at `opacity-0` until an animation reveals it, the scroll
+   indicator bounces forever, and `scroll-behavior: smooth` above hijacks
+   every in-page jump.
+
+   The durations collapse rather than the animations being switched off. With
+   `animation-fill-mode: forwards`, a 0.01ms run lands on its end state
+   immediately — whereas `animation: none` would leave everything the hero
+   reveals stuck at zero opacity, which is a blank first screen for exactly
+   the people who asked for less movement. The delays go too, or the content
+   is merely invisible for less long. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @layer components {
@@ -32,6 +90,38 @@
      same button shape is used as a toolbar action and a modal submit. */
   .btn-admin {
     @apply bg-primary hover:bg-primary-600 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors;
+  }
+
+  /* A public-site form control: input, textarea or select.
+
+     Appearance only — callers keep their own layout utilities
+     (`w-full`, `flex-1`, `resize-none`) alongside it, the same
+     arrangement `.btn-admin` uses. Twelve copies of this string were
+     spread across the contact form, both date forms and the booking
+     wizard, and every one of them removed the focus outline.
+
+     It deliberately sets no `outline-none`: the `:focus-visible` rule
+     in the base layer is the focus indicator, and a control that wants
+     to opt out of it has to say so on purpose. */
+  .input-resort {
+    @apply border border-primary-200 rounded-sm px-3 py-2.5 font-sans text-sm
+           text-earth-text bg-earth-white focus:border-primary;
+  }
+
+  /* The −/+ pair on the booking wizard's counters.
+
+     44px, which is the size a thumb actually hits. The room steppers
+     were 32px and the guest counter 36px — the two most-pressed controls
+     in the whole funnel, both under the 44px guideline, and different
+     sizes from each other for no reason anyone had decided.
+
+     One class rather than four copies of the string, for the same reason
+     `.input-resort` exists: two counters that drift apart is how they got
+     to be different sizes in the first place. */
+  .stepper-button {
+    @apply w-11 h-11 rounded-full border border-primary-200 flex items-center justify-center
+           text-primary text-lg leading-none hover:bg-primary-50 disabled:opacity-30
+           transition-colors;
   }
 
   .section-heading {

@@ -4,6 +4,8 @@ import { hasMinRole } from "@/lib/rbac-utils";
 import { prisma } from "@/lib/prisma";
 import { today, addDays, startOfMonth, addMonths } from "@/lib/dates";
 import RoomBoard from "@/components/admin/RoomBoard";
+import AlertsBanner from "@/components/admin/AlertsBanner";
+import { getOperationalAlerts } from "@/lib/alerts";
 import { adminMetadata } from "@/lib/admin-metadata";
 
 async function getTodayData() {
@@ -152,6 +154,12 @@ export default async function TodayPage() {
   const isFrontDesk = hasMinRole(staff.role, "frontdesk");
   const isManager = hasMinRole(staff.role, "manager");
 
+  // Money the property is holding that is not its own, and stays it still
+  // believes are in progress. Both were only ever visible in a log line or an
+  // unread `audit_log` row; this is the screen staff actually open. Refunds are
+  // a manager's call, so front desk does not fetch them at all.
+  const alerts = await getOperationalAlerts(isManager);
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
 
@@ -176,6 +184,8 @@ export default async function TodayPage() {
           {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         </p>
       </div>
+
+      <AlertsBanner alerts={alerts} />
 
       <div className={`grid grid-cols-2 gap-4 mb-6 ${isManager ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
         {stats.map((s) => (

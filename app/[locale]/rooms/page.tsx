@@ -1,56 +1,21 @@
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import Image from "next/image";
-import { Users, Star, Bath, BedDouble, CalendarDays } from "lucide-react";
+import { Users, Star, Bath, BedDouble } from "lucide-react";
 import { getRoomCategories } from "@/lib/room-catalogue";
-import { getAvailableRooms, nextAvailableByType } from "@/lib/booking-service";
-import { addDays, dateOnly, daysBetween, isDayString, today, toDayString } from "@/lib/dates";
+import { catalogueAvailability } from "@/lib/booking-service";
+import { addDays, dateOnly, today, toDayString } from "@/lib/dates";
 import { pageMetadata } from "@/lib/page-metadata";
+import StaySearchForm from "@/components/booking/StaySearchForm";
+// Shared with /rooms/[slug], which carries the same pair of dates one link
+// away — see lib/stay-params.ts.
+import { humanDay, readStay } from "@/lib/stay-params";
 
 export const generateMetadata = () => pageMetadata("rooms", "/rooms");
 
 export const dynamic = "force-dynamic";
 
 const HORIZON_DAYS = 60;
-
-/** "2 Sep 2026" — the format the rest of the public site reads dates in. */
-function humanDay(day: string): string {
-  return new Date(`${day}T00:00:00.000Z`).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-/**
- * Read the requested stay out of the query string.
- *
- * Query params get the same care as bodies — see CLAUDE.md. `isDayString`
- * rather than a bare regex, because `/^\d{4}-\d{2}-\d{2}$/` accepts 2026-02-30
- * and `dateOnly` then throws, which on a page is a 500 rather than the "pick
- * different dates" this is trying to say.
- */
-function readStay(raw: { checkIn?: string; checkOut?: string }):
-  | { kind: "none" }
-  | { kind: "error"; message: "invalidRange" | "pastCheckIn" }
-  | { kind: "stay"; checkIn: Date; checkOut: Date; nights: number } {
-  const { checkIn, checkOut } = raw;
-  if (!checkIn && !checkOut) return { kind: "none" };
-  if (!checkIn || !checkOut || !isDayString(checkIn) || !isDayString(checkOut)) {
-    return { kind: "error", message: "invalidRange" };
-  }
-
-  const from = dateOnly(checkIn);
-  const to = dateOnly(checkOut);
-  if (to <= from) return { kind: "error", message: "invalidRange" };
-  // A stay in the past is not "unavailable", it is unaskable — and
-  // `getAvailableRooms` answers an empty list for it, which would read on this
-  // page as the whole property being booked out.
-  if (from < today()) return { kind: "error", message: "pastCheckIn" };
-
-  return { kind: "stay", checkIn: from, checkOut: to, nights: daysBetween(from, to) };
-}
 
 export default async function RoomsPage({
   searchParams,
@@ -66,20 +31,23 @@ export default async function RoomsPage({
   const stay = readStay(searchParams);
   const tomorrow = toDayString(addDays(today(), 1));
 
-  // Free rooms per type, for the dates asked about. Deliberately
-  // `getAvailableRooms` rather than a query of this page's own: the catalogue
-  // and the booking wizard must not be able to disagree about what is free.
-  let freeByType = new Map<string, number>();
+  // Free rooms per type for the dates asked about, and — for any type with
+  // none — the next day the stay would fit. Deliberately a shared function in
+  // `lib/booking-service.ts` rather than a query of this page's own: the
+  // catalogue and the booking wizard must not be able to disagree about what
+  // is free, and both now resolve "free" through the same predicate.
+  //
+  // One call rather than two because the horizon window contains the stay, so
+  // the second answer costs no extra round trip: the page reads three, not
+  // seven.
+  let freeByType: Record<string, number> = {};
   let nextFree: Record<string, string | null> = {};
   if (stay.kind === "stay") {
-    for (const room of await getAvailableRooms(stay.checkIn, stay.checkOut, 1)) {
-      freeByType.set(room.roomType, (freeByType.get(room.roomType) ?? 0) + 1);
-    }
-    // Only worth a second query when something is actually booked out — the
-    // common case is everything free and no date to suggest.
-    if (rooms.some((r) => (freeByType.get(r.roomType) ?? 0) === 0)) {
-      nextFree = await nextAvailableByType(stay.nights, stay.checkIn, HORIZON_DAYS);
-    }
+    ({ freeByType, nextFreeByType: nextFree } = await catalogueAvailability(
+      stay.checkIn,
+      stay.checkOut,
+      HORIZON_DAYS
+    ));
   }
 
   /** Carry the chosen dates into the wizard so the guest does not retype them. */
@@ -95,60 +63,26 @@ export default async function RoomsPage({
           <p className="section-subheading mb-2">{t("subtitle")}</p>
           <h1 className="section-heading">{t("title")}</h1>
           <p className="font-sans text-earth-text/70 mt-3 max-w-xl mx-auto text-sm">
-            All rooms include extra bed on request (charges apply). Check-in 12:00 PM · Check-out 11:00 AM.
+            {t("stayPolicy")}
           </p>
         </div>
 
-        {/* A plain GET form, so the dates live in the URL and the page stays a
-            server component. The result is shareable and bookmarkable, and it
-            works with no JavaScript at all. */}
-        <form
-          method="get"
+        {/* The same component the home page's hero uses, so the two cannot
+            disagree about what a valid stay is. Still a plain `<form
+            method="get">` — the dates land in the URL, the result is
+            shareable and bookmarkable, and this page stays a server component.
+            The client island buys the one thing a server component cannot do:
+            floor check-out at the day after check-in while the guest is still
+            choosing. Both inputs used to be floored at tomorrow, so "check in
+            on the 5th, check out on the 3rd" was reachable in the native
+            picker and only rejected after a round trip. */}
+        <StaySearchForm
+          minCheckIn={tomorrow}
+          defaultCheckIn={stay.kind === "stay" ? toDayString(stay.checkIn) : searchParams.checkIn}
+          defaultCheckOut={stay.kind === "stay" ? toDayString(stay.checkOut) : searchParams.checkOut}
+          showNights={false}
           className="bg-earth-white rounded-sm shadow-sm p-5 mb-10 max-w-3xl mx-auto"
         >
-          <p className="font-sans text-sm text-earth-text mb-3 flex items-center gap-2">
-            <CalendarDays size={16} className="text-primary" />
-            {t("datesHeading")}
-          </p>
-          {/* `components/ui/Field` is the usual way to tie a label to a control,
-              but it hands the id over through a render prop and a function
-              cannot cross the server/client boundary. This form needs neither
-              state nor an event handler, so making it a client component to
-              borrow the helper would trade one rule in CLAUDE.md for another.
-              Explicit `htmlFor` gives the same association — the form renders
-              once per page, so fixed ids cannot collide. */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 sm:items-end">
-            <div>
-              <label htmlFor="rooms-check-in" className="font-sans text-xs text-earth-text/70 block mb-1">
-                {t("checkIn")}
-              </label>
-              <input
-                id="rooms-check-in"
-                name="checkIn"
-                type="date"
-                min={tomorrow}
-                defaultValue={stay.kind === "stay" ? toDayString(stay.checkIn) : searchParams.checkIn}
-                className="w-full border border-primary-200 rounded-sm px-3 py-2 font-sans text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label htmlFor="rooms-check-out" className="font-sans text-xs text-earth-text/70 block mb-1">
-                {t("checkOut")}
-              </label>
-              <input
-                id="rooms-check-out"
-                name="checkOut"
-                type="date"
-                min={tomorrow}
-                defaultValue={stay.kind === "stay" ? toDayString(stay.checkOut) : searchParams.checkOut}
-                className="w-full border border-primary-200 rounded-sm px-3 py-2 font-sans text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
-            <button type="submit" className="btn-primary text-sm py-2.5 px-6 whitespace-nowrap">
-              {t("checkDates")}
-            </button>
-          </div>
-
           {stay.kind === "error" && (
             <p className="font-sans text-sm text-red-600 mt-3">{t(stay.message)}</p>
           )}
@@ -174,11 +108,11 @@ export default async function RoomsPage({
               </Link>
             </p>
           )}
-        </form>
+        </StaySearchForm>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {rooms.map((room) => {
-            const count = freeByType.get(room.roomType) ?? 0;
+            const count = freeByType[room.roomType] ?? 0;
             const soldOut = stay.kind === "stay" && count === 0;
             const free = stay.kind === "stay" && count > 0;
             const nextDay = soldOut ? nextFree[room.roomType] ?? null : null;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, MessageCircle } from "lucide-react";
 import { PROPERTY } from "@/lib/property";
+import { whatsappUrl } from "@/lib/whatsapp";
 
 /**
  * Error boundary for the booking flow specifically.
@@ -33,13 +34,13 @@ export default function BookingError({
     console.error("[booking] Unhandled render error in the booking flow:", error);
   }, [error]);
 
-  // Same source as components/layout/WhatsAppButton.tsx.
-  const phone = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
-  const waUrl = phone
-    ? `https://wa.me/${phone}?text=${encodeURIComponent(
-        `Hi! I was trying to book a room at ${PROPERTY.name} and the website ran into a problem. Could you help me book?`
-      )}`
-    : null;
+  // `whatsappUrl` is null when no number is configured, and the button below
+  // is not rendered. This boundary always got that right; the floating button
+  // and the confirmation screen used to fall back to a stranger's number
+  // (B-73), which is why the rule now lives in one function.
+  const waUrl = whatsappUrl(
+    `Hi! I was trying to book a room at ${PROPERTY.name} and the website ran into a problem. Could you help me book?`
+  );
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4 py-20">

@@ -279,6 +279,12 @@ model Payment {
 
   booking Booking @relation(fields: [bookingId], references: [id])
 
+  /// One row per (razorpay payment, booking), enforced by the database rather
+  /// than by remembering to check. Two settlement paths now race for every
+  /// online payment — the guest's browser and Razorpay's webhook — and a second
+  /// row would double-count the stay in every revenue report. NULLs are
+  /// distinct in Postgres, so cash and card-at-desk payments are unaffected.
+  @@unique([razorpayPaymentId, bookingId])
   @@map("payments")
 }
 
